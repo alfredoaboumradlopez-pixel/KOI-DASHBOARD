@@ -1,162 +1,167 @@
-import React, { useState, useEffect } from 'react';
-import { Wallet, Calculator, AlertTriangle, CheckCircle, ShieldAlert, Lock } from 'lucide-react';
+import React, { useState, useEffect } from "react";
+import { api } from "../services/api";
+import { Loader2, CheckCircle, AlertTriangle, ChevronDown, ChevronUp, Search } from "lucide-react";
 
-// Formateador de moneda MXN
-const formatMXN = (amount: number) => {
-  return new Intl.NumberFormat('es-MX', {
-    style: 'currency',
-    currency: 'MXN',
-  }).format(amount);
-};
+const formatMXN = (n: number) => new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(n);
 
 export const ArqueoCaja: React.FC = () => {
-  const [saldoTeorico, setSaldoTeorico] = useState<number | null>(null);
-  const [saldoFisicoStr, setSaldoFisicoStr] = useState<string>('');
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [cierres, setCierres] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [expandido, setExpandido] = useState<number | null>(null);
+  const [filtroMes, setFiltroMes] = useState(new Date().getMonth() + 1);
+  const [filtroAnio, setFiltroAnio] = useState(new Date().getFullYear());
 
-  // Simulación de la llamada al endpoint de FastAPI: GET /api/caja/saldo-teorico
-  useEffect(() => {
-    const fetchSaldoTeorico = async () => {
-      setIsLoading(true);
-      // Simulamos latencia de red
-      setTimeout(() => {
-        // Este valor vendría de la respuesta del backend
-        const mockResponse = {
-          saldo_teorico: 15450.50,
-        };
-        setSaldoTeorico(mockResponse.saldo_teorico);
-        setIsLoading(false);
-      }, 1000);
-    };
+  const meses = ["","Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 
-    fetchSaldoTeorico();
-  }, []);
+  const fetchCierres = async () => {
+    setLoading(true);
+    try {
+      const data = await api.get("/api/cierre-turno?mes=" + filtroMes + "&anio=" + filtroAnio + "&limit=50");
+      setCierres(data);
+    } catch (e) { console.error(e); }
+    setLoading(false);
+  };
 
-  const saldoFisico = parseFloat(saldoFisicoStr);
-  const isInputValid = !isNaN(saldoFisico);
-  
-  // Cálculo de diferencia
-  const diferencia = isInputValid && saldoTeorico !== null ? saldoFisico - saldoTeorico : null;
-  const isCuadrada = diferencia === 0;
-  const hasDiscrepancy = diferencia !== null && diferencia !== 0;
+  useEffect(() => { fetchCierres(); }, [filtroMes, filtroAnio]);
+
+  const toggle = (id: number) => setExpandido(expandido === id ? null : id);
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
+    <div className="max-w-4xl mx-auto space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">Arqueo de Caja Fuerte</h1>
-        <p className="text-sm text-slate-500 mt-1">Valida el efectivo físico contra los registros del sistema.</p>
+        <h1 className="text-2xl font-bold text-slate-900">Arqueo de Caja</h1>
+        <p className="text-sm text-slate-500 mt-1">Historial de cierres de turno y estado de caja.</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Panel Saldo Teórico (Sistema) */}
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 bg-indigo-50 rounded-lg">
-              <Calculator className="w-5 h-5 text-indigo-600" />
-            </div>
-            <h2 className="text-sm font-semibold text-slate-800">Saldo Teórico (Sistema)</h2>
-          </div>
-          
-          {isLoading ? (
-            <div className="animate-pulse h-10 bg-slate-100 rounded w-2/3 mt-2"></div>
-          ) : (
-            <div>
-              <p className="text-4xl font-bold text-slate-900 tracking-tight">
-                {saldoTeorico !== null ? formatMXN(saldoTeorico) : '$0.00'}
-              </p>
-              <p className="text-xs text-slate-500 mt-2">
-                Calculado: (Inicial + Ventas) - (Gastos + Propinas)
-              </p>
-            </div>
-          )}
-        </div>
-
-        {/* Panel Saldo Físico (Usuario) */}
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 border-t-4 border-t-indigo-500">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 bg-slate-100 rounded-lg">
-              <Wallet className="w-5 h-5 text-slate-700" />
-            </div>
-            <h2 className="text-sm font-semibold text-slate-800">Saldo Físico Contado</h2>
-          </div>
-          
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
+        <div className="flex items-center gap-4">
           <div>
-            <div className="relative">
-              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 font-medium text-lg">$</span>
-              <input
-                type="number"
-                step="0.01"
-                value={saldoFisicoStr}
-                onChange={(e) => setSaldoFisicoStr(e.target.value)}
-                placeholder="0.00"
-                className="w-full pl-8 pr-4 py-3 text-2xl font-bold text-slate-900 border border-slate-300 rounded-lg focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 outline-none transition-all"
-              />
-            </div>
-            <p className="text-xs text-slate-500 mt-2">
-              Ingresa el monto exacto en efectivo dentro de la caja.
-            </p>
+            <label className="text-xs text-slate-500">Mes</label>
+            <select value={filtroMes} onChange={e => setFiltroMes(Number(e.target.value))}
+              className="block w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg text-sm">
+              {meses.map((m, i) => i > 0 && <option key={i} value={i}>{m}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-slate-500">Anio</label>
+            <select value={filtroAnio} onChange={e => setFiltroAnio(Number(e.target.value))}
+              className="block w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg text-sm">
+              <option value={2025}>2025</option>
+              <option value={2026}>2026</option>
+            </select>
+          </div>
+          <div className="ml-auto pt-4">
+            <span className="text-sm text-slate-500">{cierres.length} cierre{cierres.length !== 1 ? "s" : ""} encontrado{cierres.length !== 1 ? "s" : ""}</span>
           </div>
         </div>
       </div>
 
-      {/* Resultados y Acciones */}
-      {isInputValid && !isLoading && (
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
-          <div className="p-6 border-b border-slate-100">
-            <h3 className="text-sm font-medium text-slate-500 mb-4">Resultado del Arqueo</h3>
-            
-            {isCuadrada ? (
-              <div className="flex items-center gap-4 p-4 bg-emerald-50 border border-emerald-200 rounded-xl">
-                <div className="p-3 bg-emerald-100 rounded-full">
-                  <CheckCircle className="w-8 h-8 text-emerald-600" />
-                </div>
-                <div>
-                  <h4 className="text-lg font-bold text-emerald-800">Caja Cuadrada</h4>
-                  <p className="text-sm text-emerald-600">El saldo físico coincide exactamente con el sistema.</p>
-                </div>
-              </div>
-            ) : (
-              <div className={`flex items-center gap-4 p-4 border rounded-xl ${
-                diferencia! > 0 ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-200'
-              }`}>
-                <div className={`p-3 rounded-full ${
-                  diferencia! > 0 ? 'bg-amber-100' : 'bg-red-100'
-                }`}>
-                  <AlertTriangle className={`w-8 h-8 ${
-                    diferencia! > 0 ? 'text-amber-600' : 'text-red-600'
-                  }`} />
-                </div>
-                <div>
-                  <h4 className={`text-lg font-bold ${
-                    diferencia! > 0 ? 'text-amber-800' : 'text-red-800'
-                  }`}>
-                    {diferencia! > 0 ? 'Sobrante detectado' : 'Faltante detectado'}
-                  </h4>
-                  <p className={`text-xl font-mono font-bold mt-1 ${
-                    diferencia! > 0 ? 'text-amber-700' : 'text-red-700'
-                  }`}>
-                    {diferencia! > 0 ? '+' : '-'}{formatMXN(Math.abs(diferencia!))}
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
+      {loading && <div className="flex justify-center py-12"><Loader2 className="w-8 h-8 animate-spin text-indigo-600" /></div>}
 
-          <div className="p-6 bg-slate-50 flex justify-end">
-            {isCuadrada ? (
-              <button className="flex items-center gap-2 px-6 py-3 bg-emerald-600 text-white font-medium rounded-lg hover:bg-emerald-700 focus:ring-4 focus:ring-emerald-100 transition-all">
-                <Lock className="w-5 h-5" />
-                Cerrar Caja
-              </button>
-            ) : hasDiscrepancy ? (
-              <button className="flex items-center gap-2 px-6 py-3 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 focus:ring-4 focus:ring-red-100 transition-all shadow-sm shadow-red-200">
-                <ShieldAlert className="w-5 h-5" />
-                Escalar Discrepancia a Matriz
-              </button>
-            ) : null}
-          </div>
+      {cierres.length === 0 && (
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-8 text-center">
+          <Search className="w-10 h-10 text-slate-300 mx-auto" />
+          <p className="text-slate-500 mt-3">No hay cierres para {meses[filtroMes]} {filtroAnio}</p>
         </div>
       )}
+
+      <div className="space-y-3">
+        {cierres.map((c: any) => {
+          const isOpen = expandido === c.id;
+          return (
+            <div key={c.id} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+              <button onClick={() => toggle(c.id)} className="w-full px-6 py-4 flex items-center justify-between hover:bg-slate-50 transition-colors">
+                <div className="flex items-center gap-4">
+                  {c.estado === "CUADRADA" ? (
+                    <div className="w-10 h-10 bg-emerald-50 rounded-full flex items-center justify-center"><CheckCircle className="w-5 h-5 text-emerald-600" /></div>
+                  ) : c.estado === "SOBRANTE" ? (
+                    <div className="w-10 h-10 bg-amber-50 rounded-full flex items-center justify-center"><AlertTriangle className="w-5 h-5 text-amber-600" /></div>
+                  ) : c.estado === "FALTANTE" ? (
+                    <div className="w-10 h-10 bg-red-50 rounded-full flex items-center justify-center"><AlertTriangle className="w-5 h-5 text-red-600" /></div>
+                  ) : (
+                    <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center"><Search className="w-5 h-5 text-slate-400" /></div>
+                  )}
+                  <div className="text-left">
+                    <p className="text-sm font-semibold text-slate-900">{c.fecha}</p>
+                    <p className="text-xs text-slate-500">Responsable: {c.responsable} | Elaboro: {c.elaborado_por}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-4">
+                  <div className="text-right">
+                    <p className="text-sm font-mono font-bold text-slate-900">{formatMXN(c.saldo_final_esperado)}</p>
+                    <p className={"text-xs font-medium " + (c.estado === "CUADRADA" ? "text-emerald-600" : c.estado === "SOBRANTE" ? "text-amber-600" : c.estado === "FALTANTE" ? "text-red-600" : "text-slate-400")}>
+                      {c.estado || "Sin arqueo"}{c.diferencia && c.diferencia !== 0 ? " (" + (c.diferencia > 0 ? "+" : "") + formatMXN(c.diferencia) + ")" : ""}
+                    </p>
+                  </div>
+                  {isOpen ? <ChevronUp className="w-5 h-5 text-slate-400" /> : <ChevronDown className="w-5 h-5 text-slate-400" />}
+                </div>
+              </button>
+
+              {isOpen && (
+                <div className="px-6 pb-5 border-t border-slate-100 pt-4 space-y-4">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="bg-slate-50 rounded-lg p-3">
+                      <p className="text-xs text-slate-500">Saldo Inicial</p>
+                      <p className="text-sm font-mono font-bold text-slate-900">{formatMXN(c.saldo_inicial)}</p>
+                    </div>
+                    <div className="bg-slate-50 rounded-lg p-3">
+                      <p className="text-xs text-slate-500">Ventas Efectivo</p>
+                      <p className="text-sm font-mono font-bold text-emerald-600">{formatMXN(c.ventas_efectivo)}</p>
+                    </div>
+                    <div className="bg-slate-50 rounded-lg p-3">
+                      <p className="text-xs text-slate-500">Total Gastos</p>
+                      <p className="text-sm font-mono font-bold text-red-600">{formatMXN(c.total_gastos)}</p>
+                    </div>
+                    <div className="bg-slate-50 rounded-lg p-3">
+                      <p className="text-xs text-slate-500">Efectivo Fisico</p>
+                      <p className="text-sm font-mono font-bold text-slate-900">{c.efectivo_fisico !== null ? formatMXN(c.efectivo_fisico) : "No contado"}</p>
+                    </div>
+                  </div>
+
+                  {c.gastos && c.gastos.length > 0 && (
+                    <div>
+                      <h4 className="text-xs font-semibold text-slate-500 uppercase mb-2">Gastos del dia</h4>
+                      <div className="bg-slate-50 rounded-lg overflow-hidden">
+                        {c.gastos.map((g: any) => (
+                          <div key={g.id} className="flex justify-between px-4 py-2 border-b border-slate-100 last:border-0 text-sm">
+                            <div>
+                              <span className="text-slate-700 font-medium">{g.proveedor}</span>
+                              <span className="text-slate-400 ml-2">{g.categoria.replace(/_/g, " ")}</span>
+                              {g.descripcion && <span className="text-slate-400 ml-2">- {g.descripcion}</span>}
+                            </div>
+                            <span className="font-mono text-red-600">{formatMXN(g.monto)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {c.propinas && c.propinas.length > 0 && (
+                    <div>
+                      <h4 className="text-xs font-semibold text-slate-500 uppercase mb-2">Propinas pagadas</h4>
+                      <div className="flex gap-4">
+                        {c.propinas.map((p: any) => (
+                          <div key={p.id} className="bg-slate-50 rounded-lg px-4 py-2 text-sm">
+                            <span className="text-slate-500">{p.terminal}: </span>
+                            <span className="font-mono font-medium text-slate-900">{formatMXN(p.monto)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {c.notas && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                      <p className="text-xs font-semibold text-amber-700 mb-1">Notas:</p>
+                      <p className="text-sm text-amber-800">{c.notas}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 };
