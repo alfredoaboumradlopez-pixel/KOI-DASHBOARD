@@ -1,6 +1,6 @@
 import React from 'react';
 import { useStore } from '../store/useStore';
-import { LayoutDashboard, Receipt, Wallet, CreditCard, X, Fish, ClipboardCheck, PieChart, Users } from 'lucide-react';
+import { LayoutDashboard, Receipt, Wallet, CreditCard, X, Fish, ClipboardCheck, PieChart, Users, Package, Banknote, BarChart3 } from 'lucide-react';
 
 const navItems = [
   { name: 'Dashboard', icon: LayoutDashboard, path: '/' },
@@ -8,8 +8,11 @@ const navItems = [
   { name: 'Captura de Gastos (OCR)', icon: Receipt, path: '/gastos' },
   { name: 'Arqueo de Caja', icon: Wallet, path: '/arqueo' },
   { name: 'Cuentas por Pagar', icon: CreditCard, path: '/cuentas' },
+  { name: 'Inventario', icon: Package, path: '/inventario' },
+  { name: 'Nomina', icon: Banknote, path: '/nomina' },
   { name: 'Estado de Resultados', icon: PieChart, path: '/pl' },
   { name: 'Distribucion Utilidades', icon: Users, path: '/distribucion' },
+  { name: 'Reportes', icon: BarChart3, path: '/reportes' },
 ];
 
 export const Sidebar: React.FC = () => {

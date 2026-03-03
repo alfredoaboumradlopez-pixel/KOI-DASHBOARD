@@ -7,6 +7,10 @@ import { ArqueoCaja } from "./components/ArqueoCaja";
 import { CierreTurno } from "./components/CierreTurno";
 import { EstadoResultados } from "./components/EstadoResultados";
 import { DistribucionUtilidades } from "./components/DistribucionUtilidades";
+import { CuentasPorPagar } from "./components/CuentasPorPagar";
+import { Inventario } from "./components/Inventario";
+import { Nomina } from "./components/Nomina";
+import { Reportes } from "./components/Reportes";
 import { api } from "./services/api";
 
 const formatMXN = (amount: number) =>
@@ -186,11 +190,12 @@ export default function App() {
       {currentRoute === "/cierre-turno" && <CierreTurno />}
       {currentRoute === "/gastos" && <CapturaGastos />}
       {currentRoute === "/arqueo" && <ArqueoCaja />}
-      {currentRoute === "/cuentas" && (
-        <div className="flex items-center justify-center h-full"><p className="text-slate-500">Modulo de Cuentas por Pagar (Proximamente)</p></div>
-      )}
+      {currentRoute === "/cuentas" && <CuentasPorPagar />}
+      {currentRoute === "/inventario" && <Inventario />}
+      {currentRoute === "/nomina" && <Nomina />}
       {currentRoute === "/pl" && <EstadoResultados />}
       {currentRoute === "/distribucion" && <DistribucionUtilidades />}
+      {currentRoute === "/reportes" && <Reportes />}
     </Layout>
   );
 }
