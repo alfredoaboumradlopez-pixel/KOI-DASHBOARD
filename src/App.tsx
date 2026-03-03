@@ -11,6 +11,7 @@ import { CuentasPorPagar } from "./components/CuentasPorPagar";
 import { Inventario } from "./components/Inventario";
 import { Nomina } from "./components/Nomina";
 import { Reportes } from "./components/Reportes";
+import { ReconciliacionBancaria } from "./components/ReconciliacionBancaria";
 import { api } from "./services/api";
 
 const formatMXN = (amount: number) =>
@@ -111,15 +112,16 @@ function Dashboard() {
       {ventas.length > 0 && (
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
           <h3 className="text-sm font-medium text-slate-500 mb-4">Ventas Diarias - {mesLabel} 2026</h3>
-          <div className="flex items-end gap-1 h-48">
-            {ventas.map((v: any, i: number) => {
-              const max = Math.max(...ventas.map((x: any) => x.total));
-              const height = max > 0 ? (v.total / max) * 100 : 0;
+          <div style={{display: "flex", alignItems: "flex-end", gap: "4px", height: "192px"}}>
+            {ventas.filter((v: any) => v.total > 0).map((v: any, i: number) => {
+              const diasConVentas = ventas.filter((x: any) => x.total > 0);
+              const max = Math.max(...diasConVentas.map((x: any) => x.total));
+              const barHeight = max > 0 ? Math.max((v.total / max) * 170, 6) : 0;
               return (
-                <div key={i} className="flex-1 flex flex-col items-center gap-1 group relative">
-                  <div className="hidden group-hover:block absolute -top-8 bg-slate-800 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-10">{v.fecha}: {formatMXN(v.total)}</div>
-                  <div className="w-full bg-indigo-500 rounded-t hover:bg-indigo-400 transition-colors" style={{ height: height + "%", minHeight: v.total > 0 ? "4px" : "0px" }} />
-                  <span className="text-[9px] text-slate-400">{new Date(v.fecha + "T12:00:00").getDate()}</span>
+                <div key={i} style={{flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end", height: "100%", position: "relative"}} className="group">
+                  <div className="hidden group-hover:block absolute bg-slate-800 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-10" style={{top: "-10px"}}>{v.fecha}: {formatMXN(v.total)}</div>
+                  <div style={{width: "100%", height: barHeight + "px", backgroundColor: "#6366f1", borderRadius: "4px 4px 0 0", transition: "opacity 0.2s"}} className="hover:opacity-80" />
+                  <span style={{fontSize: "9px", color: "#94a3b8", marginTop: "4px"}}>{new Date(v.fecha + "T12:00:00").getDate()}</span>
                 </div>
               );
             })}
@@ -196,6 +198,7 @@ export default function App() {
       {currentRoute === "/pl" && <EstadoResultados />}
       {currentRoute === "/distribucion" && <DistribucionUtilidades />}
       {currentRoute === "/reportes" && <Reportes />}
+      {currentRoute === "/banco" && <ReconciliacionBancaria />}
     </Layout>
   );
 }

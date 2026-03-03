@@ -1,6 +1,6 @@
 import React from 'react';
 import { useStore } from '../store/useStore';
-import { LayoutDashboard, Receipt, Wallet, CreditCard, X, Fish, ClipboardCheck, PieChart, Users, Package, Banknote, BarChart3 } from 'lucide-react';
+import { LayoutDashboard, Receipt, Wallet, CreditCard, X, Fish, ClipboardCheck, PieChart, Users, Package, Banknote, BarChart3, Landmark } from 'lucide-react';
 
 const navItems = [
   { name: 'Dashboard', icon: LayoutDashboard, path: '/' },
@@ -13,6 +13,7 @@ const navItems = [
   { name: 'Estado de Resultados', icon: PieChart, path: '/pl' },
   { name: 'Distribucion Utilidades', icon: Users, path: '/distribucion' },
   { name: 'Reportes', icon: BarChart3, path: '/reportes' },
+  { name: 'Banco Santander', icon: Landmark, path: '/banco' },
 ];
 
 export const Sidebar: React.FC = () => {

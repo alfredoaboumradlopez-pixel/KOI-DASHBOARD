@@ -8,6 +8,7 @@ from sqlalchemy import func, extract, cast, String
 from typing import List, Optional
 from datetime import date, datetime, timedelta
 import csv
+import pdfplumber
 import io
 import os
 import re
@@ -358,43 +359,109 @@ def ventas_diarias_reporte(mes: Optional[int] = None, anio: Optional[int] = None
 
 @app.post("/api/banco/upload")
 def upload_estado_cuenta(file: UploadFile = File(...), db: Session = Depends(get_db)):
-    try:
-        content = file.file.read().decode("utf-8", errors="replace")
-        reader = csv.reader(io.StringIO(content))
-        rows = list(reader)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Error: {str(e)}")
+    import tempfile, os
     registros = 0
-    for row in rows:
-        if len(row) < 4:
-            continue
+    filename = file.filename or ""
+    raw = file.file.read()
+    
+    # Detectar si es PDF o CSV
+    if filename.lower().endswith(".pdf") or raw[:5] == b"%PDF-":
+        # Parser PDF Santander
+        import re as re_mod
         try:
-            fecha = None
-            for fmt in ["%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y"]:
-                try:
-                    fecha = datetime.strptime(row[0].strip(), fmt).date()
-                    break
-                except ValueError:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+                tmp.write(raw)
+                tmp_path = tmp.name
+            with pdfplumber.open(tmp_path) as pdf:
+                for page in pdf.pages:
+                    table = page.extract_table()
+                    if not table:
+                        continue
+                    for row in table:
+                        if not row or len(row) < 8:
+                            continue
+                        # Limpiar saltos de linea en todas las celdas
+                        row = [(c or "").replace("\n", "").replace("\r", "").strip() for c in row]
+                        # Col 0=Cuenta, 1=Fecha, 2=Hora, 3=Sucursal, 4=Desc, 5=Cargo, 6=Abono, 7=Saldo, 8=Ref, 9=Concepto, 10=DescLarga
+                        fecha_raw = row[1].replace(" ", "").replace("\n", "")
+                        # Saltar header
+                        if not fecha_raw or "echa" in fecha_raw.lower():
+                            continue
+                        # Fecha viene como DDMMYYYY (8 digitos) ej: 03022026
+                        digits = re_mod.sub(r"[^0-9]", "", fecha_raw)
+                        if len(digits) < 8:
+                            continue
+                        try:
+                            dia = int(digits[:2])
+                            mes_num = int(digits[2:4])
+                            anio_num = int(digits[4:8])
+                            if anio_num < 2000 or anio_num > 2099 or mes_num < 1 or mes_num > 12 or dia < 1 or dia > 31:
+                                continue
+                            from datetime import date as date_cls
+                            fecha = date_cls(anio_num, mes_num, dia)
+                        except (ValueError, IndexError):
+                            continue
+                        hora = row[2] if len(row) > 2 else ""
+                        descripcion = row[4] if len(row) > 4 else ""
+                        cargo = parse_money(row[5]) if len(row) > 5 else 0.0
+                        abono = parse_money(row[6]) if len(row) > 6 else 0.0
+                        saldo_val = parse_money(row[7]) if len(row) > 7 else None
+                        referencia = row[8] if len(row) > 8 else None
+                        concepto = row[9] if len(row) > 9 else descripcion
+                        desc_larga = row[10] if len(row) > 10 else None
+                        if cargo > 0:
+                            monto, tipo = cargo, models.TipoMovimientoBanco.CARGO
+                        elif abono > 0:
+                            monto, tipo = abono, models.TipoMovimientoBanco.ABONO
+                        else:
+                            continue
+                        mov = models.MovimientoBanco(
+                            fecha=fecha, referencia=referencia, concepto=concepto,
+                            monto=monto, tipo=tipo, saldo=saldo_val
+                        )
+                        db.add(mov)
+                        registros += 1
+            os.unlink(tmp_path)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Error procesando PDF: {str(e)}")
+    else:
+        # Parser CSV original
+        try:
+            text = raw.decode("utf-8", errors="replace")
+            reader = csv.reader(io.StringIO(text))
+            rows = list(reader)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Error: {str(e)}")
+        for row in rows:
+            if len(row) < 4:
+                continue
+            try:
+                fecha = None
+                for fmt in ["%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y"]:
+                    try:
+                        fecha = datetime.strptime(row[0].strip(), fmt).date()
+                        break
+                    except ValueError:
+                        continue
+                if not fecha:
                     continue
-            if not fecha:
+                ref = row[1].strip() if len(row) > 1 else None
+                con = row[2].strip() if len(row) > 2 else ""
+                cargo_val = parse_money(row[3]) if len(row) > 3 else 0.0
+                abono_val = parse_money(row[4]) if len(row) > 4 else 0.0
+                saldo_val = parse_money(row[5]) if len(row) > 5 else None
+                if cargo_val > 0:
+                    monto, tipo = cargo_val, models.TipoMovimientoBanco.CARGO
+                elif abono_val > 0:
+                    monto, tipo = abono_val, models.TipoMovimientoBanco.ABONO
+                else:
+                    continue
+                db.add(models.MovimientoBanco(fecha=str(fecha), referencia=ref, concepto=con, monto=monto, tipo=tipo, saldo=saldo_val))
+                registros += 1
+            except (ValueError, IndexError):
                 continue
-            ref = row[1].strip() if len(row) > 1 else None
-            con = row[2].strip() if len(row) > 2 else ""
-            cargo = parse_money(row[3]) if len(row) > 3 else 0.0
-            abono = parse_money(row[4]) if len(row) > 4 else 0.0
-            saldo = parse_money(row[5]) if len(row) > 5 else None
-            if cargo > 0:
-                monto, tipo = cargo, models.TipoMovimientoBanco.CARGO
-            elif abono > 0:
-                monto, tipo = abono, models.TipoMovimientoBanco.ABONO
-            else:
-                continue
-            db.add(models.MovimientoBanco(fecha=fecha, referencia=ref, concepto=con, monto=monto, tipo=tipo, saldo=saldo))
-            registros += 1
-        except (ValueError, IndexError):
-            continue
     db.commit()
-    return {"mensaje": f"Se importaron {registros} movimientos"}
+    return {"mensaje": f"Se importaron {registros} movimientos", "importados": registros}
 
 
 @app.get("/api/banco/movimientos", response_model=List[schemas.MovimientoBancoResponse])
