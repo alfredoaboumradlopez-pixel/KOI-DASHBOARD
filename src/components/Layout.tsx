@@ -1,21 +1,13 @@
 import React from 'react';
 import { Sidebar } from './Sidebar';
-import { Header } from './Header';
 
-interface LayoutProps {
-  children: React.ReactNode;
-}
-
-export const Layout: React.FC<LayoutProps> = ({ children }) => {
+export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   return (
-    <div className="flex h-screen bg-slate-50 overflow-hidden font-sans text-slate-900">
+    <div style={{display: 'flex', minHeight: '100vh', background: '#F3F4F6'}}>
       <Sidebar />
-      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-        <Header />
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
-          {children}
-        </main>
-      </div>
+      <main style={{flex: 1, padding: '28px 32px', overflowY: 'auto', height: '100vh'}}>
+        {children}
+      </main>
     </div>
   );
 };

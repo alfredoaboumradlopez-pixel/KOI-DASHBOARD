@@ -66,19 +66,19 @@ function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+        <div style={{background:"#fff",borderRadius:"16px",padding:"20px 24px",boxShadow:"0 1px 3px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.03)",border:"none",transition:"box-shadow 0.2s"}}>
           <div className="flex items-center justify-between">
             <h3 className="text-xs font-medium text-slate-500 uppercase">Ventas Enero</h3>
             <div className="p-1.5 bg-emerald-50 rounded-lg"><DollarSign className="w-4 h-4 text-emerald-600" /></div>
           </div>
-          <p className="text-2xl font-bold text-slate-900 mt-2">{formatMXN(ventasTotalEnero)}</p>
+          <p style={{fontSize:"28px",fontWeight:"800",color:"#1a1a1a",marginTop:"8px"}}>{formatMXN(ventasTotalEnero)}</p>
         </div>
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+        <div style={{background:"#fff",borderRadius:"16px",padding:"20px 24px",boxShadow:"0 1px 3px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.03)",border:"none",transition:"box-shadow 0.2s"}}>
           <div className="flex items-center justify-between">
             <h3 className="text-xs font-medium text-slate-500 uppercase">Ventas Febrero</h3>
             <div className="p-1.5 bg-indigo-50 rounded-lg"><TrendingUp className="w-4 h-4 text-indigo-600" /></div>
           </div>
-          <p className="text-2xl font-bold text-slate-900 mt-2">{formatMXN(ventasTotalFebrero)}</p>
+          <p style={{fontSize:"28px",fontWeight:"800",color:"#1a1a1a",marginTop:"8px"}}>{formatMXN(ventasTotalFebrero)}</p>
           {ventasTotalEnero > 0 && (
             <div className="flex items-center gap-1 mt-1 text-xs">
               {cambioMes >= 0 ? <ArrowUpRight className="w-3 h-3 text-emerald-500" /> : <ArrowDownRight className="w-3 h-3 text-red-500" />}
@@ -87,7 +87,7 @@ function Dashboard() {
             </div>
           )}
         </div>
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+        <div style={{background:"#fff",borderRadius:"16px",padding:"20px 24px",boxShadow:"0 1px 3px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.03)",border:"none",transition:"box-shadow 0.2s"}}>
           <div className="flex items-center justify-between">
             <h3 className="text-xs font-medium text-slate-500 uppercase">Utilidad Neta Feb</h3>
             <div className="p-1.5 bg-amber-50 rounded-lg"><BarChart3 className="w-4 h-4 text-amber-600" /></div>
@@ -97,20 +97,20 @@ function Dashboard() {
             <div className="text-xs text-slate-400 mt-1">Margen: {((plFebrero.utilidad_neta / plFebrero.ventas_totales) * 100).toFixed(1)}%</div>
           )}
         </div>
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+        <div style={{background:"#fff",borderRadius:"16px",padding:"20px 24px",boxShadow:"0 1px 3px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.03)",border:"none",transition:"box-shadow 0.2s"}}>
           <div className="flex items-center justify-between">
             <h3 className="text-xs font-medium text-slate-500 uppercase">Estado Caja</h3>
             <div className={"p-1.5 rounded-lg " + (data?.estado_caja?.includes("CUADRADA") ? "bg-emerald-50" : data?.estado_caja?.includes("FALTANTE") ? "bg-red-50" : "bg-slate-50")}>
               <Activity className={"w-4 h-4 " + (data?.estado_caja?.includes("CUADRADA") ? "text-emerald-600" : data?.estado_caja?.includes("FALTANTE") ? "text-red-600" : "text-slate-600")} />
             </div>
           </div>
-          <p className="text-2xl font-bold text-slate-900 mt-2">{data?.estado_caja || "Sin arqueo"}</p>
+          <p style={{fontSize:"28px",fontWeight:"800",color:"#1a1a1a",marginTop:"8px"}}>{data?.estado_caja || "Sin arqueo"}</p>
           <div className="text-xs text-slate-400 mt-1">{data?.ultimo_arqueo ? "Ultimo: " + data.ultimo_arqueo : "Sin cierres"}</div>
         </div>
       </div>
 
       {ventas.length > 0 && (
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+        <div style={{backgrd:"#fff",borderRadius:"16px",padding:"24px",boxShadow:"0 1px 3px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.03)",border:"none"}}>
           <h3 className="text-sm font-medium text-slate-500 mb-4">Ventas Diarias - {mesLabel} 2026</h3>
           <div style={{display: "flex", alignItems: "flex-end", gap: "4px", height: "192px"}}>
             {ventas.filter((v: any) => v.total > 0).map((v: any, i: number) => {
@@ -131,7 +131,7 @@ function Dashboard() {
 
       {canales && canales.canales && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+          <div style={{backgrd:"#fff",borderRadius:"16px",padding:"24px",boxShadow:"0 1px 3px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.03)",border:"none"}}>
             <h3 className="text-sm font-medium text-slate-500 mb-4">Ventas por Canal - Febrero</h3>
             <div className="space-y-3">
               {canales.canales.filter((c: any) => c.monto > 0).map((c: any) => {
@@ -154,7 +154,7 @@ function Dashboard() {
           </div>
 
           {plEnero && plFebrero && (
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+            <div style={{backgrd:"#fff",borderRadius:"16px",padding:"24px",boxShadow:"0 1px 3px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.03)",border:"none"}}>
               <h3 className="text-sm font-medium text-slate-500 mb-4">Comparativo Ene vs Feb</h3>
               <div className="space-y-3">
                 {[

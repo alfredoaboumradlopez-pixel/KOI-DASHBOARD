@@ -1,3 +1,33 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+:root {
+  --koi-wine: #3D1C1E;
+  --koi-wine-dark: #2A1214;
+  --koi-accent: #C8FF00;
+  --koi-bg: #F3F4F6;
+  --koi-card: #FFFFFF;
+  --koi-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.03);
+  --koi-shadow-hover: 0 2px 8px rgba(0,0,0,0.06), 0 8px 24px rgba(0,0,0,0.06);
+  --koi-radius: 16px;
+}
+
+body, button, h1, h2, h3, h4, h5, h6, p, span, div, label, a {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+
+input, select, textarea {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  pointer-events: auto !important;
+  -webkit-user-select: text !important;
+  user-select: text !important;
+}
+
+body {
+  background: var(--koi-bg);
+  -webkit-font-smoothing: antialiased;
+}
+
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 
@@ -11,8 +41,21 @@
   --color-koi-text-muted: #888888;
 }
 
+
+input, select, textarea {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  pointer-events: auto !important;
+  -webkit-user-select: text !important;
+  user-select: text !important;
+}
+
 body {
   background-color: var(--color-koi-bg);
   color: white;
   font-family: var(--font-sans);
+}
+
+input, select, textarea {
+  color: #1a1a1a !important;
+  background-color: #ffffff !important;
 }

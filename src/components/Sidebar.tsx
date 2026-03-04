@@ -1,52 +1,65 @@
-import React from 'react';
 import { useStore } from '../store/useStore';
-import { LayoutDashboard, Receipt, Wallet, CreditCard, X, Fish, ClipboardCheck, PieChart, Users, Package, Banknote, BarChart3, Landmark } from 'lucide-react';
+import { LayoutDashboard, ClipboardList, Receipt, Wallet, FileText, ClipboardCheck, PieChart, Users, Package, Banknote, BarChart3, Landmark } from 'lucide-react';
 
-const navItems = [
+const menuItems = [
   { name: 'Dashboard', icon: LayoutDashboard, path: '/' },
-  { name: 'Cierre de Turno', icon: ClipboardCheck, path: '/cierre-turno' },
-  { name: 'Captura de Gastos (OCR)', icon: Receipt, path: '/gastos' },
+  { name: 'Cierre de Turno', icon: ClipboardList, path: '/cierre-turno' },
+  { name: 'Gastos', icon: Receipt, path: '/gastos' },
   { name: 'Arqueo de Caja', icon: Wallet, path: '/arqueo' },
-  { name: 'Cuentas por Pagar', icon: CreditCard, path: '/cuentas' },
+  { name: 'Cuentas por Pagar', icon: FileText, path: '/cuentas' },
   { name: 'Inventario', icon: Package, path: '/inventario' },
   { name: 'Nomina', icon: Banknote, path: '/nomina' },
   { name: 'Estado de Resultados', icon: PieChart, path: '/pl' },
-  { name: 'Distribucion Utilidades', icon: Users, path: '/distribucion' },
+  { name: 'Distribucion', icon: Users, path: '/distribucion' },
   { name: 'Reportes', icon: BarChart3, path: '/reportes' },
   { name: 'Banco Santander', icon: Landmark, path: '/banco' },
 ];
 
-export const Sidebar: React.FC = () => {
-  const { isSidebarOpen, setSidebarOpen, currentRoute, setCurrentRoute } = useStore();
+export const Sidebar = () => {
+  const { currentRoute, setCurrentRoute } = useStore();
   return (
-    <>
-      {isSidebarOpen && (
-        <div className="fixed inset-0 z-20 bg-slate-900/50 lg:hidden" onClick={() => setSidebarOpen(false)} />
-      )}
-      <aside className={`fixed inset-y-0 left-0 z-30 w-64 bg-white border-r border-slate-200 transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        <div className="flex items-center justify-between h-16 px-6 border-b border-slate-200">
-          <div className="flex items-center gap-2 text-indigo-600">
-            <Fish className="w-8 h-8" />
-            <span className="text-xl font-bold text-slate-900">KOI</span>
+    <aside style={{
+      width: '260px', minHeight: '100vh', display: 'flex', flexDirection: 'column',
+      background: 'linear-gradient(180deg, #3D1C1E 0%, #2A1214 100%)',
+      borderRight: '1px solid rgba(255,255,255,0.06)', padding: '0'
+    }}>
+      <div style={{padding: '24px 20px 20px', borderBottom: '1px solid rgba(255,255,255,0.08)'}}>
+        <div style={{display: 'flex', alignItems: 'center', gap: '12px'}}>
+          <img src="/KOI LOGO.jpeg" alt="KOI" style={{width: '44px', height: '44px', borderRadius: '10px', objectFit: 'cover'}} />
+          <div>
+            <div style={{fontSize: '18px', fontWeight: '700', color: '#FFFFFF', letterSpacing: '2px'}}>KOI</div>
+            <div style={{fontSize: '10px', color: 'rgba(255,255,255,0.5)', letterSpacing: '1px'}}>HAND ROLL & POKE</div>
           </div>
-          <button onClick={() => setSidebarOpen(false)} className="p-1 text-slate-500 hover:bg-slate-100 rounded-md lg:hidden">
-            <X className="w-5 h-5" />
-          </button>
         </div>
-        <nav className="p-4 space-y-1">
-          {navItems.map((item) => {
-            const isActive = currentRoute === item.path;
-            return (
-              <a key={item.name} href={item.path}
-                className={`flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg transition-colors ${isActive ? 'bg-indigo-50 text-indigo-700' : 'text-slate-700 hover:bg-slate-50 hover:text-indigo-600'}`}
-                onClick={(e) => { e.preventDefault(); setCurrentRoute(item.path); setSidebarOpen(false); }}>
-                <item.icon className={`w-5 h-5 ${isActive ? 'text-indigo-600' : 'text-slate-400'}`} />
-                {item.name}
-              </a>
-            );
-          })}
-        </nav>
-      </aside>
-    </>
+      </div>
+      <div style={{padding: '12px 10px', flex: 1, overflowY: 'auto'}}>
+        <div style={{fontSize: '10px', color: 'rgba(255,255,255,0.35)', padding: '8px 12px 6px', letterSpacing: '1.5px', fontWeight: '600'}}>MENU</div>
+        {menuItems.map((item) => {
+          const isActive = currentRoute === item.path;
+          const Icon = item.icon;
+          return (
+            <button key={item.path} onClick={() => setCurrentRoute(item.path)}
+              style={{
+                width: '100%', display: 'flex', alignItems: 'center', gap: '10px',
+                padding: '10px 12px', marginBottom: '2px', border: 'none', cursor: 'pointer',
+                borderRadius: '8px', fontSize: '13px', borderLeft: isActive ? '3px solid #C8FF00' : '3px solid transparent', fontWeight: isActive ? '600' : '400',
+                transition: 'all 0.15s ease',
+                background: isActive ? 'rgba(200,255,0,0.1)' : 'transparent',
+                color: isActive ? '#FFFFFF' : 'rgba(255,255,255,0.6)',
+              }}
+              onMouseEnter={e => { if (!isActive) { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; e.currentTarget.style.color = 'rgba(255,255,255,0.85)'; }}}
+              onMouseLeave={e => { if (!isActive) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'rgba(255,255,255,0.6)'; }}}
+            >
+              <Icon style={{width: '18px', height: '18px', opacity: isActive ? 1 : 0.7}} />
+              {item.name}
+              {isActive && <div style={{marginLeft: 'auto', width: '6px', height: '6px', borderRadius: '50%', background: '#C8FF00'}}></div>}
+            </button>
+          );
+        })}
+      </div>
+      <div style={{padding: '16px 20px', borderTop: '1px solid rgba(255,255,255,0.08)'}}>
+        <div style={{fontSize: '11px', color: 'rgba(255,255,255,0.3)'}}>KOI Dashboard v1.0</div>
+      </div>
+    </aside>
   );
 };
