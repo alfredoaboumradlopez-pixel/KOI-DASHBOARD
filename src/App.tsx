@@ -11,6 +11,7 @@ import { CuentasPorPagar } from "./components/CuentasPorPagar";
 import { Inventario } from "./components/Inventario";
 import { Nomina } from "./components/Nomina";
 import { Reportes } from "./components/Reportes";
+import { InvoiceFinder } from "./components/InvoiceFinder";
 import { ReconciliacionBancaria } from "./components/ReconciliacionBancaria";
 import { api } from "./services/api";
 
@@ -199,6 +200,7 @@ export default function App() {
       {currentRoute === "/distribucion" && <DistribucionUtilidades />}
       {currentRoute === "/reportes" && <Reportes />}
       {currentRoute === "/banco" && <ReconciliacionBancaria />}
+      {currentRoute === "/finder" && <InvoiceFinder />}
     </Layout>
   );
 }
