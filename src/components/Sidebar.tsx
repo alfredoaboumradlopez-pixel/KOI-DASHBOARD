@@ -1,5 +1,5 @@
 import { useStore } from '../store/useStore';
-import { Search, LayoutDashboard, ClipboardList, Receipt, Wallet, FileText, ClipboardCheck, PieChart, Users, Package, Banknote, BarChart3, Landmark } from 'lucide-react';
+import { Search, Calculator, LayoutDashboard, ClipboardList, Receipt, Wallet, FileText, ClipboardCheck, PieChart, Users, Package, Banknote, BarChart3, Landmark } from 'lucide-react';
 
 const menuItems = [
   { name: 'Dashboard', icon: LayoutDashboard, path: '/' },
@@ -14,6 +14,7 @@ const menuItems = [
   { name: 'Reportes', icon: BarChart3, path: '/reportes' },
   { name: 'Banco Santander', icon: Landmark, path: '/banco' },
   { name: 'Smart Finder', icon: Search, path: '/finder' },
+  { name: 'Propinas', icon: Calculator, path: '/propinas' },
 ];
 
 export const Sidebar = () => {

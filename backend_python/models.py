@@ -42,6 +42,7 @@ class TerminalOrigen(str, enum.Enum):
     PARROT = "PARROT"
     CLIP = "CLIP"
     GETNET = "GETNET"
+    EFECTIVO = "EFECTIVO"
 
 class EstadoArqueo(str, enum.Enum):
     CUADRADA = "CUADRADA"

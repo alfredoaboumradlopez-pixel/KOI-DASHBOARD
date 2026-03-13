@@ -30,6 +30,7 @@ export const CierreTurno: React.FC = () => {
     { terminal:"CLIP", monto:"" },
     { terminal:"GETNET", monto:"" },
   ]);
+  const [propinaEfectivo, setPropinaEfectivo] = useState("");
 
   useEffect(() => {
     const fetchSaldo = async () => {
@@ -47,7 +48,9 @@ export const CierreTurno: React.FC = () => {
   const updatePropina = (idx: number, value: string) => { const u = [...propinas]; u[idx].monto = value; setPropinas(u); };
 
   const totalGastos = gastos.reduce((s, g) => s + (parseFloat(g.monto) || 0), 0);
-  const totalPropinas = propinas.reduce((s, p) => s + (parseFloat(p.monto) || 0), 0);
+  const totalPropinasTerminal = propinas.reduce((s, p) => s + (parseFloat(p.monto) || 0), 0);
+  const totalPropinaEfectivo = parseFloat(propinaEfectivo) || 0;
+  const totalPropinas = totalPropinasTerminal + totalPropinaEfectivo;
   const si = parseFloat(saldoInicial) || 0;
   const ve = parseFloat(ventasEfectivo) || 0;
   const saldoEsperado = si + ve - totalGastos - totalPropinas;
@@ -64,7 +67,7 @@ export const CierreTurno: React.FC = () => {
       await api.post("/api/cierre-turno", {
         fecha, responsable, elaborado_por: elaboradoPor, saldo_inicial: si, ventas_efectivo: ve,
         gastos: gastos.filter(g => parseFloat(g.monto) > 0).map(g => ({...g, monto: parseFloat(g.monto)})),
-        propinas: propinas.filter(p => parseFloat(p.monto) > 0).map(p => ({terminal: p.terminal, monto: parseFloat(p.monto)})),
+        propinas: [...propinas.filter(p => parseFloat(p.monto) > 0).map(p => ({terminal: p.terminal, monto: parseFloat(p.monto)})), ...(totalPropinaEfectivo > 0 ? [{terminal: "EFECTIVO", monto: totalPropinaEfectivo}] : [])],
         efectivo_fisico: hayConteo ? ef : null, notas: notas || null,
       });
       setSuccess("Cierre de turno registrado exitosamente");
@@ -112,14 +115,25 @@ export const CierreTurno: React.FC = () => {
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-4">
-        <h2 className="text-lg font-semibold text-slate-900">Propinas por Terminal</h2>
+        <h2 className="text-lg font-semibold text-slate-900">Propinas del Dia</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {propinas.map((p, i) => (
             <div key={i}><label className="text-sm font-medium text-slate-500">{p.terminal}</label>
               <div className="relative mt-1"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">$</span>
                 <input type="number" step="0.01" value={p.monto} onChange={e => updatePropina(i, e.target.value)} placeholder="0.00" className="w-full pl-7 pr-3 py-2 border border-slate-200 rounded-lg text-sm font-mono" /></div></div>))}
         </div>
-        <div className="text-right text-sm text-slate-500">Total propinas: <span className="text-slate-900 font-mono font-bold">{formatMXN(totalPropinas)}</span></div>
+        <div className="mt-4 pt-4" style={{borderTop:"1px solid #E5E7EB"}}>
+          <label className="text-sm font-medium text-slate-500">Propinas en Efectivo</label>
+          <div className="relative mt-1" style={{maxWidth:"200px"}}><span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">$</span>
+            <input type="number" step="0.01" value={propinaEfectivo} onChange={e => setPropinaEfectivo(e.target.value)} placeholder="0.00" className="w-full pl-7 pr-3 py-2 border border-slate-200 rounded-lg text-sm font-mono" /></div>
+        </div>
+        <div className="mt-4 pt-4 flex justify-between items-center" style={{borderTop:"1px solid #E5E7EB"}}>
+          <div className="text-sm text-slate-500">
+            <span>Terminales: <span className="text-slate-700 font-mono font-semibold">{formatMXN(totalPropinasTerminal)}</span></span>
+            <span style={{marginLeft:"16px"}}>Efectivo: <span className="text-slate-700 font-mono font-semibold">{formatMXN(totalPropinaEfectivo)}</span></span>
+          </div>
+          <div className="text-sm font-bold text-slate-900">Total propinas: <span className="font-mono" style={{color:"#059669",fontSize:"16px"}}>{formatMXN(totalPropinas)}</span></div>
+        </div>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-4">

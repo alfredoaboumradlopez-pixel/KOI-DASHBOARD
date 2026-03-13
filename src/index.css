@@ -59,3 +59,8 @@ input, select, textarea {
   color: #1a1a1a !important;
   background-color: #ffffff !important;
 }
+
+input[type="number"], input[type="text"], input[type="date"], select {
+  color: #1a1a1a !important;
+  background-color: #ffffff !important;
+}
