@@ -4,9 +4,8 @@ import { Search, Calculator, LayoutDashboard, ClipboardList, Receipt, Wallet, Fi
 const menuItems = [
   { name: 'Dashboard', icon: LayoutDashboard, path: '/' },
   { name: 'Cierre de Turno', icon: ClipboardList, path: '/cierre-turno' },
-  { name: 'Gastos', icon: Receipt, path: '/gastos' },
-  { name: 'Arqueo de Caja', icon: Wallet, path: '/arqueo' },
-  { name: 'Cuentas por Pagar', icon: FileText, path: '/cuentas' },
+  { name: 'Gastos & Proveedores', icon: Receipt, path: '/gastos' },
+  { name: 'Dashboard Gastos', icon: BarChart3, path: '/dashboard-gastos' },
   { name: 'Inventario', icon: Package, path: '/inventario' },
   { name: 'Nomina', icon: Banknote, path: '/nomina' },
   { name: 'Estado de Resultados', icon: PieChart, path: '/pl' },

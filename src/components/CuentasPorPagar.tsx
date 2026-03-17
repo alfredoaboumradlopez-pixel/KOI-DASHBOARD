@@ -4,7 +4,7 @@ import { Loader2, Plus, CheckCircle, AlertCircle, Clock, DollarSign } from "luci
 
 const formatMXN = (n: number) => new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(n);
 
-const CATEGORIAS = ["COMIDA_PERSONAL","PROPINAS","COMPRAS_INSUMOS","SERVICIOS","MANTENIMIENTO","LIMPIEZA","OTROS"];
+const CATEGORIAS = ["PROTEINA","VEGETALES_FRUTAS","ABARROTES","BEBIDAS","PRODUCTOS_ASIATICOS","DESECHABLES_EMPAQUES","LIMPIEZA_MANTTO","UTENSILIOS","PERSONAL","PROPINAS","SERVICIOS","EQUIPO","MARKETING","PAPELERIA","RENTA","LUZ","SOFTWARE","COMISIONES_BANCARIAS","IMPUESTOS","NOMINA","COMISIONES_PLATAFORMAS","OTROS"];
 
 export const CuentasPorPagar: React.FC = () => {
   const [proveedores, setProveedores] = useState<any[]>([]);
@@ -16,7 +16,7 @@ export const CuentasPorPagar: React.FC = () => {
   const [success, setSuccess] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const [newProv, setNewProv] = useState({ nombre: "", categoria_default: "COMPRAS_INSUMOS" });
+  const [newProv, setNewProv] = useState({ nombre: "", categoria_default: "PROTEINA" });
   const [newCuenta, setNewCuenta] = useState({ proveedor_id: "", monto_total: "", fecha_vencimiento: "", descripcion: "" });
 
   const fetchData = async () => {
@@ -40,7 +40,7 @@ export const CuentasPorPagar: React.FC = () => {
     try {
       await api.post("/api/proveedores", newProv);
       setSuccess("Proveedor registrado");
-      setNewProv({ nombre: "", categoria_default: "COMPRAS_INSUMOS" });
+      setNewProv({ nombre: "", categoria_default: "PROTEINA" });
       setShowFormProv(false);
       fetchData();
       setTimeout(() => setSuccess(null), 2000);

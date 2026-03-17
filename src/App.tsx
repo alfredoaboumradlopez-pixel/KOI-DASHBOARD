@@ -12,6 +12,7 @@ import { Inventario } from "./components/Inventario";
 import { Nomina } from "./components/Nomina";
 import { Reportes } from "./components/Reportes";
 import { Propinas } from './components/Propinas';
+import { DashboardGastos } from './components/DashboardGastos';
 import { InvoiceFinder } from "./components/InvoiceFinder";
 import { ReconciliacionBancaria } from "./components/ReconciliacionBancaria";
 import { api } from "./services/api";
@@ -201,6 +202,7 @@ export default function App() {
       {currentRoute === "/distribucion" && <DistribucionUtilidades />}
       {currentRoute === "/reportes" && <Reportes />}
       {currentRoute === "/banco" && <ReconciliacionBancaria />}
+      {currentRoute === "/dashboard-gastos" && <DashboardGastos />}
       {currentRoute === "/finder" && <InvoiceFinder />}
       {currentRoute === "/propinas" && <Propinas />}
     </Layout>

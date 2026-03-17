@@ -1,11 +1,9 @@
-import React, { useState, useRef } from 'react';
-import { UploadCloud, FileText, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { UploadCloud, FileText as FileTextIcon, FileText, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
 import { api } from '../services/api';
+import { CuentasPorPagar } from "./CuentasPorPagar";
 
-const CATEGORIAS = [
-  "COMIDA_PERSONAL", "PROPINAS", "COMPRAS_INSUMOS", "SERVICIOS",
-  "MANTENIMIENTO", "LIMPIEZA", "OTROS"
-];
+const CATEGORIAS = ["PROTEINA","VEGETALES_FRUTAS","ABARROTES","BEBIDAS","PRODUCTOS_ASIATICOS","DESECHABLES_EMPAQUES","LIMPIEZA_MANTTO","UTENSILIOS","PERSONAL","PROPINAS","SERVICIOS","EQUIPO","MARKETING","PAPELERIA","RENTA","LUZ","SOFTWARE","COMISIONES_BANCARIAS","IMPUESTOS","NOMINA","COMISIONES_PLATAFORMAS","OTROS"];
 
 interface ExpenseFormData {
   fecha: string;
@@ -24,6 +22,19 @@ export const CapturaGastos: React.FC = () => {
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const [tabGastos, setTabGastos] = useState<"registro"|"proveedores">("registro");
+  const [proveedores, setProveedores] = useState<{id:number;nombre:string;categoria_default:string}[]>([]);
+
+  useEffect(() => {
+    const fetchProv = async () => {
+      try {
+        const data = await api.get("/api/proveedores");
+        setProveedores(data);
+      } catch(e) {}
+    };
+    fetchProv();
+  }, []);
 
   const [formData, setFormData] = useState<ExpenseFormData>({
     fecha: new Date().toISOString().split('T')[0],
@@ -123,6 +134,26 @@ export const CapturaGastos: React.FC = () => {
   };
 
   return (
+    <div style={{maxWidth:"1200px", margin:"0 auto"}}>
+      <div style={{display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:"24px"}}>
+        <div style={{display:"flex", alignItems:"center", gap:"12px"}}>
+          <div style={{width:"40px", height:"40px", borderRadius:"12px", background:"linear-gradient(135deg, #3D1C1E 0%, #5C2D30 100%)", display:"flex", alignItems:"center", justifyContent:"center"}}>
+            <FileText style={{width:"20px", height:"20px", color:"#C8FF00"}} />
+          </div>
+          <div>
+            <h1 style={{fontSize:"22px", fontWeight:"800", color:"#111827", margin:0}}>Gastos & Proveedores</h1>
+            <p style={{fontSize:"13px", color:"#9CA3AF", margin:0}}>Facturas, gastos y gestion de proveedores</p>
+          </div>
+        </div>
+      </div>
+
+      <div style={{display:"flex", gap:"4px", background:"#FFF", borderRadius:"12px", padding:"4px", marginBottom:"20px", boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
+        <button onClick={() => setTabGastos("registro")} style={{flex:1, padding:"10px 16px", borderRadius:"10px", border:"none", cursor:"pointer", background:tabGastos==="registro"?"#3D1C1E":"transparent", color:tabGastos==="registro"?"#FFF":"#6B7280", fontSize:"13px", fontWeight:"600", transition:"all 0.15s"}}>Registro de Gastos</button>
+        <button onClick={() => setTabGastos("proveedores")} style={{flex:1, padding:"10px 16px", borderRadius:"10px", border:"none", cursor:"pointer", background:tabGastos==="proveedores"?"#3D1C1E":"transparent", color:tabGastos==="proveedores"?"#FFF":"#6B7280", fontSize:"13px", fontWeight:"600", transition:"all 0.15s"}}>Proveedores & Cuentas</button>
+      </div>
+
+      {tabGastos === "proveedores" && <CuentasPorPagar />}
+      {tabGastos === "registro" && (
     <div className="max-w-3xl mx-auto space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-slate-900">Captura de Gastos</h1>
@@ -178,7 +209,16 @@ export const CapturaGastos: React.FC = () => {
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" required /></div>
               <div className="space-y-1">
                 <label className="text-sm font-medium text-slate-700">Proveedor</label>
-                <input type="text" name="proveedor" value={formData.proveedor} onChange={handleInputChange}
+                <select name="proveedor" value={formData.proveedor} onChange={e => {
+                  const val = e.target.value;
+                  const prov = proveedores.find(p => p.nombre === val);
+                  setFormData(prev => ({...prev, proveedor: val, ...(prov ? {categoria: prov.categoria_default} : {})}));
+                }}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm">
+                  <option value="">Seleccionar proveedor...</option>
+                  {proveedores.map(p => <option key={p.id} value={p.nombre}>{p.nombre}</option>)}
+                </select>
+                <input type="hidden" name="proveedor_fallback" value={formData.proveedor} onChange={handleInputChange}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" required /></div>
               <div className="space-y-1">
                 <label className="text-sm font-medium text-slate-700">Categoria</label>
@@ -214,5 +254,8 @@ export const CapturaGastos: React.FC = () => {
         </div>
       )}
     </div>
+      )}
+    </div>
   );
+
 };

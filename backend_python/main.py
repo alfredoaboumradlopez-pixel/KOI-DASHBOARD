@@ -240,7 +240,7 @@ async def ocr_gasto(file: UploadFile = File(...)):
     model = genai.GenerativeModel("gemini-2.0-flash")
     prompt = """Analiza esta imagen de un ticket o factura de un restaurante en Mexico.
 Extrae la siguiente informacion y responde SOLO en formato JSON:
-{"fecha": "YYYY-MM-DD", "proveedor": "nombre", "categoria": "una de: COMIDA_PERSONAL, PROPINAS, COMPRAS_INSUMOS, SERVICIOS, MANTENIMIENTO, LIMPIEZA, OTROS", "total": 0.00, "descripcion": "breve", "confianza": 0.0}
+{"fecha": "YYYY-MM-DD", "proveedor": "nombre", "categoria": "una de: PROTEINA, VEGETALES_FRUTAS, ABARROTES, BEBIDAS, PRODUCTOS_ASIATICOS, DESECHABLES_EMPAQUES, LIMPIEZA_MANTTO, UTENSILIOS, PERSONAL, PROPINAS, SERVICIOS, EQUIPO, MARKETING, PAPELERIA, RENTA, LUZ, SOFTWARE, COMISIONES_BANCARIAS, IMPUESTOS, NOMINA, COMISIONES_PLATAFORMAS, OTROS", "total": 0.00, "descripcion": "breve", "confianza": 0.0}
 Si no puedes leer algun campo, dejalo null."""
     try:
         response = model.generate_content([prompt, {"mime_type": mime_type, "data": contents}])
@@ -263,12 +263,12 @@ def calcular_pl(mes: int, anio: int, db: Session = Depends(get_db)):
         return db.query(func.sum(models.Gasto.monto)).filter(func.strftime("%m", models.Gasto.fecha) == str(mes).zfill(2), func.strftime("%Y", models.Gasto.fecha) == str(anio), models.Gasto.categoria == cat).scalar() or 0.0
     def tc(cat):
         return sumar_gc(cat) + sumar_gg(cat)
-    ci = tc(models.CategoriaGasto.COMPRAS_INSUMOS)
+    ci = tc(models.CategoriaGasto.PROTEINA)
     gs = tc(models.CategoriaGasto.SERVICIOS)
     gr = tc(models.CategoriaGasto.RENTA)
-    gm = tc(models.CategoriaGasto.MANTENIMIENTO)
-    gl = tc(models.CategoriaGasto.LIMPIEZA)
-    gcp = tc(models.CategoriaGasto.COMIDA_PERSONAL)
+    gm = tc(models.CategoriaGasto.LIMPIEZA_MANTTO_MANTTO)
+    gl = tc(models.CategoriaGasto.LIMPIEZA_MANTTO)
+    gcp = tc(models.CategoriaGasto.PERSONAL)
     go = tc(models.CategoriaGasto.OTROS)
     gn = db.query(func.sum(models.NominaPago.neto_pagado)).filter(func.strftime("%m", models.NominaPago.fecha_pago) == str(mes).zfill(2), func.strftime("%Y", models.NominaPago.fecha_pago) == str(anio)).scalar() or 0.0
     imp = tc(models.CategoriaGasto.IMPUESTOS)

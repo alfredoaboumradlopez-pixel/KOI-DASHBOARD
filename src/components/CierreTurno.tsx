@@ -1,17 +1,22 @@
+import { ClipboardList } from "lucide-react";
+import { ArqueoCaja } from "./ArqueoCaja";
 import React, { useState, useEffect } from "react";
 import { api } from "../services/api";
+
+interface Proveedor { id: number; nombre: string; categoria_default: string; }
 import { Plus, Trash2, CheckCircle, AlertTriangle, Loader2, Save } from "lucide-react";
 
 const formatMXN = (amount: number) =>
   new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(amount);
 
-const CATEGORIAS = ["COMIDA_PERSONAL","PROPINAS","COMPRAS_INSUMOS","SERVICIOS","MANTENIMIENTO","LIMPIEZA","OTROS"];
+const CATEGORIAS = ["PROTEINA","VEGETALES_FRUTAS","ABARROTES","BEBIDAS","PRODUCTOS_ASIATICOS","DESECHABLES_EMPAQUES","LIMPIEZA_MANTTO","UTENSILIOS","PERSONAL","PROPINAS","SERVICIOS","EQUIPO","MARKETING","PAPELERIA","RENTA","LUZ","SOFTWARE","COMISIONES_BANCARIAS","IMPUESTOS","NOMINA","COMISIONES_PLATAFORMAS","OTROS"];
 const COMPROBANTES = ["VALE","SISTEMA","FACTURA","TICKET","SIN_COMPROBANTE"];
 
 interface GastoItem { proveedor:string; clase:string; categoria:string; comprobante:string; descripcion:string; monto:string; }
 interface PropinaItem { terminal:string; monto:string; }
 
 export const CierreTurno: React.FC = () => {
+  const [tabCierre, setTabCierre] = useState<"nuevo"|"historial">("nuevo");
   const [fecha, setFecha] = useState(new Date().toISOString().split("T")[0]);
   const [responsable, setResponsable] = useState("");
   const [elaboradoPor, setElaboradoPor] = useState("");
@@ -23,7 +28,7 @@ export const CierreTurno: React.FC = () => {
   const [success, setSuccess] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [gastos, setGastos] = useState<GastoItem[]>([
-    { proveedor:"KOI", clase:"NMP", categoria:"COMIDA_PERSONAL", comprobante:"VALE", descripcion:"", monto:"" },
+    { proveedor:"", clase:"NMP", categoria:"PROTEINA", comprobante:"VALE", descripcion:"", monto:"" },
   ]);
   const [propinas, setPropinas] = useState<PropinaItem[]>([
     { terminal:"PARROT", monto:"" },
@@ -31,6 +36,17 @@ export const CierreTurno: React.FC = () => {
     { terminal:"GETNET", monto:"" },
   ]);
   const [propinaEfectivo, setPropinaEfectivo] = useState("");
+  const [proveedores, setProveedores] = useState<Proveedor[]>([]);
+
+  useEffect(() => {
+    const fetchProveedores = async () => {
+      try {
+        const data = await api.get("/api/proveedores");
+        setProveedores(data);
+      } catch(e) {}
+    };
+    fetchProveedores();
+  }, []);
 
   useEffect(() => {
     const fetchSaldo = async () => {
@@ -42,7 +58,7 @@ export const CierreTurno: React.FC = () => {
     fetchSaldo();
   }, []);
 
-  const addGasto = () => setGastos([...gastos, { proveedor:"KOI", clase:"NMP", categoria:"COMIDA_PERSONAL", comprobante:"VALE", descripcion:"", monto:"" }]);
+  const addGasto = () => setGastos([...gastos, { proveedor:"", clase:"NMP", categoria:"PROTEINA", comprobante:"VALE", descripcion:"", monto:"" }]);
   const removeGasto = (idx: number) => { if (gastos.length > 1) setGastos(gastos.filter((_, i) => i !== idx)); };
   const updateGasto = (idx: number, field: string, value: string) => { const u = [...gastos]; (u[idx] as any)[field] = value; setGastos(u); };
   const updatePropina = (idx: number, value: string) => { const u = [...propinas]; u[idx].monto = value; setPropinas(u); };
@@ -53,7 +69,7 @@ export const CierreTurno: React.FC = () => {
   const totalPropinas = totalPropinasTerminal + totalPropinaEfectivo;
   const si = parseFloat(saldoInicial) || 0;
   const ve = parseFloat(ventasEfectivo) || 0;
-  const saldoEsperado = si + ve - totalGastos - totalPropinas;
+  const saldoEsperado = si + ve - totalPropinas;
   const ef = parseFloat(efectivoFisico);
   const hayConteo = String(efectivoFisico).length > 0 && ef === ef;
   const diferencia = hayConteo ? ef - saldoEsperado : null;
@@ -66,7 +82,7 @@ export const CierreTurno: React.FC = () => {
     try {
       await api.post("/api/cierre-turno", {
         fecha, responsable, elaborado_por: elaboradoPor, saldo_inicial: si, ventas_efectivo: ve,
-        gastos: gastos.filter(g => parseFloat(g.monto) > 0).map(g => ({...g, monto: parseFloat(g.monto)})),
+        gastos: [],
         propinas: [...propinas.filter(p => parseFloat(p.monto) > 0).map(p => ({terminal: p.terminal, monto: parseFloat(p.monto)})), ...(totalPropinaEfectivo > 0 ? [{terminal: "EFECTIVO", monto: totalPropinaEfectivo}] : [])],
         efectivo_fisico: hayConteo ? ef : null, notas: notas || null,
       });
@@ -76,9 +92,24 @@ export const CierreTurno: React.FC = () => {
   };
 
   return (
+    <div style={{maxWidth:"1200px",margin:"0 auto"}}>
+      <div style={{display:"flex",alignItems:"center",gap:"12px",marginBottom:"24px"}}>
+        <div style={{width:"40px",height:"40px",borderRadius:"12px",background:"linear-gradient(135deg,#3D1C1E,#5C2D30)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <ClipboardList style={{width:"20px",height:"20px",color:"#C8FF00"}} />
+        </div>
+        <div>
+          <h1 style={{fontSize:"22px",fontWeight:"800",color:"#111827",margin:0}}>Cierre de Turno</h1>
+          <p style={{fontSize:"13px",color:"#9CA3AF",margin:0}}>Registro diario y historial de cierres</p>
+        </div>
+      </div>
+      <div style={{display:"flex",gap:"4px",background:"#FFF",borderRadius:"12px",padding:"4px",marginBottom:"20px",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
+        <button onClick={()=>setTabCierre("nuevo")} style={{flex:1,padding:"10px 16px",borderRadius:"10px",border:"none",cursor:"pointer",background:tabCierre==="nuevo"?"#3D1C1E":"transparent",color:tabCierre==="nuevo"?"#FFF":"#6B7280",fontSize:"13px",fontWeight:"600"}}>Nuevo Cierre</button>
+        <button onClick={()=>setTabCierre("historial")} style={{flex:1,padding:"10px 16px",borderRadius:"10px",border:"none",cursor:"pointer",background:tabCierre==="historial"?"#3D1C1E":"transparent",color:tabCierre==="historial"?"#FFF":"#6B7280",fontSize:"13px",fontWeight:"600"}}>Historial (Arqueo)</button>
+      </div>
+      {tabCierre==="historial" && <ArqueoCaja />}
+      {tabCierre==="nuevo" && (
     <div className="max-w-4xl mx-auto space-y-6">
-      <div><h1 className="text-2xl font-bold text-slate-900">Cierre de Turno</h1>
-        <p className="text-sm text-slate-500 mt-1">Bitacora digital de gastos en efectivo del dia.</p></div>
+
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -90,29 +121,7 @@ export const CierreTurno: React.FC = () => {
             <input value={elaboradoPor} onChange={e => setElaboradoPor(e.target.value)} placeholder="Ej: SEBASTIAN" className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg text-sm" /></div>
         </div></div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-slate-900">Gastos del Dia</h2>
-          <button onClick={addGasto} className="flex items-center gap-1 px-3 py-1.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700"><Plus className="w-4 h-4" /> Agregar</button>
-        </div>
-        {gastos.map((g, i) => (
-          <div key={i} className="grid grid-cols-12 gap-2 items-end border-b border-slate-100 pb-3">
-            <div className="col-span-2"><label className="text-xs text-slate-500">Proveedor</label>
-              <input value={g.proveedor} onChange={e => updateGasto(i,"proveedor",e.target.value)} className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm" /></div>
-            <div className="col-span-2"><label className="text-xs text-slate-500">Categoria</label>
-              <select value={g.categoria} onChange={e => updateGasto(i,"categoria",e.target.value)} className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm">
-                {CATEGORIAS.map(c => <option key={c} value={c}>{c.replace(/_/g," ")}</option>)}</select></div>
-            <div className="col-span-2"><label className="text-xs text-slate-500">Comprobante</label>
-              <select value={g.comprobante} onChange={e => updateGasto(i,"comprobante",e.target.value)} className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm">
-                {COMPROBANTES.map(c => <option key={c} value={c}>{c.replace(/_/g," ")}</option>)}</select></div>
-            <div className="col-span-3"><label className="text-xs text-slate-500">Descripcion</label>
-              <input value={g.descripcion} onChange={e => updateGasto(i,"descripcion",e.target.value)} placeholder="Detalle" className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm" /></div>
-            <div className="col-span-2"><label className="text-xs text-slate-500">Monto $</label>
-              <input type="number" step="0.01" value={g.monto} onChange={e => updateGasto(i,"monto",e.target.value)} placeholder="0.00" className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm font-mono" /></div>
-            <div className="col-span-1 flex justify-center"><button onClick={() => removeGasto(i)} className="p-1.5 text-red-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button></div>
-          </div>))}
-        <div className="text-right text-sm text-slate-500">Total gastos: <span className="text-slate-900 font-mono font-bold">{formatMXN(totalGastos)}</span></div>
-      </div>
+
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-4">
         <h2 className="text-lg font-semibold text-slate-900">Propinas del Dia</h2>
@@ -152,7 +161,7 @@ export const CierreTurno: React.FC = () => {
           </div>
           <div className="bg-slate-50 rounded-xl p-4 space-y-2 border border-slate-200">
             <div className="flex justify-between text-sm"><span className="text-slate-500">Saldo Inicial:</span><span className="font-mono">{formatMXN(si)}</span></div>
-            <div className="flex justify-between text-sm"><span className="text-slate-500">(-) Total Gastos:</span><span className="text-red-600 font-mono">{formatMXN(totalGastos)}</span></div>
+
             <div className="flex justify-between text-sm"><span className="text-slate-500">(-) Propinas:</span><span className="text-red-600 font-mono">{formatMXN(totalPropinas)}</span></div>
             <div className="flex justify-between text-sm"><span className="text-slate-500">(+) Ventas Efectivo:</span><span className="text-emerald-600 font-mono">{formatMXN(ve)}</span></div>
             <div className="border-t border-slate-200 my-2"></div>
@@ -175,5 +184,9 @@ export const CierreTurno: React.FC = () => {
           {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />} Guardar Cierre de Turno</button>
       </div>
     </div>
+      )}
+    </div>
   );
+
+
 };
