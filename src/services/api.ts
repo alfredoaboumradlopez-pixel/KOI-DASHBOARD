@@ -24,6 +24,20 @@ export const api = {
     if (!res.ok) throw new Error(`API Error: ${res.status}`);
     return res.json();
   },
+  put: async (endpoint: string, data: any) => {
+    const res = await fetch(API_BASE + endpoint, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error("API Error: " + res.status);
+    return res.json();
+  },
+  del: async (endpoint: string) => {
+    const res = await fetch(API_BASE + endpoint, { method: "DELETE" });
+    if (!res.ok) throw new Error("API Error: " + res.status);
+    return res.json();
+  },
   upload: async (endpoint: string, file: File) => {
     const formData = new FormData();
     formData.append("file", file);

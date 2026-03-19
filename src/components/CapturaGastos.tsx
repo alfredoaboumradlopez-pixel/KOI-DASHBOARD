@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { UploadCloud, FileText as FileTextIcon, FileText, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
+import { UploadCloud, Trash2, Edit2, Pencil, FileText as FileTextIcon, FileText, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
 import { api } from '../services/api';
 import { CuentasPorPagar } from "./CuentasPorPagar";
 
@@ -23,7 +23,21 @@ export const CapturaGastos: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const [tabGastos, setTabGastos] = useState<"registro"|"proveedores">("registro");
+  const [gastosLista, setGastosLista] = useState<any[]>([]);
+  const [showNuevoGasto, setShowNuevoGasto] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+
+  const fetchGastos = async () => {
+    try { const g = await api.get("/api/gastos"); setGastosLista(Array.isArray(g) ? g : []); } catch(e) {}
+  };
+  useEffect(() => { fetchGastos(); }, []);
+
+  const eliminarGasto = async (id: number) => {
+    if (!confirm("Eliminar este gasto?")) return;
+    try { await api.del("/api/gastos/" + id); fetchGastos(); } catch(e) { alert("Error al eliminar"); }
+  };
+
+  const [tabGastos, setTabGastos] = useState<"gastos"|"proveedores">("gastos");
   const [proveedores, setProveedores] = useState<{id:number;nombre:string;categoria_default:string}[]>([]);
 
   useEffect(() => {
@@ -148,12 +162,54 @@ export const CapturaGastos: React.FC = () => {
       </div>
 
       <div style={{display:"flex", gap:"4px", background:"#FFF", borderRadius:"12px", padding:"4px", marginBottom:"20px", boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
-        <button onClick={() => setTabGastos("registro")} style={{flex:1, padding:"10px 16px", borderRadius:"10px", border:"none", cursor:"pointer", background:tabGastos==="registro"?"#3D1C1E":"transparent", color:tabGastos==="registro"?"#FFF":"#6B7280", fontSize:"13px", fontWeight:"600", transition:"all 0.15s"}}>Registro de Gastos</button>
-        <button onClick={() => setTabGastos("proveedores")} style={{flex:1, padding:"10px 16px", borderRadius:"10px", border:"none", cursor:"pointer", background:tabGastos==="proveedores"?"#3D1C1E":"transparent", color:tabGastos==="proveedores"?"#FFF":"#6B7280", fontSize:"13px", fontWeight:"600", transition:"all 0.15s"}}>Proveedores & Cuentas</button>
+        <button onClick={() => setTabGastos("gastos")} style={{flex:1, padding:"10px 16px", borderRadius:"10px", border:"none", cursor:"pointer", background:tabGastos==="gastos"?"#3D1C1E":"transparent", color:tabGastos==="gastos"?"#FFF":"#6B7280", fontSize:"13px", fontWeight:"600", transition:"all 0.15s"}}>Gastos</button>
+        <button onClick={() => setTabGastos("proveedores")} style={{flex:1, padding:"10px 16px", borderRadius:"10px", border:"none", cursor:"pointer", background:tabGastos==="proveedores"?"#3D1C1E":"transparent", color:tabGastos==="proveedores"?"#FFF":"#6B7280", fontSize:"13px", fontWeight:"600", transition:"all 0.15s"}}>Proveedores</button>
       </div>
 
       {tabGastos === "proveedores" && <CuentasPorPagar />}
-      {tabGastos === "registro" && (
+      {tabGastos === "gastos" && !showNuevoGasto && (
+        <div style={{background:"#FFF",borderRadius:"14px",overflow:"hidden",boxShadow:"0 1px 3px rgba(0,0,0,0.04),0 4px 12px rgba(0,0,0,0.02)"}}>
+          <div style={{padding:"16px 24px",borderBottom:"1px solid #F3F4F6",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <span style={{fontSize:"14px",fontWeight:"700",color:"#111827"}}>Gastos Registrados ({gastosLista.length})</span>
+            <div style={{display:"flex",gap:"8px"}}>
+              <button onClick={fetchGastos} style={{padding:"6px 12px",borderRadius:"8px",border:"1px solid #E5E7EB",background:"#FFF",fontSize:"12px",color:"#6B7280",cursor:"pointer"}}>Actualizar</button>
+              <button onClick={() => setShowNuevoGasto(true)} style={{padding:"6px 14px",borderRadius:"8px",border:"none",background:"#3D1C1E",color:"#C8FF00",fontSize:"12px",fontWeight:"700",cursor:"pointer"}}>+ Nuevo Gasto</button>
+            </div>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"90px 1fr 120px 120px 100px 80px",padding:"10px 24px",borderBottom:"1px solid #F3F4F6",background:"#FAFBFC"}}>
+            {["Fecha","Proveedor","Categoria","Monto","Metodo",""].map(h => <span key={h} style={{fontSize:"11px",fontWeight:"700",color:"#9CA3AF",textTransform:"uppercase" as const}}>{h}</span>)}
+          </div>
+          {gastosLista.length === 0 ? (
+            <div style={{padding:"40px",textAlign:"center" as const}}><p style={{fontSize:"13px",color:"#9CA3AF"}}>Sin gastos registrados</p></div>
+          ) : gastosLista.map((g: any) => (
+            <div key={g.id} style={{display:"grid",gridTemplateColumns:"90px 1fr 120px 120px 100px 80px",padding:"10px 24px",borderBottom:"1px solid #F9FAFB",alignItems:"center"}}>
+              <span style={{fontSize:"12px",color:"#374151"}}>{g.fecha}</span>
+              <div><span style={{fontSize:"13px",fontWeight:"600",color:"#111827"}}>{g.proveedor}</span>{g.descripcion && <div style={{fontSize:"11px",color:"#9CA3AF"}}>{g.descripcion}</div>}</div>
+              <span style={{fontSize:"11px",padding:"2px 8px",borderRadius:"4px",background:"#F3F4F6",color:"#374151"}}>{(g.categoria||"").replace(/_/g," ")}</span>
+              <span style={{fontSize:"13px",fontWeight:"700",color:"#111827"}}>${(g.total||g.monto||0).toLocaleString("es-MX",{minimumFractionDigits:2})}</span>
+              <span style={{fontSize:"11px",color:"#6B7280"}}>{(g.metodo_pago||"").replace(/_/g," ")}</span>
+              <div style={{display:"flex",gap:"4px"}}>
+                <button onClick={() => eliminarGasto(g.id)} style={{border:"none",background:"none",cursor:"pointer",padding:"4px"}}><Trash2 style={{width:"14px",height:"14px",color:"#DC2626"}} /></button>
+              </div>
+            </div>
+          ))}
+          {gastosLista.length > 0 && (
+            <div style={{display:"grid",gridTemplateColumns:"90px 1fr 120px 120px 100px 80px",padding:"14px 24px",background:"#3D1C1E",borderTop:"2px solid #3D1C1E"}}>
+              <span></span>
+              <span style={{fontSize:"14px",fontWeight:"900",color:"#FFF"}}>TOTAL</span>
+              <span></span>
+              <span style={{fontSize:"14px",fontWeight:"900",color:"#C8FF00"}}>${gastosLista.reduce((s: number,g: any) => s+(g.total||g.monto||0),0).toLocaleString("es-MX",{minimumFractionDigits:2})}</span>
+              <span></span>
+              <span></span>
+            </div>
+          )}
+        </div>
+      )}
+      {tabGastos === "gastos" && showNuevoGasto && (
+      <>
+        <div style={{marginBottom:"12px"}}>
+          <button onClick={() => { setShowNuevoGasto(false); fetchGastos(); }} style={{padding:"8px 16px",borderRadius:"8px",border:"1px solid #E5E7EB",background:"#FFF",fontSize:"12px",color:"#6B7280",cursor:"pointer"}}>← Volver a lista</button>
+        </div>
     <div className="max-w-3xl mx-auto space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-slate-900">Captura de Gastos</h1>
@@ -254,7 +310,7 @@ export const CapturaGastos: React.FC = () => {
         </div>
       )}
     </div>
-      )}
+      </>)}
     </div>
   );
 

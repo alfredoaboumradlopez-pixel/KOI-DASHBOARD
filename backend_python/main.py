@@ -223,6 +223,59 @@ def listar_gastos(fecha_inicio: Optional[date] = None, fecha_fin: Optional[date]
     return query.order_by(models.Gasto.fecha.desc()).all()
 
 
+
+
+@app.put("/api/gastos/{gasto_id}")
+def editar_gasto(gasto_id: int, gasto: schemas.GastoCreate, db: Session = Depends(get_db)):
+    existing = db.query(models.Gasto).filter(models.Gasto.id == gasto_id).first()
+    if not existing:
+        raise HTTPException(status_code=404, detail="Gasto no encontrado")
+    for key, value in gasto.dict().items():
+        setattr(existing, key, value)
+    db.commit()
+    db.refresh(existing)
+    return existing
+
+@app.delete("/api/gastos/{gasto_id}")
+def eliminar_gasto(gasto_id: int, db: Session = Depends(get_db)):
+    existing = db.query(models.Gasto).filter(models.Gasto.id == gasto_id).first()
+    if not existing:
+        raise HTTPException(status_code=404, detail="Gasto no encontrado")
+    db.delete(existing)
+    db.commit()
+    return {"mensaje": "Gasto eliminado"}
+
+@app.put("/api/proveedores/{prov_id}")
+def editar_proveedor(prov_id: int, prov: schemas.ProveedorCreate, db: Session = Depends(get_db)):
+    existing = db.query(models.Proveedor).filter(models.Proveedor.id == prov_id).first()
+    if not existing:
+        raise HTTPException(status_code=404, detail="Proveedor no encontrado")
+    for key, value in prov.dict().items():
+        setattr(existing, key, value)
+    db.commit()
+    db.refresh(existing)
+    return existing
+
+@app.delete("/api/proveedores/{prov_id}")
+def eliminar_proveedor(prov_id: int, db: Session = Depends(get_db)):
+    existing = db.query(models.Proveedor).filter(models.Proveedor.id == prov_id).first()
+    if not existing:
+        raise HTTPException(status_code=404, detail="Proveedor no encontrado")
+    db.delete(existing)
+    db.commit()
+    return {"mensaje": "Proveedor eliminado"}
+
+@app.delete("/api/cierre-turno/{cierre_id}")
+def eliminar_cierre(cierre_id: int, db: Session = Depends(get_db)):
+    existing = db.query(models.CierreTurno).filter(models.CierreTurno.id == cierre_id).first()
+    if not existing:
+        raise HTTPException(status_code=404, detail="Cierre no encontrado")
+    db.query(models.GastoCierre).filter(models.GastoCierre.cierre_turno_id == cierre_id).delete()
+    db.query(models.PropinaTurno).filter(models.PropinaTurno.cierre_turno_id == cierre_id).delete()
+    db.delete(existing)
+    db.commit()
+    return {"mensaje": "Cierre eliminado"}
+
 @app.post("/api/gastos/ocr")
 async def ocr_gasto(file: UploadFile = File(...)):
     try:
