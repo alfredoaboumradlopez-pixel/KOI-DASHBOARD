@@ -1,7 +1,10 @@
 """
 KOI Dashboard - API Principal
 """
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Query, status
+from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+import os, Depends, HTTPException, UploadFile, File, Query, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import func, extract, cast, String
@@ -575,3 +578,16 @@ def listar_insumos(db: Session = Depends(get_db)):
 def alertas_stock(db: Session = Depends(get_db)):
     alertas = db.query(models.Insumo).filter(models.Insumo.activo == True, models.Insumo.stock_actual < models.Insumo.stock_minimo).all()
     return [{"id": i.id, "nombre": i.nombre, "stock_actual": i.stock_actual, "stock_minimo": i.stock_minimo, "deficit": i.stock_minimo - i.stock_actual} for i in alertas]
+
+
+# Servir frontend en produccion
+frontend_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "dist")
+if os.path.exists(frontend_path):
+    app.mount("/assets", StaticFiles(directory=os.path.join(frontend_path, "assets")), name="assets")
+    
+    @app.get("/{full_path:path}")
+    async def serve_frontend(full_path: str):
+        file_path = os.path.join(frontend_path, full_path)
+        if os.path.exists(file_path) and os.path.isfile(file_path):
+            return FileResponse(file_path)
+        return FileResponse(os.path.join(frontend_path, "index.html"))

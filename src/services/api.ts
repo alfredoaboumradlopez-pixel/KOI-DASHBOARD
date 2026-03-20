@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.VITE_API_URL || "http://127.0.0.1:8001";
+const API_BASE = import.meta.env.VITE_API_URL || (window.location.hostname === "localhost" ? "http://127.0.0.1:8001" : "");
 
 export const api = {
   get: async (endpoint: string) => {
