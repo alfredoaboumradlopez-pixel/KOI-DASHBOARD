@@ -11,5 +11,6 @@ COPY backend_python/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 COPY backend_python/ ./backend_python/
 COPY --from=frontend /app/dist ./dist
+ENV PORT=8001
 EXPOSE 8001
-CMD ["uvicorn", "backend_python.main:app", "--host", "0.0.0.0", "--port", "8001"]
+CMD uvicorn backend_python.main:app --host 0.0.0.0 --port $PORT
