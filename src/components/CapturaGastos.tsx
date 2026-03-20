@@ -11,6 +11,7 @@ interface ExpenseFormData {
   categoria: string;
   total: string;
   metodoPago: string;
+  comprobante: string;
   descripcion: string;
 }
 
@@ -81,6 +82,7 @@ export const CapturaGastos: React.FC = () => {
     categoria: '',
     total: '',
     metodoPago: 'EFECTIVO',
+    comprobante: '',
     descripcion: '',
   });
 
@@ -152,6 +154,7 @@ export const CapturaGastos: React.FC = () => {
         categoria: formData.categoria,
         monto: amount,
         metodo_pago: formData.metodoPago,
+        comprobante: formData.comprobante || 'SIN_COMPROBANTE',
         descripcion: formData.descripcion || null,
       });
       setSuccessMsg('Gasto registrado exitosamente.');
@@ -159,7 +162,7 @@ export const CapturaGastos: React.FC = () => {
         setFile(null);
         setOcrState('idle');
         setSuccessMsg(null);
-        setFormData({ fecha: new Date().toISOString().split('T')[0], proveedor: '', categoria: '', total: '', metodoPago: 'EFECTIVO', descripcion: '' });
+        setFormData({ fecha: new Date().toISOString().split('T')[0], proveedor: '', categoria: '', total: '', metodoPago: 'EFECTIVO', comprobante: '', descripcion: '' });
       }, 2000);
     } catch (e: any) {
       setError(e.message || 'Error al guardar el gasto');
@@ -201,15 +204,15 @@ export const CapturaGastos: React.FC = () => {
               <button onClick={() => setShowNuevoGasto(true)} style={{padding:"6px 14px",borderRadius:"8px",border:"none",background:"#3D1C1E",color:"#C8FF00",fontSize:"12px",fontWeight:"700",cursor:"pointer"}}>+ Nuevo Gasto</button>
             </div>
           </div>
-          <div style={{display:"grid",gridTemplateColumns:"90px 1fr 120px 120px 100px 80px",padding:"10px 24px",borderBottom:"1px solid #F3F4F6",background:"#FAFBFC"}}>
-            {["Fecha","Proveedor","Categoria","Monto","Metodo",""].map(h => <span key={h} style={{fontSize:"11px",fontWeight:"700",color:"#9CA3AF",textTransform:"uppercase" as const}}>{h}</span>)}
+          <div style={{display:"grid",gridTemplateColumns:"90px 1fr 110px 110px 90px 100px 60px",padding:"10px 24px",borderBottom:"1px solid #F3F4F6",background:"#FAFBFC"}}>
+            {["Fecha","Proveedor","Categoria","Monto","Metodo","Comprobante",""].map(h => <span key={h} style={{fontSize:"11px",fontWeight:"700",color:"#9CA3AF",textTransform:"uppercase" as const}}>{h}</span>)}
           </div>
           {gastosLista.length === 0 ? (
             <div style={{padding:"40px",textAlign:"center" as const}}><p style={{fontSize:"13px",color:"#9CA3AF"}}>Sin gastos registrados</p></div>
           ) : gastosLista.map((g: any) => (
             <div key={g.id}>
               {editingId === g.id ? (
-                <div style={{display:"grid",gridTemplateColumns:"90px 1fr 120px 120px 100px 80px",padding:"10px 24px",borderBottom:"1px solid #F3F4F6",alignItems:"center",background:"#FFFBEB"}}>
+                <div style={{display:"grid",gridTemplateColumns:"90px 1fr 110px 110px 90px 100px 60px",padding:"10px 24px",borderBottom:"1px solid #F3F4F6",alignItems:"center",background:"#FFFBEB"}}>
                   <input type="date" value={editGasto.fecha} onChange={e => setEditGasto({...editGasto, fecha: e.target.value})} style={{fontSize:"12px",padding:"4px 6px",borderRadius:"6px",border:"1px solid #E5E7EB",width:"85px"}} />
                   <input value={editGasto.proveedor} onChange={e => setEditGasto({...editGasto, proveedor: e.target.value})} style={{fontSize:"12px",padding:"4px 6px",borderRadius:"6px",border:"1px solid #E5E7EB"}} />
                   <select value={editGasto.categoria} onChange={e => setEditGasto({...editGasto, categoria: e.target.value})} style={{fontSize:"11px",padding:"4px 6px",borderRadius:"6px",border:"1px solid #E5E7EB"}}>
@@ -225,7 +228,7 @@ export const CapturaGastos: React.FC = () => {
                   </div>
                 </div>
               ) : (
-                <div style={{display:"grid",gridTemplateColumns:"90px 1fr 120px 120px 100px 80px",padding:"10px 24px",borderBottom:"1px solid #F9FAFB",alignItems:"center"}}>
+                <div style={{display:"grid",gridTemplateColumns:"90px 1fr 110px 110px 90px 100px 60px",padding:"10px 24px",borderBottom:"1px solid #F9FAFB",alignItems:"center"}}>
                   <span style={{fontSize:"12px",color:"#374151"}}>{g.fecha}</span>
                   <div><span style={{fontSize:"13px",fontWeight:"600",color:"#111827"}}>{g.proveedor}</span>{g.descripcion && <div style={{fontSize:"11px",color:"#9CA3AF"}}>{g.descripcion}</div>}</div>
                   <span style={{fontSize:"11px",padding:"2px 8px",borderRadius:"4px",background:"#F3F4F6",color:"#374151"}}>{(g.categoria||"").replace(/_/g," ")}</span>
@@ -240,7 +243,7 @@ export const CapturaGastos: React.FC = () => {
             </div>
           ))}
           {gastosLista.length > 0 && (
-            <div style={{display:"grid",gridTemplateColumns:"90px 1fr 120px 120px 100px 80px",padding:"14px 24px",background:"#3D1C1E",borderTop:"2px solid #3D1C1E"}}>
+            <div style={{display:"grid",gridTemplateColumns:"90px 1fr 110px 110px 90px 100px 60px",padding:"14px 24px",background:"#3D1C1E",borderTop:"2px solid #3D1C1E"}}>
               <span></span>
               <span style={{fontSize:"14px",fontWeight:"900",color:"#FFF"}}>TOTAL</span>
               <span></span>
@@ -335,6 +338,18 @@ export const CapturaGastos: React.FC = () => {
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white" required>
                   <option value="EFECTIVO">Efectivo</option>
                   <option value="TRANSFERENCIA">Transferencia</option>
+                </select></div>
+              <div className="space-y-1">
+                <label className="text-sm font-medium text-slate-700">Comprobante</label>
+                <select name="comprobante" value={formData.comprobante} onChange={handleInputChange}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white">
+                  <option value="">Selecciona tipo...</option>
+                  <option value="FACTURA">Factura</option>
+                  <option value="TICKET">Ticket</option>
+                  <option value="VALE">Vale</option>
+                  <option value="NOTA_REMISION">Nota de Remision</option>
+                  <option value="RECIBO">Recibo</option>
+                  <option value="SIN_COMPROBANTE">Sin comprobante</option>
                 </select></div>
               <div className="space-y-1">
                 <label className="text-sm font-medium text-slate-700">Descripcion</label>
