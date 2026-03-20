@@ -26,6 +26,31 @@ export const CapturaGastos: React.FC = () => {
   const [gastosLista, setGastosLista] = useState<any[]>([]);
   const [showNuevoGasto, setShowNuevoGasto] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [editGasto, setEditGasto] = useState<any>(null);
+
+  const iniciarEdicion = (g: any) => {
+    setEditGasto({...g, total: g.total || g.monto || 0});
+    setEditingId(g.id);
+  };
+
+  const guardarEdicion = async () => {
+    if (!editGasto) return;
+    try {
+      await api.put("/api/gastos/" + editingId, {
+        fecha: editGasto.fecha,
+        proveedor: editGasto.proveedor,
+        categoria: editGasto.categoria,
+        monto: parseFloat(editGasto.total) || 0,
+        metodo_pago: editGasto.metodo_pago || "EFECTIVO",
+        descripcion: editGasto.descripcion || "",
+      });
+      setEditingId(null);
+      setEditGasto(null);
+      fetchGastos();
+    } catch(e) { alert("Error al editar"); }
+  };
+
+  const cancelarEdicion = () => { setEditingId(null); setEditGasto(null); };
 
   const fetchGastos = async () => {
     try { const g = await api.get("/api/gastos"); setGastosLista(Array.isArray(g) ? g : []); } catch(e) {}
@@ -182,15 +207,36 @@ export const CapturaGastos: React.FC = () => {
           {gastosLista.length === 0 ? (
             <div style={{padding:"40px",textAlign:"center" as const}}><p style={{fontSize:"13px",color:"#9CA3AF"}}>Sin gastos registrados</p></div>
           ) : gastosLista.map((g: any) => (
-            <div key={g.id} style={{display:"grid",gridTemplateColumns:"90px 1fr 120px 120px 100px 80px",padding:"10px 24px",borderBottom:"1px solid #F9FAFB",alignItems:"center"}}>
-              <span style={{fontSize:"12px",color:"#374151"}}>{g.fecha}</span>
-              <div><span style={{fontSize:"13px",fontWeight:"600",color:"#111827"}}>{g.proveedor}</span>{g.descripcion && <div style={{fontSize:"11px",color:"#9CA3AF"}}>{g.descripcion}</div>}</div>
-              <span style={{fontSize:"11px",padding:"2px 8px",borderRadius:"4px",background:"#F3F4F6",color:"#374151"}}>{(g.categoria||"").replace(/_/g," ")}</span>
-              <span style={{fontSize:"13px",fontWeight:"700",color:"#111827"}}>${(g.total||g.monto||0).toLocaleString("es-MX",{minimumFractionDigits:2})}</span>
-              <span style={{fontSize:"11px",color:"#6B7280"}}>{(g.metodo_pago||"").replace(/_/g," ")}</span>
-              <div style={{display:"flex",gap:"4px"}}>
-                <button onClick={() => eliminarGasto(g.id)} style={{border:"none",background:"none",cursor:"pointer",padding:"4px"}}><Trash2 style={{width:"14px",height:"14px",color:"#DC2626"}} /></button>
-              </div>
+            <div key={g.id}>
+              {editingId === g.id ? (
+                <div style={{display:"grid",gridTemplateColumns:"90px 1fr 120px 120px 100px 80px",padding:"10px 24px",borderBottom:"1px solid #F3F4F6",alignItems:"center",background:"#FFFBEB"}}>
+                  <input type="date" value={editGasto.fecha} onChange={e => setEditGasto({...editGasto, fecha: e.target.value})} style={{fontSize:"12px",padding:"4px 6px",borderRadius:"6px",border:"1px solid #E5E7EB",width:"85px"}} />
+                  <input value={editGasto.proveedor} onChange={e => setEditGasto({...editGasto, proveedor: e.target.value})} style={{fontSize:"12px",padding:"4px 6px",borderRadius:"6px",border:"1px solid #E5E7EB"}} />
+                  <select value={editGasto.categoria} onChange={e => setEditGasto({...editGasto, categoria: e.target.value})} style={{fontSize:"11px",padding:"4px 6px",borderRadius:"6px",border:"1px solid #E5E7EB"}}>
+                    {CATEGORIAS.map(cat => <option key={cat} value={cat}>{cat.replace(/_/g," ")}</option>)}
+                  </select>
+                  <input type="number" step="0.01" value={editGasto.total} onChange={e => setEditGasto({...editGasto, total: e.target.value})} style={{fontSize:"12px",padding:"4px 6px",borderRadius:"6px",border:"1px solid #E5E7EB",width:"100px"}} />
+                  <select value={editGasto.metodo_pago||"EFECTIVO"} onChange={e => setEditGasto({...editGasto, metodo_pago: e.target.value})} style={{fontSize:"11px",padding:"4px 6px",borderRadius:"6px",border:"1px solid #E5E7EB"}}>
+                    <option value="EFECTIVO">Efectivo</option><option value="TRANSFERENCIA">Transferencia</option>
+                  </select>
+                  <div style={{display:"flex",gap:"2px"}}>
+                    <button onClick={guardarEdicion} style={{border:"none",background:"#059669",color:"#FFF",borderRadius:"4px",padding:"4px 8px",fontSize:"10px",fontWeight:"700",cursor:"pointer"}}>OK</button>
+                    <button onClick={cancelarEdicion} style={{border:"1px solid #E5E7EB",background:"#FFF",borderRadius:"4px",padding:"4px 6px",fontSize:"10px",cursor:"pointer"}}>X</button>
+                  </div>
+                </div>
+              ) : (
+                <div style={{display:"grid",gridTemplateColumns:"90px 1fr 120px 120px 100px 80px",padding:"10px 24px",borderBottom:"1px solid #F9FAFB",alignItems:"center"}}>
+                  <span style={{fontSize:"12px",color:"#374151"}}>{g.fecha}</span>
+                  <div><span style={{fontSize:"13px",fontWeight:"600",color:"#111827"}}>{g.proveedor}</span>{g.descripcion && <div style={{fontSize:"11px",color:"#9CA3AF"}}>{g.descripcion}</div>}</div>
+                  <span style={{fontSize:"11px",padding:"2px 8px",borderRadius:"4px",background:"#F3F4F6",color:"#374151"}}>{(g.categoria||"").replace(/_/g," ")}</span>
+                  <span style={{fontSize:"13px",fontWeight:"700",color:"#111827"}}>${(g.total||g.monto||0).toLocaleString("es-MX",{minimumFractionDigits:2})}</span>
+                  <span style={{fontSize:"11px",color:"#6B7280"}}>{(g.metodo_pago||"").replace(/_/g," ")}</span>
+                  <div style={{display:"flex",gap:"4px"}}>
+                    <button onClick={() => iniciarEdicion(g)} style={{border:"none",background:"none",cursor:"pointer",padding:"4px"}}><Edit2 style={{width:"14px",height:"14px",color:"#6B7280"}} /></button>
+                    <button onClick={() => eliminarGasto(g.id)} style={{border:"none",background:"none",cursor:"pointer",padding:"4px"}}><Trash2 style={{width:"14px",height:"14px",color:"#DC2626"}} /></button>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
           {gastosLista.length > 0 && (

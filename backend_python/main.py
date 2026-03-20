@@ -270,8 +270,8 @@ def eliminar_cierre(cierre_id: int, db: Session = Depends(get_db)):
     existing = db.query(models.CierreTurno).filter(models.CierreTurno.id == cierre_id).first()
     if not existing:
         raise HTTPException(status_code=404, detail="Cierre no encontrado")
-    db.query(models.GastoCierre).filter(models.GastoCierre.cierre_turno_id == cierre_id).delete()
-    db.query(models.PropinaTurno).filter(models.PropinaTurno.cierre_turno_id == cierre_id).delete()
+    db.query(models.GastoDiario).filter(models.GastoDiario.cierre_id == cierre_id).delete()
+    db.query(models.PropinaDiaria).filter(models.PropinaDiaria.cierre_id == cierre_id).delete()
     db.delete(existing)
     db.commit()
     return {"mensaje": "Cierre eliminado"}

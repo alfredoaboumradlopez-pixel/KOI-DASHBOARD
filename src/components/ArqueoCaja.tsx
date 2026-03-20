@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { api } from "../services/api";
-import { Loader2, CheckCircle, AlertTriangle, ChevronDown, ChevronUp, Search } from "lucide-react";
+import { Loader2, CheckCircle, AlertTriangle, ChevronDown, ChevronUp, Search, Trash2 } from "lucide-react";
 
 const formatMXN = (n: number) => new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(n);
 
@@ -25,6 +25,15 @@ export const ArqueoCaja: React.FC = () => {
   useEffect(() => { fetchCierres(); }, [filtroMes, filtroAnio]);
 
   const toggle = (id: number) => setExpandido(expandido === id ? null : id);
+
+  const eliminarCierre = async (id: number) => {
+    if (!confirm("Eliminar este cierre? Esta accion no se puede deshacer.")) return;
+    try {
+      await api.del("/api/cierre-turno/" + id);
+      // Refrescar lista
+      setCierres(prev => prev.filter(ci => ci.id !== id));
+    } catch(e) { alert("Error al eliminar cierre"); }
+  };
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -68,7 +77,16 @@ export const ArqueoCaja: React.FC = () => {
       <div className="space-y-3">
         {cierres.map((c: any) => {
           const isOpen = expandido === c.id;
-          return (
+          const eliminarCierre = async (id: number) => {
+    if (!confirm("Eliminar este cierre? Esta accion no se puede deshacer.")) return;
+    try {
+      await api.del("/api/cierre-turno/" + id);
+      // Refrescar lista
+      setCierres(prev => prev.filter(ci => ci.id !== id));
+    } catch(e) { alert("Error al eliminar cierre"); }
+  };
+
+  return (
             <div key={c.id} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
               <button onClick={() => toggle(c.id)} className="w-full px-6 py-4 flex items-center justify-between hover:bg-slate-50 transition-colors">
                 <div className="flex items-center gap-4">
@@ -93,6 +111,7 @@ export const ArqueoCaja: React.FC = () => {
                       {c.estado || "Sin arqueo"}{c.diferencia && c.diferencia !== 0 ? " (" + (c.diferencia > 0 ? "+" : "") + formatMXN(c.diferencia) + ")" : ""}
                     </p>
                   </div>
+                  <button onClick={(e) => { e.stopPropagation(); eliminarCierre(c.id); }} className="p-1.5 rounded-lg hover:bg-red-50" title="Eliminar cierre"><Trash2 className="w-4 h-4 text-red-400 hover:text-red-600" /></button>
                   {isOpen ? <ChevronUp className="w-5 h-5 text-slate-400" /> : <ChevronDown className="w-5 h-5 text-slate-400" />}
                 </div>
               </button>
