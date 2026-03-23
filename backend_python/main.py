@@ -9,6 +9,28 @@ from fastapi import Depends, HTTPException, UploadFile, File, Query, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import func, extract, cast, String
+import os as _os
+_USE_PG = bool(_os.environ.get("DATABASE_URL"))
+
+def _filter_mes_anio(query, column, mes, anio):
+    """Filtra por mes y anio, compatible con SQLite y PostgreSQL"""
+    if _USE_PG:
+        return query.filter(extract("month", column) == mes, extract("year", column) == anio)
+    else:
+        return query.filter(func.strftime("%m", column) == str(mes).zfill(2), func.strftime("%Y", column) == str(anio))
+
+def _sum_filtered(db, model_col, date_col, mes, anio, extra_filter=None):
+    """Suma con filtro mes/anio compatible"""
+    q = db.query(func.sum(model_col))
+    if _USE_PG:
+        q = q.filter(extract("month", date_col) == mes, extract("year", date_col) == anio)
+    else:
+        q = q.filter(func.strftime("%m", date_col) == str(mes).zfill(2), func.strftime("%Y", date_col) == str(anio))
+    if extra_filter is not None:
+        q = q.filter(extra_filter)
+    return q.scalar() or 0.0
+
+
 from typing import List, Optional
 from datetime import date, datetime, timedelta
 import csv
@@ -159,7 +181,7 @@ def crear_cierre_turno(cierre: schemas.CierreTurnoCreate, db: Session = Depends(
 def listar_cierres(mes: Optional[int] = None, anio: Optional[int] = None, limit: int = 30, db: Session = Depends(get_db)):
     query = db.query(models.CierreTurno)
     if mes and anio:
-        query = query.filter(func.strftime("%m", models.CierreTurno.fecha) == str(mes).zfill(2), func.strftime("%Y", models.CierreTurno.fecha) == str(anio))
+        query = query.filter(extract("month", models.CierreTurno.fecha) == mes, extract("year", models.CierreTurno.fecha) == anio)
     return query.order_by(models.CierreTurno.fecha.desc()).limit(limit).all()
 
 
@@ -313,11 +335,11 @@ Si no puedes leer algun campo, dejalo null."""
 
 @app.get("/api/pl/{mes}/{anio}", response_model=schemas.PLMensualResponse)
 def calcular_pl(mes: int, anio: int, db: Session = Depends(get_db)):
-    ventas = db.query(func.sum(models.VentaDiaria.total_venta)).filter(func.strftime("%m", models.VentaDiaria.fecha) == str(mes).zfill(2), func.strftime("%Y", models.VentaDiaria.fecha) == str(anio)).scalar() or 0.0
+    ventas = db.query(func.sum(models.VentaDiaria.total_venta)).filter(extract("month", models.VentaDiaria.fecha) == mes, extract("year", models.VentaDiaria.fecha) == anio).scalar() or 0.0
     def sumar_gc(cat):
-        return db.query(func.sum(models.GastoDiario.monto)).join(models.CierreTurno).filter(func.strftime("%m", models.CierreTurno.fecha) == str(mes).zfill(2), func.strftime("%Y", models.CierreTurno.fecha) == str(anio), models.GastoDiario.categoria == cat).scalar() or 0.0
+        return db.query(func.sum(models.GastoDiario.monto)).join(models.CierreTurno).filter(extract("month", models.CierreTurno.fecha) == mes, extract("year", models.CierreTurno.fecha) == anio, models.GastoDiario.categoria == cat).scalar() or 0.0
     def sumar_gg(cat):
-        return db.query(func.sum(models.Gasto.monto)).filter(func.strftime("%m", models.Gasto.fecha) == str(mes).zfill(2), func.strftime("%Y", models.Gasto.fecha) == str(anio), models.Gasto.categoria == cat).scalar() or 0.0
+        return db.query(func.sum(models.Gasto.monto)).filter(extract("month", models.Gasto.fecha) == mes, extract("year", models.Gasto.fecha) == anio, models.Gasto.categoria == cat).scalar() or 0.0
     def tc(cat):
         return sumar_gc(cat) + sumar_gg(cat)
     ci = tc(models.CategoriaGasto.PROTEINA)
@@ -327,7 +349,7 @@ def calcular_pl(mes: int, anio: int, db: Session = Depends(get_db)):
     gl = tc(models.CategoriaGasto.LIMPIEZA_MANTTO)
     gcp = tc(models.CategoriaGasto.PERSONAL)
     go = tc(models.CategoriaGasto.OTROS)
-    gn = db.query(func.sum(models.NominaPago.neto_pagado)).filter(func.strftime("%m", models.NominaPago.fecha_pago) == str(mes).zfill(2), func.strftime("%Y", models.NominaPago.fecha_pago) == str(anio)).scalar() or 0.0
+    gn = db.query(func.sum(models.NominaPago.neto_pagado)).filter(extract("month", models.NominaPago.fecha_pago) == mes, extract("year", models.NominaPago.fecha_pago) == anio).scalar() or 0.0
     imp = tc(models.CategoriaGasto.IMPUESTOS)
     ub = ventas - ci
     uo = ub - (gs + gr + gm + gl + gcp + go)
@@ -353,11 +375,11 @@ def calcular_distribucion(mes: int, anio: int, db: Session = Depends(get_db)):
         pl = db.query(models.PLMensual).filter(models.PLMensual.mes == mes, models.PLMensual.anio == anio).first()
     if not pl:
         raise HTTPException(status_code=404, detail="No se pudo calcular el P&L")
-    uc = db.query(models.CierreTurno).filter(func.strftime("%m", models.CierreTurno.fecha) == str(mes).zfill(2), func.strftime("%Y", models.CierreTurno.fecha) == str(anio)).order_by(models.CierreTurno.fecha.desc()).first()
+    uc = db.query(models.CierreTurno).filter(extract("month", models.CierreTurno.fecha) == mes, extract("year", models.CierreTurno.fecha) == anio).order_by(models.CierreTurno.fecha.desc()).first()
     sc = None
     if uc:
         sc = uc.efectivo_fisico if uc.efectivo_fisico is not None else uc.saldo_final_esperado
-    um = db.query(models.MovimientoBanco).filter(func.strftime("%m", models.MovimientoBanco.fecha) == str(mes).zfill(2), func.strftime("%Y", models.MovimientoBanco.fecha) == str(anio)).order_by(models.MovimientoBanco.fecha.desc()).first()
+    um = db.query(models.MovimientoBanco).filter(extract("month", models.MovimientoBanco.fecha) == mes, extract("year", models.MovimientoBanco.fecha) == anio).order_by(models.MovimientoBanco.fecha.desc()).first()
     sb = um.saldo if um else None
     td = (sb + sc) if (sb is not None and sc is not None) else None
     distribuciones = []
@@ -383,7 +405,7 @@ def get_dashboard(db: Session = Depends(get_db)):
     ca = ((vh - va) / va * 100) if va > 0 else None
     is_ = hoy - timedelta(days=hoy.weekday())
     vs = db.query(func.sum(models.VentaDiaria.total_venta)).filter(models.VentaDiaria.fecha >= is_, models.VentaDiaria.fecha <= hoy).scalar() or 0.0
-    vm = db.query(func.sum(models.VentaDiaria.total_venta)).filter(func.strftime("%m", models.VentaDiaria.fecha) == str(hoy.month).zfill(2), func.strftime("%Y", models.VentaDiaria.fecha) == str(hoy.year)).scalar() or 0.0
+    vm = db.query(func.sum(models.VentaDiaria.total_venta)).filter(extract("month", models.VentaDiaria.fecha) == hoy.month, extract("year", models.VentaDiaria.fecha) == hoy.year).scalar() or 0.0
     gp = db.query(func.count(models.CuentaPorPagar.id)).filter(models.CuentaPorPagar.estado_pago == models.EstadoPago.PENDIENTE).scalar() or 0
     uc = db.query(models.CierreTurno).order_by(models.CierreTurno.fecha.desc()).first()
     ec = None
@@ -401,7 +423,7 @@ def get_dashboard(db: Session = Depends(get_db)):
 def ventas_por_canal(mes: Optional[int] = None, anio: Optional[int] = None, db: Session = Depends(get_db)):
     q = db.query(func.sum(models.VentaDiaria.efectivo).label("efectivo"), func.sum(models.VentaDiaria.pay).label("pay"), func.sum(models.VentaDiaria.terminales).label("terminales"), func.sum(models.VentaDiaria.uber_eats).label("uber_eats"), func.sum(models.VentaDiaria.rappi).label("rappi"))
     if mes and anio:
-        q = q.filter(func.strftime("%m", models.VentaDiaria.fecha) == str(mes).zfill(2), func.strftime("%Y", models.VentaDiaria.fecha) == str(anio))
+        q = q.filter(extract("month", models.VentaDiaria.fecha) == mes, extract("year", models.VentaDiaria.fecha) == anio)
     r = q.first()
     return {"canales": [{"nombre": "Efectivo", "monto": r.efectivo or 0}, {"nombre": "Pay", "monto": r.pay or 0}, {"nombre": "Terminales", "monto": r.terminales or 0}, {"nombre": "Uber Eats", "monto": r.uber_eats or 0}, {"nombre": "Rappi", "monto": r.rappi or 0}]}
 
@@ -410,7 +432,7 @@ def ventas_por_canal(mes: Optional[int] = None, anio: Optional[int] = None, db: 
 def ventas_diarias_reporte(mes: Optional[int] = None, anio: Optional[int] = None, db: Session = Depends(get_db)):
     q = db.query(models.VentaDiaria.fecha, models.VentaDiaria.total_venta)
     if mes and anio:
-        q = q.filter(func.strftime("%m", models.VentaDiaria.fecha) == str(mes).zfill(2), func.strftime("%Y", models.VentaDiaria.fecha) == str(anio))
+        q = q.filter(extract("month", models.VentaDiaria.fecha) == mes, extract("year", models.VentaDiaria.fecha) == anio)
     return [{"fecha": str(r.fecha), "total": r.total_venta} for r in q.order_by(models.VentaDiaria.fecha).all()]
 
 
@@ -525,7 +547,7 @@ def upload_estado_cuenta(file: UploadFile = File(...), db: Session = Depends(get
 def listar_movimientos_banco(mes: Optional[int] = None, anio: Optional[int] = None, solo_sin_reconciliar: bool = False, db: Session = Depends(get_db)):
     q = db.query(models.MovimientoBanco)
     if mes and anio:
-        q = q.filter(func.strftime("%m", models.MovimientoBanco.fecha) == str(mes).zfill(2), func.strftime("%Y", models.MovimientoBanco.fecha) == str(anio))
+        q = q.filter(extract("month", models.MovimientoBanco.fecha) == mes, extract("year", models.MovimientoBanco.fecha) == anio)
     if solo_sin_reconciliar:
         q = q.filter(models.MovimientoBanco.reconciliado == False)
     return q.order_by(models.MovimientoBanco.fecha.desc()).all()
