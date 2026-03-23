@@ -349,6 +349,7 @@ export const CapturaGastos: React.FC = () => {
                   <option value="VALE">Vale</option>
                   <option value="NOTA_REMISION">Nota de Remision</option>
                   <option value="RECIBO">Recibo</option>
+                  <option value="TRANSFERENCIA">Transferencia</option>
                   <option value="SIN_COMPROBANTE">Sin comprobante</option>
                 </select></div>
               <div className="space-y-1">
