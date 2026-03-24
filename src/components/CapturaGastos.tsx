@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { UploadCloud, Trash2, Edit2, Pencil, FileText as FileTextIcon, FileText, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
+import { UploadCloud, ChevronDown, ChevronUp, Trash2, Edit2, Pencil, FileText as FileTextIcon, FileText, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
 import { api } from '../services/api';
 import { CuentasPorPagar } from "./CuentasPorPagar";
 
@@ -26,6 +26,9 @@ export const CapturaGastos: React.FC = () => {
 
   const [gastosLista, setGastosLista] = useState<any[]>([]);
   const [showNuevoGasto, setShowNuevoGasto] = useState(false);
+  const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set());
+  const toggleDate = (fecha: string) => { setExpandedDates(prev => { const n = new Set(prev); n.has(fecha) ? n.delete(fecha) : n.add(fecha); return n; }); };
+
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editGasto, setEditGasto] = useState<any>(null);
 
@@ -204,9 +207,7 @@ export const CapturaGastos: React.FC = () => {
               <button onClick={() => setShowNuevoGasto(true)} style={{padding:"6px 14px",borderRadius:"8px",border:"none",background:"#3D1C1E",color:"#C8FF00",fontSize:"12px",fontWeight:"700",cursor:"pointer"}}>+ Nuevo Gasto</button>
             </div>
           </div>
-          <div style={{display:"grid",gridTemplateColumns:"90px 1fr 110px 110px 90px 100px 60px",padding:"10px 24px",borderBottom:"1px solid #F3F4F6",background:"#FAFBFC"}}>
-            {["Fecha","Proveedor","Categoria","Monto","Metodo","Comprobante",""].map(h => <span key={h} style={{fontSize:"11px",fontWeight:"700",color:"#9CA3AF",textTransform:"uppercase" as const}}>{h}</span>)}
-          </div>
+          
           {gastosLista.length === 0 ? (
             <div style={{padding:"40px",textAlign:"center" as const}}><p style={{fontSize:"13px",color:"#9CA3AF"}}>Sin gastos registrados</p></div>
           ) : gastosLista.map((g: any) => (
