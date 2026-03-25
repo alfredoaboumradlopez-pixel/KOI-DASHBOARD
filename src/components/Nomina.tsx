@@ -116,7 +116,7 @@ export const Nomina = () => {
     }
   };
 
-  const agregarEmpleado = () => {
+  const agregarEmpleado = async () => {
     if (!nuevoEmp.nombre || !nuevoEmp.puesto || !nuevoEmp.curp || !nuevoEmp.rfc || !nuevoEmp.numero_imss || !nuevoEmp.cif) { alert('Completa todos los campos obligatorios (*)'); return; }
     try {
       await api.post("/api/empleados", {
