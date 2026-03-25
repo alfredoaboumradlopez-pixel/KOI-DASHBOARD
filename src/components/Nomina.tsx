@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { api } from "../services/api";
-import { Users, AlertTriangle, CheckCircle, Clock, FileText, Bell, Calendar, Shield, ChevronDown, ChevronUp, Plus, X, Edit2, Banknote } from "lucide-react";
+import { Users, Trash2, AlertTriangle, CheckCircle, Clock, FileText, Bell, Calendar, Shield, ChevronDown, ChevronUp, Plus, X, Edit2, Banknote } from "lucide-react";
 
 interface Empleado {
   id: number;
@@ -304,7 +304,10 @@ export const Nomina = () => {
                 <span style={{ fontSize:"12px", color:"#6B7280" }}>{e.puesto}</span>
                 <span style={{ display:"inline-flex", padding:"3px 8px", borderRadius:"6px", fontSize:"11px", fontWeight:"600", background:cs.bg, color:cs.text, border:"1px solid "+cs.border, width:"fit-content" }}>{cs.label}</span>
                 <span>{e.imss_registrado?<CheckCircle style={{ width:"18px", height:"18px", color:"#059669" }} />:<AlertTriangle style={{ width:"18px", height:"18px", color:"#DC2626" }} />}</span>
-                <span style={{ fontSize:"14px", fontWeight:"700", color:"#111827", textAlign:"right" as const }}>{formatMXN(e.salario_mensual)}</span><div style={{ fontSize:"10px", color:"#9CA3AF" }}>Sem: {formatMXN(e.salario_mensual/4.33)} | Dia: {formatMXN(e.salario_mensual/30)}</div>
+                <div style={{display:"flex",alignItems:"center",gap:"8px",justifyContent:"flex-end"}}>
+                <span style={{ fontSize:"14px", fontWeight:"700", color:"#111827"}}>{formatMXN(e.salario_mensual)}</span>
+                <button onClick={(ev) => {ev.stopPropagation(); eliminarEmpleado(e.id);}} style={{border:"none",background:"none",cursor:"pointer",padding:"2px"}}><Trash2 style={{width:"14px",height:"14px",color:"#DC2626"}} /></button>
+              </div><div style={{ fontSize:"10px", color:"#9CA3AF" }}>Sem: {formatMXN(e.salario_mensual/4.33)} | Dia: {formatMXN(e.salario_mensual/30)}</div>
               </div>
               {isExp && (
                 <div style={{ padding:"16px 24px 20px 74px", background:"#FAFBFC", borderBottom:"1px solid #F3F4F6" }}>

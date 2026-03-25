@@ -603,6 +603,28 @@ def alertas_stock(db: Session = Depends(get_db)):
     return [{"id": i.id, "nombre": i.nombre, "stock_actual": i.stock_actual, "stock_minimo": i.stock_minimo, "deficit": i.stock_minimo - i.stock_actual} for i in alertas]
 
 
+
+
+@app.delete("/api/empleados/{emp_id}")
+def eliminar_empleado(emp_id: int, db: Session = Depends(get_db)):
+    existing = db.query(models.Empleado).filter(models.Empleado.id == emp_id).first()
+    if not existing:
+        raise HTTPException(status_code=404, detail="Empleado no encontrado")
+    db.delete(existing)
+    db.commit()
+    return {"mensaje": "Empleado eliminado"}
+
+@app.put("/api/empleados/{emp_id}")
+def editar_empleado(emp_id: int, emp: schemas.EmpleadoCreate, db: Session = Depends(get_db)):
+    existing = db.query(models.Empleado).filter(models.Empleado.id == emp_id).first()
+    if not existing:
+        raise HTTPException(status_code=404, detail="Empleado no encontrado")
+    for key, value in emp.dict().items():
+        setattr(existing, key, value)
+    db.commit()
+    db.refresh(existing)
+    return existing
+
 # Servir frontend en produccion
 frontend_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "dist")
 if os.path.exists(frontend_path):
