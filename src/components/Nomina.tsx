@@ -116,8 +116,13 @@ export const Nomina = () => {
     }
   };
 
+  const eliminarEmpleado = async (id: number) => {
+    if (!confirm("Eliminar este empleado?")) return;
+    try { await api.del("/api/empleados/" + id); fetchEmpleados(); } catch(e) { alert("Error al eliminar"); }
+  };
+
   const agregarEmpleado = async () => {
-    if (!nuevoEmp.nombre || !nuevoEmp.puesto || !nuevoEmp.curp || !nuevoEmp.rfc || !nuevoEmp.numero_imss || !nuevoEmp.cif) { alert('Completa todos los campos obligatorios (*)'); return; }
+    if (!nuevoEmp.nombre || !nuevoEmp.puesto || !nuevoEmp.curp || !nuevoEmp.rfc || !nuevoEmp.numero_imss) { alert('Completa todos los campos obligatorios (*)'); return; }
     try {
       await api.post("/api/empleados", {
         nombre: nuevoEmp.nombre,
