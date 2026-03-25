@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo }
+import { api } from "../services/api"; from "react";
 import { Users, AlertTriangle, CheckCircle, Clock, FileText, Bell, Calendar, Shield, ChevronDown, ChevronUp, Plus, X, Edit2, Banknote } from "lucide-react";
 
 interface Empleado {
@@ -23,7 +24,8 @@ interface Empleado {
   archivos?: { nombre: string; tipo: string; fecha: string; url: string }[];
 }
 
-const MOCK: Empleado[] = [
+// Mock data removido, ahora usa API
+const _UNUSED = [
   { id:1, nombre:"Anais López", puesto:"Chef Principal", salario_mensual:9000, fecha_ingreso:"2025-06-15", dia_pago:10, frecuencia_pago:"SEMANAL", tipo_contrato:"INDEFINIDO", contrato_firmado:true, imss_registrado:true, numero_imss:"1234567890", rfc:"LOPA950615ABC", curp:"LOPA950615MDFRNS09", cif:"CIF001234", cuenta_banco:"Santander ****4101" },
   { id:2, nombre:"Sebastián Mora", puesto:"Cocinero", salario_mensual:9000, fecha_ingreso:"2025-08-01", dia_pago:10, frecuencia_pago:"SEMANAL", tipo_contrato:"INDEFINIDO", contrato_firmado:true, imss_registrado:true, numero_imss:"0987654321", rfc:"MORS980801XYZ", curp:"MORS980801HDFRRA05", cif:"CIF001235", cuenta_banco:"BBVA ****7823" },
   { id:3, nombre:"Carlos Ruiz", puesto:"Mesero", salario_mensual:7700, fecha_ingreso:"2025-09-15", dia_pago:10, frecuencia_pago:"SEMANAL", tipo_contrato:"TEMPORAL", contrato_firmado:true, fecha_fin_contrato:"2026-03-15", imss_registrado:true, numero_imss:"1122334455", curp:"RUIC900915HDFRZR01", cif:"CIF001236", rfc:"RUIC900915ABC" },
@@ -65,7 +67,34 @@ function diasFin(f?: string): number | null {
 }
 
 export const Nomina = () => {
-  const [emps, setEmps] = useState<Empleado[]>(MOCK);
+  const [emps, setEmps] = useState<Empleado[]>([]);
+
+  const fetchEmpleados = async () => {
+    try {
+      const data = await api.get("/api/empleados");
+      if (Array.isArray(data)) {
+        setEmps(data.map((e: any) => ({
+          id: e.id,
+          nombre: e.nombre || "",
+          puesto: e.puesto || "",
+          salario_mensual: e.salario_base || 0,
+          fecha_ingreso: e.fecha_ingreso || "",
+          dia_pago: 10,
+          frecuencia_pago: "SEMANAL" as const,
+          tipo_contrato: "INDEFINIDO" as const,
+          contrato_firmado: true,
+          imss_registrado: false,
+          numero_imss: "",
+          rfc: "",
+          curp: "",
+          cif: "",
+          cuenta_banco: "",
+        })));
+      }
+    } catch(e) {}
+  };
+
+  useEffect(() => { fetchEmpleados(); }, []);
   const [vista, setVista] = useState<"alertas" | "equipo" | "legal">("alertas");
   const [exp, setExp] = useState<number | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -89,7 +118,16 @@ export const Nomina = () => {
 
   const agregarEmpleado = () => {
     if (!nuevoEmp.nombre || !nuevoEmp.puesto || !nuevoEmp.curp || !nuevoEmp.rfc || !nuevoEmp.numero_imss || !nuevoEmp.cif) { alert('Completa todos los campos obligatorios (*)'); return; }
-    const nuevo: Empleado = { ...nuevoEmp, id: Math.max(...emps.map(e=>e.id))+1, archivos: archivosNuevo.length > 0 ? archivosNuevo : undefined, fecha_fin_contrato: nuevoEmp.fecha_fin_contrato||undefined, numero_imss: nuevoEmp.numero_imss||undefined, rfc: nuevoEmp.rfc||undefined, curp: nuevoEmp.curp||undefined, cuenta_banco: nuevoEmp.cuenta_banco||undefined };
+    try {
+      await api.post("/api/empleados", {
+        nombre: nuevoEmp.nombre,
+        puesto: nuevoEmp.puesto,
+        salario_base: nuevoEmp.salario_mensual,
+        fecha_ingreso: nuevoEmp.fecha_ingreso,
+      });
+      fetchEmpleados();
+    } catch(e) { alert("Error al guardar empleado"); }
+    const nuevo: Empleado = { ...nuevoEmp, id: Math.max(0,...emps.map(e=>e.id))+1, archivos: archivosNuevo.length > 0 ? archivosNuevo : undefined, fecha_fin_contrato: nuevoEmp.fecha_fin_contrato||undefined, numero_imss: nuevoEmp.numero_imss||undefined, rfc: nuevoEmp.rfc||undefined, curp: nuevoEmp.curp||undefined, cuenta_banco: nuevoEmp.cuenta_banco||undefined };
     setEmps(p => [...p, nuevo]);
     setNuevoEmp({ nombre:'', puesto:'', salario_mensual:9000, fecha_ingreso:new Date().toISOString().slice(0,10), dia_pago:10, frecuencia_pago:'SEMANAL', tipo_contrato:'INDEFINIDO', contrato_firmado:false, imss_registrado:false, numero_imss:'', rfc:'', curp:'', cuenta_banco:'', cif:'', fecha_fin_contrato:'' });
     setShowForm(false);
