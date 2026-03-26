@@ -125,7 +125,8 @@ export const Nomina = () => {
   };
 
   const guardarEdicionEmp = async () => {
-    if (!editEmp || !editEmpId) return;
+    console.log("GUARDAR:", editEmpId, editEmp);
+    if (!editEmp || !editEmpId) { console.log("ABORT: editEmp o editEmpId es null"); return; }
     try {
       await api.put("/api/empleados/" + editEmpId, {
         nombre: editEmp.nombre,
