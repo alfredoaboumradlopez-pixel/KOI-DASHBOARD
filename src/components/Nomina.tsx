@@ -82,13 +82,13 @@ export const Nomina = () => {
           dia_pago: 10,
           frecuencia_pago: "SEMANAL" as const,
           tipo_contrato: "INDEFINIDO" as const,
-          contrato_firmado: true,
-          imss_registrado: false,
-          numero_imss: "",
-          rfc: "",
-          curp: "",
+          contrato_firmado: !!e.numero_imss && !!e.rfc,
+          imss_registrado: !!e.numero_imss,
+          numero_imss: e.numero_imss || "",
+          rfc: e.rfc || "",
+          curp: e.curp || "",
           cif: "",
-          cuenta_banco: "",
+          cuenta_banco: e.cuenta_banco || "",
         })));
       }
     } catch(e) {}
