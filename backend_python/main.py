@@ -1,11 +1,10 @@
 """
 KOI Dashboard - API Principal
 """
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Depends, HTTPException, UploadFile, File, Query, status
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 import os
-from fastapi import Depends, HTTPException, UploadFile, File, Query, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import func, extract, cast, String
