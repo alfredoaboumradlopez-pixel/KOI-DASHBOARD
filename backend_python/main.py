@@ -45,18 +45,18 @@ from .database import engine, get_db
 models.Base.metadata.create_all(bind=engine)
 
 # Migracion: agregar columnas nuevas si no existen
+from sqlalchemy import text as _text, inspect as _inspect
 try:
-    with engine.connect() as conn:
-        from sqlalchemy import text
-        for col in ["rfc VARCHAR(20)", "curp VARCHAR(20)", "numero_imss VARCHAR(20)", "cuenta_banco VARCHAR(50)"]:
-            col_name = col.split()[0]
-            try:
-                conn.execute(text(f"ALTER TABLE empleados ADD COLUMN {col}"))
-                conn.commit()
-            except Exception:
-                conn.rollback()
+    _insp = _inspect(engine)
+    existing_cols = [c['name'] for c in _insp.get_columns('empleados')]
+    new_cols = {"rfc": "VARCHAR(20)", "curp": "VARCHAR(20)", "numero_imss": "VARCHAR(20)", "cuenta_banco": "VARCHAR(50)"}
+    with engine.begin() as conn:
+        for col_name, col_type in new_cols.items():
+            if col_name not in existing_cols:
+                conn.execute(_text(f"ALTER TABLE empleados ADD COLUMN {col_name} {col_type}"))
+                print(f"Columna {col_name} agregada a empleados")
 except Exception as e:
-    pass
+    print(f"Migracion error: {e}")
 
 
 app = FastAPI(
