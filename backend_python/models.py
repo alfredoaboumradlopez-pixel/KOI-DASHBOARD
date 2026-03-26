@@ -175,6 +175,10 @@ class Empleado(Base):
     salario_base = Column(Float, nullable=False)
     fecha_ingreso = Column(Date, nullable=False)
     activo = Column(Boolean, default=True)
+    rfc = Column(String(20), nullable=True)
+    curp = Column(String(20), nullable=True)
+    numero_imss = Column(String(20), nullable=True)
+    cuenta_banco = Column(String(50), nullable=True)
     pagos = relationship("NominaPago", back_populates="empleado")
 
 

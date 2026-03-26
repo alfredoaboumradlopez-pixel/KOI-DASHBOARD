@@ -44,6 +44,21 @@ from .database import engine, get_db
 
 models.Base.metadata.create_all(bind=engine)
 
+# Migracion: agregar columnas nuevas si no existen
+try:
+    with engine.connect() as conn:
+        from sqlalchemy import text
+        for col in ["rfc VARCHAR(20)", "curp VARCHAR(20)", "numero_imss VARCHAR(20)", "cuenta_banco VARCHAR(50)"]:
+            col_name = col.split()[0]
+            try:
+                conn.execute(text(f"ALTER TABLE empleados ADD COLUMN {col}"))
+                conn.commit()
+            except Exception:
+                conn.rollback()
+except Exception as e:
+    pass
+
+
 app = FastAPI(
     title="KOI Dashboard API",
     description="API para la gestion administrativa del restaurante KOI",
