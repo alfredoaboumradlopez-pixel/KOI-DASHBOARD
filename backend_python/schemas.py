@@ -112,6 +112,10 @@ class EmpleadoCreate(BaseModel):
     puesto: str
     salario_base: float = Field(gt=0)
     fecha_ingreso: date
+    rfc: Optional[str] = None
+    curp: Optional[str] = None
+    numero_imss: Optional[str] = None
+    cuenta_banco: Optional[str] = None
 
 class EmpleadoResponse(EmpleadoCreate):
     id: int
