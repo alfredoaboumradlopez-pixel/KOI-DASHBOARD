@@ -116,6 +116,10 @@ class EmpleadoCreate(BaseModel):
 class EmpleadoResponse(EmpleadoCreate):
     id: int
     activo: bool
+    rfc: Optional[str] = None
+    curp: Optional[str] = None
+    numero_imss: Optional[str] = None
+    cuenta_banco: Optional[str] = None
     model_config = ConfigDict(from_attributes=True)
 
 class NominaPagoCreate(BaseModel):
