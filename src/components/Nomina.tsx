@@ -130,13 +130,18 @@ export const Nomina = () => {
       await api.put("/api/empleados/" + editEmpId, {
         nombre: editEmp.nombre,
         puesto: editEmp.puesto,
-        salario_base: editEmp.salario_mensual,
+        salario_base: parseFloat(editEmp.salario_mensual) || 1,
         fecha_ingreso: editEmp.fecha_ingreso,
+        rfc: editEmp.rfc || null,
+        curp: editEmp.curp || null,
+        numero_imss: editEmp.numero_imss || null,
+        cuenta_banco: editEmp.cuenta_banco || null,
       });
+      console.log("Empleado editado OK");
       setEditEmpId(null);
       setEditEmp(null);
       fetchEmpleados();
-    } catch(e) { alert("Error al editar"); }
+    } catch(e: any) { console.error("Error editar:", e); alert("Error al editar: " + (e.message || e)); }
   };
 
   const eliminarEmpleado = async (id: number) => {
