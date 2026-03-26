@@ -116,6 +116,29 @@ export const Nomina = () => {
     }
   };
 
+  const [editEmp, setEditEmp] = useState<any>(null);
+  const [editEmpId, setEditEmpId] = useState<number | null>(null);
+
+  const iniciarEdicionEmp = (e: any) => {
+    setEditEmp({ nombre: e.nombre, puesto: e.puesto, salario_mensual: e.salario_mensual, fecha_ingreso: e.fecha_ingreso });
+    setEditEmpId(e.id);
+  };
+
+  const guardarEdicionEmp = async () => {
+    if (!editEmp || !editEmpId) return;
+    try {
+      await api.put("/api/empleados/" + editEmpId, {
+        nombre: editEmp.nombre,
+        puesto: editEmp.puesto,
+        salario_base: editEmp.salario_mensual,
+        fecha_ingreso: editEmp.fecha_ingreso,
+      });
+      setEditEmpId(null);
+      setEditEmp(null);
+      fetchEmpleados();
+    } catch(e) { alert("Error al editar"); }
+  };
+
   const eliminarEmpleado = async (id: number) => {
     if (!confirm("Eliminar este empleado?")) return;
     try { await api.del("/api/empleados/" + id); fetchEmpleados(); } catch(e) { alert("Error al eliminar"); }
@@ -263,6 +286,24 @@ export const Nomina = () => {
         })}
       </div>
 
+      {editEmpId && editEmp && (
+        <div style={{position:"fixed",inset:0,zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.4)"}}>
+          <div style={{background:"#FFF",borderRadius:"16px",padding:"24px",width:"400px",boxShadow:"0 20px 60px rgba(0,0,0,0.15)"}}>
+            <h3 style={{fontSize:"16px",fontWeight:"700",color:"#111827",marginBottom:"16px"}}>Editar Empleado</h3>
+            <div style={{display:"flex",flexDirection:"column" as const,gap:"10px"}}>
+              <div><label style={{fontSize:"11px",fontWeight:"600",color:"#6B7280",display:"block",marginBottom:"4px"}}>Nombre</label><input value={editEmp.nombre} onChange={e => setEditEmp({...editEmp, nombre:e.target.value})} style={{width:"100%",padding:"8px 12px",borderRadius:"8px",border:"1px solid #E5E7EB",fontSize:"13px"}} /></div>
+              <div><label style={{fontSize:"11px",fontWeight:"600",color:"#6B7280",display:"block",marginBottom:"4px"}}>Puesto</label><input value={editEmp.puesto} onChange={e => setEditEmp({...editEmp, puesto:e.target.value})} style={{width:"100%",padding:"8px 12px",borderRadius:"8px",border:"1px solid #E5E7EB",fontSize:"13px"}} /></div>
+              <div><label style={{fontSize:"11px",fontWeight:"600",color:"#6B7280",display:"block",marginBottom:"4px"}}>Salario Mensual</label><input type="number" step="0.01" value={editEmp.salario_mensual} onChange={e => setEditEmp({...editEmp, salario_mensual:parseFloat(e.target.value)||0})} style={{width:"100%",padding:"8px 12px",borderRadius:"8px",border:"1px solid #E5E7EB",fontSize:"13px"}} /></div>
+              <div><label style={{fontSize:"11px",fontWeight:"600",color:"#6B7280",display:"block",marginBottom:"4px"}}>Fecha Ingreso</label><input type="date" value={editEmp.fecha_ingreso} onChange={e => setEditEmp({...editEmp, fecha_ingreso:e.target.value})} style={{width:"100%",padding:"8px 12px",borderRadius:"8px",border:"1px solid #E5E7EB",fontSize:"13px"}} /></div>
+            </div>
+            <div style={{display:"flex",gap:"8px",marginTop:"16px",justifyContent:"flex-end"}}>
+              <button onClick={() => {setEditEmpId(null);setEditEmp(null);}} style={{padding:"8px 16px",borderRadius:"8px",border:"1px solid #E5E7EB",background:"#FFF",fontSize:"12px",cursor:"pointer"}}>Cancelar</button>
+              <button onClick={guardarEdicionEmp} style={{padding:"8px 16px",borderRadius:"8px",border:"none",background:"#3D1C1E",color:"#C8FF00",fontSize:"12px",fontWeight:"700",cursor:"pointer"}}>Guardar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {vista === "alertas" && (
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"16px" }}>
           <div style={{ background:"#FFF", borderRadius:"14px", overflow:"hidden", boxShadow:"0 1px 3px rgba(0,0,0,0.04),0 4px 12px rgba(0,0,0,0.02)" }}>
@@ -311,6 +352,7 @@ export const Nomina = () => {
                 <span>{e.imss_registrado?<CheckCircle style={{ width:"18px", height:"18px", color:"#059669" }} />:<AlertTriangle style={{ width:"18px", height:"18px", color:"#DC2626" }} />}</span>
                 <div style={{display:"flex",alignItems:"center",gap:"8px",justifyContent:"flex-end"}}>
                 <span style={{ fontSize:"14px", fontWeight:"700", color:"#111827"}}>{formatMXN(e.salario_mensual)}</span>
+                <button onClick={(ev) => {ev.stopPropagation(); iniciarEdicionEmp(e);}} style={{border:"none",background:"none",cursor:"pointer",padding:"2px"}}><Edit2 style={{width:"14px",height:"14px",color:"#6B7280"}} /></button>
                 <button onClick={(ev) => {ev.stopPropagation(); eliminarEmpleado(e.id);}} style={{border:"none",background:"none",cursor:"pointer",padding:"2px"}}><Trash2 style={{width:"14px",height:"14px",color:"#DC2626"}} /></button>
               </div><div style={{ fontSize:"10px", color:"#9CA3AF" }}>Sem: {formatMXN(e.salario_mensual/4.33)} | Dia: {formatMXN(e.salario_mensual/30)}</div>
               </div>
