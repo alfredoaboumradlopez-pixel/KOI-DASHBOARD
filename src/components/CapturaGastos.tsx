@@ -79,6 +79,12 @@ export const CapturaGastos: React.FC = () => {
     fetchProv();
   }, []);
 
+  const [lineasGasto, setLineasGasto] = useState([{ categoria: "", descripcion: "", monto: "" }]);
+
+  const addLinea = () => setLineasGasto([...lineasGasto, { categoria: "", descripcion: "", monto: "" }]);
+  const removeLinea = (i: number) => { if (lineasGasto.length > 1) setLineasGasto(lineasGasto.filter((_,idx) => idx !== i)); };
+  const updateLinea = (i: number, field: string, value: string) => { const u = [...lineasGasto]; (u[i] as any)[field] = value; setLineasGasto(u); };
+
   const [formData, setFormData] = useState<ExpenseFormData>({
     fecha: new Date().toISOString().split('T')[0],
     proveedor: '',
@@ -140,9 +146,10 @@ export const CapturaGastos: React.FC = () => {
     e.preventDefault();
     setError(null);
     setSuccessMsg(null);
-    const amount = parseFloat(formData.total);
-    if (amount !== amount || amount <= 0) {
-      setError('El monto total debe ser un numero mayor a cero.');
+    const lineasValidas = lineasGasto.filter(l => l.categoria && parseFloat(l.monto) > 0);
+    const amount = parseFloat(formData.total) || 0;
+    if (amount <= 0 && lineasValidas.length === 0) {
+      setError('Ingresa un monto o agrega lineas de desglose.');
       return;
     }
     if (formData.proveedor === '' || formData.categoria === '') {
@@ -166,6 +173,7 @@ export const CapturaGastos: React.FC = () => {
         setOcrState('idle');
         setSuccessMsg(null);
         setFormData({ fecha: new Date().toISOString().split('T')[0], proveedor: '', categoria: '', total: '', metodoPago: 'EFECTIVO', comprobante: '', descripcion: '' });
+        setLineasGasto([{ categoria: '', descripcion: '', monto: '' }]);
       }, 2000);
     } catch (e: any) {
       setError(e.message || 'Error al guardar el gasto');
@@ -342,9 +350,9 @@ export const CapturaGastos: React.FC = () => {
                 <input type="hidden" name="proveedor_fallback" value={formData.proveedor} onChange={handleInputChange}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" required /></div>
               <div className="space-y-1">
-                <label className="text-sm font-medium text-slate-700">Categoria</label>
+                <label className="text-sm font-medium text-slate-700">Categoria (principal)</label>
                 <select name="categoria" value={formData.categoria} onChange={handleInputChange}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white" required>
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white">
                   <option value="">Selecciona</option>
                   {CATEGORIAS.map(c => <option key={c} value={c}>{c.replace(/_/g," ")}</option>)}
                 </select></div>
@@ -379,6 +387,40 @@ export const CapturaGastos: React.FC = () => {
             </div>
             {error && <div className="p-3 bg-red-50 text-red-700 text-sm rounded-lg border border-red-200">{error}</div>}
             {successMsg && <div className="p-3 bg-emerald-50 text-emerald-700 text-sm rounded-lg border border-emerald-200 flex items-center gap-2"><CheckCircle className="w-4 h-4" />{successMsg}</div>}
+            <div className="pt-4 border-t border-slate-200">
+              <div className="flex items-center justify-between mb-3">
+                <label className="text-sm font-medium text-slate-700">Desglose por categoria (si el ticket tiene multiples conceptos)</label>
+                <button type="button" onClick={addLinea} className="text-xs px-3 py-1 bg-indigo-50 text-indigo-600 rounded-lg font-medium hover:bg-indigo-100">+ Agregar linea</button>
+              </div>
+              {lineasGasto.map((l, i) => (
+                <div key={i} className="grid grid-cols-12 gap-2 mb-2 items-end">
+                  <div className="col-span-4">
+                    {i === 0 && <label className="text-xs text-slate-500">Categoria</label>}
+                    <select value={l.categoria} onChange={e => updateLinea(i, "categoria", e.target.value)} className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-sm">
+                      <option value="">Selecciona</option>
+                      {CATEGORIAS.map(c => <option key={c} value={c}>{c.replace(/_/g," ")}</option>)}
+                    </select>
+                  </div>
+                  <div className="col-span-4">
+                    {i === 0 && <label className="text-xs text-slate-500">Descripcion</label>}
+                    <input value={l.descripcion} onChange={e => updateLinea(i, "descripcion", e.target.value)} placeholder="Detalle" className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-sm" />
+                  </div>
+                  <div className="col-span-3">
+                    {i === 0 && <label className="text-xs text-slate-500">Monto $</label>}
+                    <input type="number" step="0.01" value={l.monto} onChange={e => updateLinea(i, "monto", e.target.value)} placeholder="0.00" className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-sm font-mono" />
+                  </div>
+                  <div className="col-span-1 flex justify-center">
+                    {lineasGasto.length > 1 && <button type="button" onClick={() => removeLinea(i)} className="p-1 text-red-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>}
+                  </div>
+                </div>
+              ))}
+              {lineasGasto.filter(l => parseFloat(l.monto) > 0).length > 0 && (
+                <div className="text-right text-sm mt-2 mb-3">
+                  <span className="text-slate-500">Total desglose: </span>
+                  <span className="font-bold text-slate-900 font-mono">${lineasGasto.reduce((s, l) => s + (parseFloat(l.monto) || 0), 0).toLocaleString("es-MX", {minimumFractionDigits: 2})}</span>
+                </div>
+              )}
+            </div>
             <div className="pt-4 border-t border-slate-200 flex justify-end">
               <button type="submit" disabled={saving}
                 className="px-6 py-2.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-50">
