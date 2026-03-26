@@ -162,6 +162,7 @@ class Gasto(Base):
     monto = Column(Float, nullable=False)
     metodo_pago = Column(SQLEnum(MetodoPago), nullable=False)
     comprobante_url = Column(String(500), nullable=True)
+    comprobante = Column(String(30), default="SIN_COMPROBANTE")
     descripcion = Column(String(255), nullable=True)
     estado = Column(SQLEnum(EstadoPago), default=EstadoPago.PENDIENTE)
     created_at = Column(DateTime, default=datetime.utcnow)

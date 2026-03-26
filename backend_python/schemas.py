@@ -69,11 +69,13 @@ class GastoCreate(BaseModel):
     categoria: CategoriaGasto
     monto: float = Field(gt=0)
     metodo_pago: MetodoPago
+    comprobante: Optional[str] = "SIN_COMPROBANTE"
     descripcion: Optional[str] = None
 
 class GastoResponse(GastoCreate):
     id: int
-    comprobante_url: Optional[str]
+    comprobante_url: Optional[str] = None
+    comprobante: Optional[str] = None
     estado: EstadoPago
     created_at: datetime
     model_config = ConfigDict(from_attributes=True)
