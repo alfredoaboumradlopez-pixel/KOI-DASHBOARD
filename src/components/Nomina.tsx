@@ -158,6 +158,10 @@ export const Nomina = () => {
         puesto: nuevoEmp.puesto,
         salario_base: nuevoEmp.salario_mensual,
         fecha_ingreso: nuevoEmp.fecha_ingreso,
+        rfc: nuevoEmp.rfc || null,
+        curp: nuevoEmp.curp || null,
+        numero_imss: nuevoEmp.numero_imss || null,
+        cuenta_banco: nuevoEmp.cuenta_banco || null,
       });
       fetchEmpleados();
     } catch(e) { alert("Error al guardar empleado"); }
