@@ -224,7 +224,7 @@ export const Nomina = () => {
             <div><label style={{ fontSize:'11px', fontWeight:'600', color:'#6B7280', display:'block', marginBottom:'4px' }}>Cuenta banco</label><input value={nuevoEmp.cuenta_banco} onChange={e => setNuevoEmp({...nuevoEmp, cuenta_banco:e.target.value})} style={{ width:'100%', padding:'8px 12px', borderRadius:'8px', border:'1px solid #E5E7EB', fontSize:'13px' }} placeholder='Opcional' /></div>
           </div>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:'12px', marginBottom:'12px' }}>
-            <div><label style={{ fontSize:'11px', fontWeight:'600', color:'#6B7280', display:'block', marginBottom:'4px' }}>CIF *</label><input value={nuevoEmp.cif} onChange={e => setNuevoEmp({...nuevoEmp, cif:e.target.value})} style={{ width:'100%', padding:'8px 12px', borderRadius:'8px', border:'1px solid #E5E7EB', fontSize:'13px' }} placeholder='CIF del empleado' /></div>
+            
             <div style={{ display:'flex', alignItems:'flex-end', paddingBottom:'4px' }}><div style={{ background:'#F0FDF4', borderRadius:'8px', padding:'8px 12px', width:'100%' }}><div style={{ fontSize:'10px', color:'#059669', fontWeight:'600' }}>SEMANAL</div><div style={{ fontSize:'14px', fontWeight:'800', color:'#065F46' }}>{formatMXN(nuevoEmp.salario_mensual/4.33)}</div></div></div>
             <div style={{ display:'flex', alignItems:'flex-end', paddingBottom:'4px' }}><div style={{ background:'#EFF6FF', borderRadius:'8px', padding:'8px 12px', width:'100%' }}><div style={{ fontSize:'10px', color:'#1D4ED8', fontWeight:'600' }}>DIARIO</div><div style={{ fontSize:'14px', fontWeight:'800', color:'#1E40AF' }}>{formatMXN(nuevoEmp.salario_mensual/30)}</div></div></div>
             <div style={{ display:'flex', alignItems:'flex-end', paddingBottom:'4px' }}><div style={{ background:'#FFFBEB', borderRadius:'8px', padding:'8px 12px', width:'100%' }}><div style={{ fontSize:'10px', color:'#D97706', fontWeight:'600' }}>POR HORA (8h)</div><div style={{ fontSize:'14px', fontWeight:'800', color:'#92400E' }}>{formatMXN(nuevoEmp.salario_mensual/30/8)}</div></div></div>
@@ -390,7 +390,7 @@ export const Nomina = () => {
                       <div style={{ fontSize:"13px", color:"#374151", marginBottom:"4px" }}>IMSS: <strong style={{ color:e.imss_registrado?"#059669":"#DC2626" }}>{e.imss_registrado?e.numero_imss:"NO REGISTRADO"}</strong></div>
                       <div style={{ fontSize:"13px", color:"#374151", marginBottom:"4px" }}>RFC: <strong>{e.rfc||"No registrado"}</strong></div>
                       <div style={{ fontSize:"13px", color:"#374151" }}>CURP: <strong>{e.curp||"No registrado"}</strong></div>
-                      <div style={{ fontSize:"13px", color:"#374151" }}>CIF: <strong>{e.cif||"No registrado"}</strong></div>
+                      <div style={{ fontSize:"13px", color:"#374151" }}></div>
                     </div>
                   </div>
                   <div style={{ marginTop:"16px", paddingTop:"12px", borderTop:"1px solid #E5E7EB" }}>
@@ -451,7 +451,7 @@ export const Nomina = () => {
             <div style={{ padding:"16px 20px", borderBottom:"1px solid #F3F4F6", display:"flex", alignItems:"center", gap:"8px" }}><Shield style={{ width:"16px", height:"16px", color:"#3D1C1E" }} /><span style={{ fontSize:"14px", fontWeight:"700", color:"#111827" }}>IMSS & Documentos</span></div>
             <div style={{ padding:"8px 12px" }}>
               {emps.map(e => {
-                const docs = [{l:"IMSS",ok:e.imss_registrado},{l:"RFC",ok:!!e.rfc},{l:"CURP",ok:!!e.curp},{l:"CIF",ok:!!e.cif},{l:"Cuenta",ok:!!e.cuenta_banco}];
+                const docs = [{l:"IMSS",ok:e.imss_registrado},{l:"RFC",ok:!!e.rfc},{l:"CURP",ok:!!e.curp},{l:"Cuenta",ok:!!e.cuenta_banco}];
                 const pct = Math.round((docs.filter(d=>d.ok).length/docs.length)*100);
                 return (<div key={e.id} style={{ padding:"10px 12px", borderRadius:"10px", marginBottom:"4px", background:pct<50?"#FEF2F2":"transparent" }}>
                   <div style={{ display:"flex", justifyContent:"space-between", marginBottom:"6px" }}><div style={{ fontSize:"13px", fontWeight:"600", color:"#111827" }}>{e.nombre}</div><span style={{ fontSize:"11px", fontWeight:"700", color:pct===100?"#059669":pct>=50?"#D97706":"#DC2626" }}>{pct}%</span></div>
