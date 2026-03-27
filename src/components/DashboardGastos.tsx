@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { PieChart, TrendingUp, TrendingDown, AlertTriangle, CheckCircle, DollarSign, Banknote } from "lucide-react";
 import { api } from "../services/api";
 
@@ -47,7 +47,10 @@ export const DashboardGastos = () => {
   const [anio, setAnio] = useState(2026);
   const [gastos, setGastos] = useState<any[]>([]);
   const [catDetalle, setCatDetalle] = useState<string | null>(null);
+  const detalleRef = React.useRef<HTMLDivElement>(null);
   const [ventasMes, setVentasMes] = useState(0);
+
+  useEffect(() => { if (catDetalle && detalleRef.current) detalleRef.current.scrollIntoView({ behavior: "smooth", block: "start" }); }, [catDetalle]);
 
   useEffect(() => {
     const f = async () => {
@@ -168,7 +171,7 @@ export const DashboardGastos = () => {
         const gastosCategoria = gastos.filter((g: any) => g.categoria === catDetalle);
         const totalCat = gastosCategoria.reduce((s: number, g: any) => s + (g.total || g.monto || 0), 0);
         return (
-          <div style={{background:"#FFF",borderRadius:"14px",overflow:"hidden",boxShadow:"0 1px 3px rgba(0,0,0,0.04),0 4px 12px rgba(0,0,0,0.02)",marginBottom:"24px",borderTop:"4px solid "+(catInfo?.color||"#6B7280")}}>
+          <div style={{background:"#FFF",borderRadius:"14px",overflow:"hidden",boxShadow:"0 1px 3px rgba(0,0,0,0.04),0 4px 12px rgba(0,0,0,0.02)",marginBottom:"24px",borderTop:"4px solid "+(catInfo?.color||"#6B7280")}} ref={detalleRef}>
             <div style={{padding:"16px 20px",borderBottom:"1px solid #F3F4F6",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
               <div style={{display:"flex",alignItems:"center",gap:"8px"}}>
                 <span style={{fontSize:"18px"}}>{catInfo?.emoji}</span>

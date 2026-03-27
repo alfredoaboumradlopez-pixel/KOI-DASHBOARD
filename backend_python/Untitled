@@ -1,0 +1,1 @@
+grep "catDetalle" ~/Desktop/KOI-DASHBOARD/src/components/DashboardGastos.tsx | head -3
