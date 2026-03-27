@@ -46,6 +46,7 @@ export const DashboardGastos = () => {
   const [mes, setMes] = useState(new Date().getMonth() + 1);
   const [anio, setAnio] = useState(2026);
   const [gastos, setGastos] = useState<any[]>([]);
+  const [catDetalle, setCatDetalle] = useState<string | null>(null);
   const [ventasMes, setVentasMes] = useState(0);
 
   useEffect(() => {
@@ -131,7 +132,7 @@ export const DashboardGastos = () => {
               const st = statusInfo(p, c.min, c.max);
               const StIcon = st?.icon;
               return (
-                <div key={c.cat} className="cat-card" style={{background:"#FFF",borderRadius:"14px",padding:"16px 18px",boxShadow:"0 1px 3px rgba(0,0,0,0.04),0 4px 12px rgba(0,0,0,0.02)",borderLeft:"4px solid "+c.color,animation:"slideUp 0.25s ease "+(i*0.04)+"s both"}}>
+                <div key={c.cat} className="cat-card" onClick={() => setCatDetalle(catDetalle === c.cat ? null : c.cat)} style={{background:catDetalle===c.cat?"#F9FAFB":"#FFF",borderRadius:"14px",padding:"16px 18px",boxShadow:"0 1px 3px rgba(0,0,0,0.04),0 4px 12px rgba(0,0,0,0.02)",borderLeft:"4px solid "+c.color,animation:"slideUp 0.25s ease "+(i*0.04)+"s both",cursor:"pointer"}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
                     <div style={{display:"flex",alignItems:"center",gap:"8px"}}>
                       <span style={{fontSize:"20px"}}>{c.emoji}</span>
@@ -161,6 +162,41 @@ export const DashboardGastos = () => {
           </div>
         </>
       )}
+
+      {catDetalle && (() => {
+        const catInfo = CATS.find(c => c.cat === catDetalle);
+        const gastosCategoria = gastos.filter((g: any) => g.categoria === catDetalle);
+        const totalCat = gastosCategoria.reduce((s: number, g: any) => s + (g.total || g.monto || 0), 0);
+        return (
+          <div style={{background:"#FFF",borderRadius:"14px",overflow:"hidden",boxShadow:"0 1px 3px rgba(0,0,0,0.04),0 4px 12px rgba(0,0,0,0.02)",marginBottom:"24px",borderTop:"4px solid "+(catInfo?.color||"#6B7280")}}>
+            <div style={{padding:"16px 20px",borderBottom:"1px solid #F3F4F6",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div style={{display:"flex",alignItems:"center",gap:"8px"}}>
+                <span style={{fontSize:"18px"}}>{catInfo?.emoji}</span>
+                <span style={{fontSize:"15px",fontWeight:"700",color:"#111827"}}>{catInfo?.label}</span>
+                <span style={{fontSize:"11px",padding:"2px 8px",borderRadius:"10px",background:"#F3F4F6",color:"#6B7280"}}>{gastosCategoria.length} gasto{gastosCategoria.length !== 1 ? "s" : ""}</span>
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:"12px"}}>
+                <span style={{fontSize:"16px",fontWeight:"800",color:"#111827"}}>{formatMXN(totalCat)}</span>
+                <button onClick={() => setCatDetalle(null)} style={{border:"none",background:"#F3F4F6",borderRadius:"6px",padding:"4px 10px",fontSize:"11px",cursor:"pointer",color:"#6B7280"}}>Cerrar</button>
+              </div>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"90px 1fr 100px 100px 90px",padding:"8px 20px",borderBottom:"1px solid #F3F4F6",background:"#FAFBFC"}}>
+              {["Fecha","Proveedor","Monto","Metodo","Comprobante"].map(h => <span key={h} style={{fontSize:"10px",fontWeight:"700",color:"#9CA3AF",textTransform:"uppercase" as const}}>{h}</span>)}
+            </div>
+            {gastosCategoria.length === 0 ? (
+              <div style={{padding:"24px",textAlign:"center" as const}}><p style={{fontSize:"12px",color:"#9CA3AF"}}>Sin gastos en esta categoria</p></div>
+            ) : gastosCategoria.sort((a: any, b: any) => (b.fecha||"").localeCompare(a.fecha||"")).map((g: any) => (
+              <div key={g.id} style={{display:"grid",gridTemplateColumns:"90px 1fr 100px 100px 90px",padding:"10px 20px",borderBottom:"1px solid #F9FAFB",alignItems:"center"}}>
+                <span style={{fontSize:"12px",color:"#374151"}}>{g.fecha}</span>
+                <div><span style={{fontSize:"13px",fontWeight:"600",color:"#111827"}}>{g.proveedor}</span>{g.descripcion && <div style={{fontSize:"11px",color:"#9CA3AF"}}>{g.descripcion}</div>}</div>
+                <span style={{fontSize:"13px",fontWeight:"700",color:"#111827"}}>{formatMXN(g.total||g.monto||0)}</span>
+                <span style={{fontSize:"11px",color:"#6B7280"}}>{(g.metodo_pago||"").replace(/_/g," ")}</span>
+                <span style={{fontSize:"10px",padding:"2px 6px",borderRadius:"4px",background:"#FDF4FF",color:"#7E22CE"}}>{(g.comprobante||"").replace(/_/g," ")}</span>
+              </div>
+            ))}
+          </div>
+        );
+      })()}
 
       {catsSinGasto.length > 0 && (
         <>
