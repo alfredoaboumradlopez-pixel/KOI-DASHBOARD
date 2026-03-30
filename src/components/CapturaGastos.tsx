@@ -26,6 +26,42 @@ export const CapturaGastos: React.FC = () => {
 
   const [gastosLista, setGastosLista] = useState<any[]>([]);
   const [showNuevoGasto, setShowNuevoGasto] = useState(false);
+  const [gastoRapido, setGastoRapido] = useState(false);
+  const [rapidoProv, setRapidoProv] = useState<any>(null);
+  const [rapidoMonto, setRapidoMonto] = useState("");
+  const [rapidoDesc, setRapidoDesc] = useState("");
+  const [rapidoComprobante, setRapidoComprobante] = useState("SIN_COMPROBANTE");
+  const [rapidoMetodo, setRapidoMetodo] = useState("EFECTIVO");
+  const [rapidoCategoria, setRapidoCategoria] = useState("");
+  const [rapidoSaving, setRapidoSaving] = useState(false);
+  const [rapidoSuccess, setRapidoSuccess] = useState(false);
+
+  const selectRapidoProv = (p: any) => {
+    setRapidoProv(p);
+    setRapidoCategoria(p.categoria_default || "OTROS");
+  };
+
+  const guardarRapido = async () => {
+    if (!rapidoProv || !rapidoMonto || parseFloat(rapidoMonto) <= 0) return;
+    setRapidoSaving(true);
+    try {
+      await api.post("/api/gastos", {
+        fecha: new Date().toISOString().split("T")[0],
+        proveedor: rapidoProv.nombre,
+        categoria: rapidoCategoria,
+        monto: parseFloat(rapidoMonto),
+        metodo_pago: rapidoMetodo,
+        comprobante: rapidoComprobante,
+        descripcion: rapidoDesc || null,
+      });
+      setRapidoSuccess(true);
+      setRapidoMonto("");
+      setRapidoDesc("");
+      setTimeout(() => { setRapidoSuccess(false); }, 2000);
+      fetchGastos();
+    } catch(e) { alert("Error al guardar"); }
+    setRapidoSaving(false);
+  };
   const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set());
   const toggleDate = (fecha: string) => { setExpandedDates(prev => { const n = new Set(prev); n.has(fecha) ? n.delete(fecha) : n.add(fecha); return n; }); };
 
@@ -206,13 +242,14 @@ export const CapturaGastos: React.FC = () => {
       </div>
 
       {tabGastos === "proveedores" && <CuentasPorPagar />}
-      {tabGastos === "gastos" && !showNuevoGasto && (
+      {tabGastos === "gastos" && !showNuevoGasto && !gastoRapido && (
         <div style={{background:"#FFF",borderRadius:"14px",overflow:"hidden",boxShadow:"0 1px 3px rgba(0,0,0,0.04),0 4px 12px rgba(0,0,0,0.02)"}}>
           <div style={{padding:"16px 24px",borderBottom:"1px solid #F3F4F6",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <span style={{fontSize:"14px",fontWeight:"700",color:"#111827"}}>Gastos Registrados ({gastosLista.length})</span>
             <div style={{display:"flex",gap:"8px"}}>
               <button onClick={fetchGastos} style={{padding:"6px 12px",borderRadius:"8px",border:"1px solid #E5E7EB",background:"#FFF",fontSize:"12px",color:"#6B7280",cursor:"pointer"}}>Actualizar</button>
-              <button onClick={() => setShowNuevoGasto(true)} style={{padding:"6px 14px",borderRadius:"8px",border:"none",background:"#3D1C1E",color:"#C8FF00",fontSize:"12px",fontWeight:"700",cursor:"pointer"}}>+ Nuevo Gasto</button>
+              <button onClick={() => { setGastoRapido(true); setShowNuevoGasto(false); setRapidoProv(null); }} style={{padding:"6px 14px",borderRadius:"8px",border:"none",background:"#059669",color:"#FFF",fontSize:"12px",fontWeight:"700",cursor:"pointer"}}>⚡ Gasto Rapido</button>
+              <button onClick={() => { setShowNuevoGasto(true); setGastoRapido(false); }} style={{padding:"6px 14px",borderRadius:"8px",border:"none",background:"#3D1C1E",color:"#C8FF00",fontSize:"12px",fontWeight:"700",cursor:"pointer"}}>+ Manual</button>
             </div>
           </div>
           
@@ -278,6 +315,69 @@ export const CapturaGastos: React.FC = () => {
           )}
         </div>
       )}
+      {tabGastos === "gastos" && gastoRapido && (
+        <div>
+          <div style={{marginBottom:"12px"}}>
+            <button onClick={() => { setGastoRapido(false); fetchGastos(); }} style={{padding:"8px 16px",borderRadius:"8px",border:"1px solid #E5E7EB",ckground:"#FFF",fontSize:"12px",color:"#6B7280",cursor:"pointer"}}>← Volver a lista</button>
+          </div>
+          <div style={{background:"#FFF",borderRadius:"14px",padding:"20px",boxShadow:"0 1px 3px rgba(0,0,0,0.04),0 4px 12px rgba(0,0,0,0.02)"}}>
+            <h3 style={{fontSize:"16px",fontWeight:"700",color:"#111827",marginBottom:"4px"}}>⚡ Gasto Rapido</h3>
+            <p style={{fontSize:"12px",color:"#9CA3AF",marginBottom:"16px"}}>Selecciona proveedor → se auto-llena la categoria → solo pon monto y descripcion</p>
+
+            {!rapidoProv ? (
+              <div>
+                <p style={{fontSize:"13px",fontWeight:"600",color:"#374151",marginBottom:"10px"}}>Selecciona proveedor:</p>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:"8px"}}>
+                  {proveedores.map((p: any) => (
+                    <button key={p.id} onClick={() => selectRapidoProv(p)} style={{padding:"14px 12px",borderRadius:"10px",border:"2px solid #F3F4F6",background:"#FFF:"pointer",textAlign:"left" as const,transition:"all 0.15s"}}>
+                      <div style={{fontSize:"14px",fontWeight:"700",color:"#111827"}}>{p.nombre}</div>
+                      <div style={{fontSize:"11px",color:"#9CA3AF",marginTop:"2px"}}>{(p.categoria_default||"").replace(/_/g," ")}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"16px",padding:"12px 16px",borderRadius:"10px",background:"#F0FDF4",border:"2px solid #059669"}}>
+                  <div>
+                    <span style={{fontSize:"16px",fontWeight:"800",color:"#059669"}}>{rapidoProv.nombre}</span>
+                    <span style={{fontSize:"12px",color:"#6B7280",marginLeft:"12px"}}>{(rapidoCategoria||"").replace(/_/g," ")}</span>
+                  </div>
+                  <button onClick={() => setRapidoProv(null)} style={{fontSize:"11px",color:"#059669",border:"none",background:"none",cursor:"pointer",fontWeight:"700"}}>Cambiar</button>
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"10px",marginBottom:"12px"}}>
+                  <div>
+                    <label style={{fontSize:"11px",fontWeight:"600",color:"#6B7280",display:"block",marginBottom:"4px"}}>Monto $ *</label>
+                    <input type="number" step="0.01" value={rapidoMonto} onChange={e => setRapidoMonto(e.target.value)} onKeyDown={e => e.key === "Enter" && guardarRapido()} placeholder="0.00" autoFocus style={{width:"100%",padding:"10px 12px",borderRadius:"8px",border:"1px solid #E5E7EB",fontSize:"16px",fontWeight:"700"}} />
+                  </div>
+                  <div>
+                    <label style={{fontSize:"11px",fontWeight:"600",color:"#6B7280",display:"block",marginBottom:"4px"}}>Descripcion</label>
+                    <input value={rapidoDesc} onChange={e => setRapidoDesc(e.target.value)} onKeyDown={e => e.key === "Enter" && guardarRapido()} placeholder="Detalle del gasto" style={{width:"100%",padding:"10px 12px",borderRadius:"8px",border:"1px solid #E5E7EB",fontSize:"13px"}} />
+                  </div>
+                  <div>
+                    <label style={{fontSize:"11px",fontWeight:"600",color:"#6B7280",display:"block",marginBottom:"4px"}}>Metodo</label>
+                    <select value={rapidoMetodo} onChange={e => setRapidoMetodo(e.target.value)} style={{width:"100%",padding:"10px 12px",borderRadius:"8px",border:"1px solid #E5E7EB",fontSize:"13px"}}>
+                      <option value="EFECTIVO">Efectivo</option><option value="TRANSFERENCIA">Transferencia</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{fontSize:"11px",fontWeight:"600",color:"#6B7280",display:"block",marginBottom:"4px"}}>Comprobante</label>
+                    <select value={rapidoComprobante} onChange={e => setRapidoComprobante(e.target.value)} style={{width:"100%",padding:"10px 12px",borderRadius:"8px",border:"1px solid #E5E7EB",fontSize:"13px"}}>
+                      <option value="SIN_COMPROBANTE">Sin comprobante</option><option value="FACTURA">Factura</option><option value="TICKET">Ticket</option><option value="VALE">Vale</option><option value="TRANSFERENCIA">Transferencia</option><option value="NOTA_REMISION">Nota de Remision</option><option value="RECIBO">Recibo</option>
+                    </select>
+                  </div>
+                </div>
+                <div style={{display:"flex",alignItems:"center",gap:"12px"}}>
+                  <button onClick={guardarRapido} disabled={rapidoSaving || !rapidoMonto} style={{padding:"12px 24px",borderRadius:"10px",border:"none",background:rapidoSaving?"#9CA3AF":"#059669",color:"#FFF",fontSize:"14px",fontWeight:"700",cursor:"pointer"}}>{rapidoSaving ? "Guardando..." : "Guardar Gasto"}</button>
+                  {rapidoSuccess && <span style={{fontSize:"13px",color:"#059669",fontWeight:"600"}}>✓ Guardo!</span>}
+                  <span style={{fontSize:"12px",color:"#9CA3AF",marginLeft:"auto"}}>Tip: Enter para guardar rapido</span>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {tabGastos === "gastos" && showNuevoGasto && (
       <>
         <div style={{marginBottom:"12px"}}>
