@@ -156,10 +156,13 @@ def crear_cierre_turno(cierre: schemas.CierreTurnoCreate, db: Session = Depends(
     existing = db.query(models.CierreTurno).filter(models.CierreTurno.fecha == cierre.fecha).first()
     if existing:
         raise HTTPException(status_code=400, detail=f"Ya existe un cierre para {cierre.fecha}")
+    total_venta = cierre.ventas_efectivo + cierre.ventas_parrot + cierre.ventas_terminales + cierre.ventas_uber + cierre.ventas_rappi + cierre.cortesias + cierre.otros_ingresos
+    total_propinas_canales = cierre.propinas_efectivo + cierre.propinas_parrot + cierre.propinas_terminales
+    total_con_propina = total_venta + total_propinas_canales
     total_gastos_items = sum(g.monto for g in cierre.gastos)
     total_propinas = sum(p.monto for p in cierre.propinas)
     total_gastos = total_gastos_items + total_propinas
-    saldo_final_esperado = cierre.saldo_inicial + cierre.ventas_efectivo - total_gastos
+    saldo_final_esperado = cierre.saldo_inicial + cierre.ventas_efectivo + cierre.propinas_efectivo - total_gastos
     diferencia = None
     estado = None
     if cierre.efectivo_fisico is not None:
