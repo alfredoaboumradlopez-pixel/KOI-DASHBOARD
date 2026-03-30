@@ -129,7 +129,7 @@ export const CierreTurno: React.FC = () => {
 
               {/* Efectivo */}
               <div style={{background:"#FFF",padding:"10px 14px",display:"flex",alignItems:"center"}}><span style={{fontSize:"13px",fontWeight:"600"}}>💵 Efectivo</span></div>
-              <div style={{background:"#FFF",padding:"6px 10px"}}><input type="number" step="0.01" value={ventasEfectivo} onChange={e => setVentasEfectivo(e.target.valu} placeholder="0.00" style={{...inputStyle,border:"1px solid #E5E7EB"}} /></div>
+              <div style={{background:"#FFF",padding:"6px 10px"}}><input type="number" step="0.01" value={ventasEfectivo} onChange={e => setVentasEfectivo(e.target.value} placeholder="0.00" style={{...inputStyle,border:"1px solid #E5E7EB"}} /></div>
               <div style={{background:"#FFF",padding:"6px 10px"}}><input type="number" step="0.01" value={propinasEfectivo} onChange={e => setPropinasEfectivo(e.target.value)} placeholder="0.00" style={{...inputStyle,border:"1px solid #E5E7EB"}} /></div>
 
               {/* Parrot Pay */}
