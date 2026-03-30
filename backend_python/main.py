@@ -173,6 +173,18 @@ def crear_cierre_turno(cierre: schemas.CierreTurnoCreate, db: Session = Depends(
     db_cierre = models.CierreTurno(
         fecha=cierre.fecha, responsable=cierre.responsable, elaborado_por=cierre.elaborado_por,
         saldo_inicial=cierre.saldo_inicial, ventas_efectivo=cierre.ventas_efectivo,
+        propinas_efectivo=cierre.propinas_efectivo,
+        ventas_parrot=cierre.ventas_parrot,
+        propinas_parrot=cierre.propinas_parrot,
+        ventas_terminales=cierre.ventas_terminales,
+        propinas_terminales=cierre.propinas_terminales,
+        ventas_uber=cierre.ventas_uber,
+        ventas_rappi=cierre.ventas_rappi,
+        cortesias=cierre.cortesias,
+        otros_ingresos=cierre.otros_ingresos,
+        total_venta=total_venta,
+        total_con_propina=total_con_propina,
+        semana_numero=cierre.semana_numero,
         total_gastos=total_gastos, saldo_final_esperado=saldo_final_esperado,
         efectivo_fisico=cierre.efectivo_fisico, diferencia=diferencia, estado=estado, notas=cierre.notas,
     )

@@ -37,7 +37,17 @@ class CierreTurnoCreate(BaseModel):
     elaborado_por: str
     saldo_inicial: float
     ventas_efectivo: float = 0.0
-    gastos: List[GastoDiarioCreate]
+    propinas_efectivo: float = 0.0
+    ventas_parrot: float = 0.0
+    propinas_parrot: float = 0.0
+    ventas_terminales: float = 0.0
+    propinas_terminales: float = 0.0
+    ventas_uber: float = 0.0
+    ventas_rappi: float = 0.0
+    cortesias: float = 0.0
+    otros_ingresos: float = 0.0
+    semana_numero: int = 0
+    gastos: List[GastoDiarioCreate] = []
     propinas: List[PropinaDiariaCreate] = []
     efectivo_fisico: Optional[float] = None
     notas: Optional[str] = None
@@ -49,6 +59,18 @@ class CierreTurnoResponse(BaseModel):
     elaborado_por: str
     saldo_inicial: float
     ventas_efectivo: float
+    propinas_efectivo: Optional[float] = 0.0
+    ventas_parrot: Optional[float] = 0.0
+    propinas_parrot: Optional[float] = 0.0
+    ventas_terminales: Optional[float] = 0.0
+    propinas_terminales: Optional[float] = 0.0
+    ventas_uber: Optional[float] = 0.0
+    ventas_rappi: Optional[float] = 0.0
+    cortesias: Optional[float] = 0.0
+    otros_ingresos: Optional[float] = 0.0
+    total_venta: Optional[float] = 0.0
+    total_con_propina: Optional[float] = 0.0
+    semana_numero: Optional[int] = 0
     total_gastos: float
     saldo_final_esperado: float
     efectivo_fisico: Optional[float]
