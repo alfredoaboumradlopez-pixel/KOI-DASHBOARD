@@ -145,7 +145,7 @@ export const CierreTurno: React.FC = () => {
               {/* Uber Eats */}
               <div style={{background:"#FAFBFC",padding:"10px 14px",display:"flex",alignItems:"center"}}><span style={{fontSize:"13px",fontWeight:"600"}}>🟢 Uber Eats</span></div>
               <div style={{background:"#FAFBFC",padding:"6px 10px"}}><input type="number" step="0.01" value={ventasUber} onChange={e => setVentasUber(e.target.value)} placeholder="0.00" style={{...inputStyle,border:"1px solid #E5E7EB"}} /></div>
-              <div style={{background:"#FAFBFC",padding:"6px 10px",displa"flex",alignItems:"center"}}><span style={{fontSize:"11px",color:"#9CA3AF"}}>N/A</span></div>
+              <div style={{background:"#FAFBFC",padding:"6px 10px",display:"flex",alignItems:"center"}}><span style={{fontSize:"11px",color:"#9CA3AF"}}>N/A</span></div>
 
               {/* Rappi */}
               <div style={{background:"#FFF",padding:"10px 14px",display:"flex",alignItems:"center"}}><span style={{fontSize:"13px",fontWeight:"600"}}>🧡 Rappi</span></div>
@@ -154,7 +154,7 @@ export const CierreTurno: React.FC = () => {
 
               {/* Cortesias */}
               <div style={{background:"#FAFBFC",padding:"10px 14px",display:"flex",alignItems:"center"}}><span style={{fontSize:"13px",fontWeight:"600"}}>🎁 Cortesias</span></div>
-              <div style={{background:"#FAFBFC",padding:"6px 10px"}}><input type="number" step="0.value={cortesias} onChange={e => setCortesias(e.target.value)} placeholder="0.00" style={{...inputStyle,border:"1px solid #E5E7EB"}} /></div>
+              <div style={{background:"#FAFBFC",padding:"6px 10px"}}><input type="number" step="0.01" value={cortesias} onChange={e => setCortesias(e.target.value)} placeholder="0.00" style={{...inputStyle,border:"1px solid #E5E7EB"}} /></div>
               <div style={{background:"#FAFBFC",padding:"6px 10px",display:"flex",alignItems:"center"}}><span style={{fontSize:"11px",color:"#9CA3AF"}}>N/A</span></div>
 
               {/* Otros */}
@@ -165,7 +165,7 @@ export const CierreTurno: React.FC = () => {
           </div>
 
           {/* TOTALES */}
-          <div style{background:"#3D1C1E",borderRadius:"14px",padding:"20px",display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:"20px"}}>
+          <div style={{background:"#3D1C1E",borderRadius:"14px",padding:"20px",display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:"20px"}}>
             <div><span style={{fontSize:"11px",color:"rgba(255,255,255,0.5)"}}>TOTAL VENTA</span><div style={{fontSize:"24px",fontWeight:"900",color:"#C8FF00",marginTop:"4px"}}>{formatMXN(totalVenta)}</div></div>
             <div><span style={{fontSize:"11px",color:"rgba(255,255,255,0.5)"}}>TOTAL PROPINAS</span><div style={{fontSize:"24px",fontWeight:"900",color:"#FFF",marginTop:"4px"}}>{formatMXN(totalPropinas)}</div></div>
             <div><span style={{fontSize:"11px",color:"rgba(255,255,255,0.5)"}}>TOTAL CON PROPINA</span><div style={{fontSize:"24px",fontWeight:"900",color:"#C8FF00",marginTop:"4px"}}>{formatMXN(totalConPropina)}</div></div>
