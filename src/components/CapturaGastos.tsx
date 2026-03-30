@@ -329,7 +329,7 @@ export const CapturaGastos: React.FC = () => {
                 <p style={{fontSize:"13px",fontWeight:"600",color:"#374151",marginBottom:"10px"}}>Selecciona proveedor:</p>
                 <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:"8px"}}>
                   {proveedores.map((p: any) => (
-                    <button key={p.id} onClick={() => selectRapidoProv(p)} style={{padding:"14px 12px",borderRadius:"10px",border:"2px solid #F3F4F6",background:"#FFF:"pointer",textAlign:"left" as const,transition:"all 0.15s"}}>
+                    <button key={p.id} onClick={() => selectRapidoProv(p)} style={{padding:"14px 12px",borderRadius:"10px",border:"2px solid #F3F4F6",background:"#FFF",cursor:"pointer",textAlign:"left" as const,transition:"all 0.15s"}}>
                       <div style={{fontSize:"14px",fontWeight:"700",color:"#111827"}}>{p.nombre}</div>
                       <div style={{fontSize:"11px",color:"#9CA3AF",marginTop:"2px"}}>{(p.categoria_default||"").replace(/_/g," ")}</div>
                     </button>
