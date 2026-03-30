@@ -128,37 +128,37 @@ export const CierreTurno: React.FC = () => {
               <div style={{background:"#3D1C1E",padding:"8px 14px"}}><span style={{fontSize:"11px",fontWeight:"700",color:"#C8FF00"}}>PROPINA $</span></div>
 
               {/* Efectivo */}
-              <div style={{background:"#FFF",padding:"10px 14px",display:"flex",alignItems:"center"}}><span style={{fontSize:"13px",fontWeight:"600"}}>Efectivo</span></div>
+              <div style={{background:"#FFF",padding:"10px 14px",display:"flex",alignItems:"center"}}><span style={{fontSize:"13px",fontWeight:"700",color:"#111827"}}>Efectivo</span></div>
               <div style={{background:"#FFF",padding:"6px 10px"}}><input type="number" step="0.01" value={ventasEfectivo} onChange={e => setVentasEfectivo(e.target.value)} placeholder="0.00" style={{...inputStyle,border:"1px solid #E5E7EB"}} /></div>
               <div style={{background:"#FFF",padding:"6px 10px"}}><input type="number" step="0.01" value={propinasEfectivo} onChange={e => setPropinasEfectivo(e.target.value)} placeholder="0.00" style={{...inputStyle,border:"1px solid #E5E7EB"}} /></div>
 
               {/* Parrot Pay */}
-              <div style={{background:"#FAFBFC",padding:"10px 14px",display:"flex",alignItems:"center"}}><span style={{fontSize:"13px",fontWeight:"600"}}>Parrot Pay</span></div>
+              <div style={{background:"#FAFBFC",padding:"10px 14px",display:"flex",alignItems:"center"}}><span style={{fontSize:"13px",fontWeight:"700",color:"#111827"}}>Parrot Pay</span></div>
               <div style={{background:"#FAFBFC",padding:"6px 10px"}}><input type="number" step="0.01" value={ventasParrot} onChange={e => setVentasParrot(e.target.value)} placeholder="0.00" style={{...inputStyle,border:"1px solid #E5E7EB"}} /></div>
               <div style={{background:"#FAFBFC",padding:"6px 10px"}}><input type="number" step="0.01" value={propinasParrot} onChange={e => setPropinasParrot(e.target.value)} placeholder="0.00" style={{...inputStyle,borr:"1px solid #E5E7EB"}} /></div>
 
               {/* Terminales */}
-              <div style={{background:"#FFF",padding:"10px 14px",display:"flex",alignItems:"center"}}><span style={{fontSize:"13px",fontWeight:"600"}}>Terminales</span></div>
+              <div style={{background:"#FFF",padding:"10px 14px",display:"flex",alignItems:"center"}}><span style={{fontSize:"13px",fontWeight:"700",color:"#111827"}}>Terminales</span></div>
               <div sle={{background:"#FFF",padding:"6px 10px"}}><input type="number" step="0.01" value={ventasTerminales} onChange={e => setVentasTerminales(e.target.value)} placeholder="0.00" style={{...inputStyle,border:"1px solid #E5E7EB"}} /></div>
               <div style={{background:"#FFF",padding:"6px 10px"}}><input type="number" step="0.01" value={propinasTerminales} onChange={e => setPropinasTerminales(e.target.value)} placeholder="0.00" style={{...inputStyle,border:"1px solid #E5E7EB"}} /></div>
 
               {/* Uber Eats */}
-              <div style={{background:"#FAFBFC",padding:"10px 14px",display:"flex",alignItems:"center"}}><span style={{fontSize:"13px",fontWeight:"600"}}>Uber Eats</span></div>
+              <div style={{background:"#FAFBFC",padding:"10px 14px",display:"flex",alignItems:"center"}}><span style={{fontSize:"13px",fontWeight:"700",color:"#111827"}}>Uber Eats</span></div>
               <div style={{background:"#FAFBFC",padding:"6px 10px"}}><input type="number" step="0.01" value={ventasUber} onChange={e => setVentasUber(e.target.value)} placeholder="0.00" style={{...inputStyle,border:"1px solid #E5E7EB"}} /></div>
               <div style={{background:"#FAFBFC",padding:"6px 10px",display:"flex",alignItems:"center"}}><span style={{fontSize:"11px",color:"#9CA3AF"}}>N/A</span></div>
 
               {/* Rappi */}
-              <div style={{background:"#FFF",padding:"10px 14px",display:"flex",alignItems:"center"}}><span style={{fontSize:"13px",fontWeight:"600"}}>Rappi</span></div>
+              <div style={{background:"#FFF",padding:"10px 14px",display:"flex",alignItems:"center"}}><span style={{fontSize:"13px",fontWeight:"700",color:"#111827"}}>Rappi</span></div>
               <div style={{background:"#FFF",padding:"6px 10px"}}><input type="number" step="0.01" value={ventasRappi} onChange={e => setVentasRappi(e.target.value)} placeholder="0.00" style={{...inputStyle,border:"1px solid #E5E7EB"}} /></div>
               <div style={{background:"#FFF",padding:"6px 10px",display:"flex",alignItems:"center"}}><span style={{fontSize:"11px",color:"#9CA3AF"}}>N/A</span></div>
 
               {/* Cortesias */}
-              <div style={{background:"#FAFBFC",padding:"10px 14px",display:"flex",alignItems:"center"}}><span style={{fontSize:"13px",fontWeight:"600"}}>Cortesias</span></div>
+              <div style={{background:"#FAFBFC",padding:"10px 14px",display:"flex",alignItems:"center"}}><span style={{fontSize:"13px",fontWeight:"700",color:"#111827"}}>Cortesias</span></div>
               <div style={{background:"#FAFBFC",padding:"6px 10px"}}><input type="number" step="0.01" value={cortesias} onChange={e => setCortesias(e.target.value)} placeholder="0.00" style={{...inputStyle,border:"1px solid #E5E7EB"}} /></div>
               <div style={{background:"#FAFBFC",padding:"6px 10px",display:"flex",alignItems:"center"}}><span style={{fontSize:"11px",color:"#9CA3AF"}}>N/A</span></div>
 
               {/* Otros */}
-              <div style={{background:"#FFF",padding:"10px 14px",display:"flex",alignItems:"center"}}><span style={{fontSize:"13px",fontWeight:"600"}}>Otros Ingresos</span></div>
+              <div style={{background:"#FFF",padding:"10px 14px",display:"flex",alignItems:"center"}}><span style={{fontSize:"13px",fontWeight:"700",color:"#111827"}}>Otros Ingresos</span></div>
               <div style={{background:"#FFF",padding:"6px 10px"}}><input type="number" step="0.01" value={otrosIngresos} onChange={e => setOtrosIngresos(e.target.value)} placeholder="0.00" style={{...inputStyle,border:"1px solid #E5E7EB"}} /></div>
               <div style={{background:"#FFF",padding:"6px 10px",display:"flex",alignItems:"center"}}><span style={{fontSize:"11px",color:"#9CA3AF"}}>N/A</span></div>
             </div>
