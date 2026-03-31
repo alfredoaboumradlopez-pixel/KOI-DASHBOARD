@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Layout } from "./components/Layout";
-import { ArrowUpRight, ArrowDownRight, DollarSign, Activity, TrendingUp, Loader2, BarChart3 } from "lucide-react";
+import { ArrowUpRight, ArrowDownRight, DollarSign, Activity, TrendingUp, Loader2, BarChart3, Calendar, Banknote } from "lucide-react";
 import { useStore } from "./store/useStore";
 import { CapturaGastos } from "./components/CapturaGastos";
 import { ArqueoCaja } from "./components/ArqueoCaja";
