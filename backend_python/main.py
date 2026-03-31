@@ -355,7 +355,7 @@ async def ocr_gasto(file: UploadFile = File(...)):
     mime_map = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".pdf": "application/pdf"}
     ext = os.path.splitext(file.filename or "")[1].lower()
     mime_type = mime_map.get(ext, "image/jpeg")
-    model = genai.GenerativeModel("gemini-1.5-flash-latest")
+    model = genai.GenerativeModel("gemini-1.5-flash")
     prompt = """Analiza esta imagen de un ticket o factura de un restaurante en Mexico.
 Extrae la siguiente informacion y responde SOLO en formato JSON:
 {"fecha": "YYYY-MM-DD", "proveedor": "nombre", "categoria": "una de: PROTEINA, VEGETALES_FRUTAS, ABARROTES, BEBIDAS, PRODUCTOS_ASIATICOS, DESECHABLES_EMPAQUES, LIMPIEZA_MANTTO, UTENSILIOS, PERSONAL, PROPINAS, SERVICIOS, EQUIPO, MARKETING, PAPELERIA, RENTA, LUZ, SOFTWARE, COMISIONES_BANCARIAS, IMPUESTOS, NOMINA, COMISIONES_PLATAFORMAS, OTROS", "total": 0.00, "descripcion": "breve", "confianza": 0.0}
