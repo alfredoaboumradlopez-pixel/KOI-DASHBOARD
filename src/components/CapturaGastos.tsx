@@ -33,6 +33,7 @@ export const CapturaGastos: React.FC = () => {
   const [rapidoComprobante, setRapidoComprobante] = useState("SIN_COMPROBANTE");
   const [rapidoMetodo, setRapidoMetodo] = useState("EFECTIVO");
   const [rapidoCategoria, setRapidoCategoria] = useState("");
+  const [rapidoFecha, setRapidoFecha] = useState(new Date().toISOString().split("T")[0]);
   const [rapidoSaving, setRapidoSaving] = useState(false);
   const [rapidoSuccess, setRapidoSuccess] = useState(false);
 
@@ -46,7 +47,7 @@ export const CapturaGastos: React.FC = () => {
     setRapidoSaving(true);
     try {
       await api.post("/api/gastos", {
-        fecha: new Date().toISOString().split("T")[0],
+        fecha: rapidoFecha,
         proveedor: rapidoProv.nombre,
         categoria: rapidoCategoria,
         monto: parseFloat(rapidoMonto),
@@ -345,7 +346,11 @@ export const CapturaGastos: React.FC = () => {
                   </div>
                   <button onClick={() => setRapidoProv(null)} style={{fontSize:"11px",color:"#059669",border:"none",background:"none",cursor:"pointer",fontWeight:"700"}}>Cambiar</button>
                 </div>
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"10px",marginBottom:"12px"}}>
+                <div style={{display:"grid",gridTemplateColumns:"120px 1fr 1fr 1fr 1fr",gap:"10px",marginBottom:"12px"}}>
+                  <div>
+                    <label style={{fontSize:"11px",fontWeight:"600",color:"#6B7280",display:"block",marginBottom:"4px"}}>Fecha</label>
+                    <input type="date" value={rapidoFecha} onChange={e => setRapidoFecha(e.target.value)} style={{width:"100%",padding:"10px 12px",borderRadius:"8px",border:"1px solid #E5E7EB",fontSize:"13px"}} />
+                  </div>
                   <div>
                     <label style={{fontSize:"11px",fontWeight:"600",color:"#6B7280",display:"block",marginBottom:"4px"}}>Monto $ *</label>
                     <input type="number" step="0.01" value={rapidoMonto} onChange={e => setRapidoMonto(e.target.value)} onKeyDown={e => e.key === "Enter" && guardarRapido()} placeholder="0.00" autoFocus style={{width:"100%",padding:"10px 12px",borderRadius:"8px",border:"1px solid #E5E7EB",fontSize:"16px",fontWeight:"700"}} />
