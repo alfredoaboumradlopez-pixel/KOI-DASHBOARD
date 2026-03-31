@@ -664,6 +664,39 @@ def editar_empleado(emp_id: int, emp: schemas.EmpleadoCreate, db: Session = Depe
     db.refresh(existing)
     return existing
 
+
+@app.get("/api/dashboard/ventas-mes")
+def ventas_mes_desde_cierres(mes: int = None, anio: int = None, db: Session = Depends(get_db)):
+    from datetime import date as dt
+    if not mes:
+        mes = dt.today().month
+    if not anio:
+        anio = dt.today().year
+    cierres = db.query(models.CierreTurno).filter(
+        extract("month", models.CierreTurno.fecha) == mes,
+        extract("year", models.CierreTurno.fecha) == anio
+    ).all()
+    total_venta = sum((c.total_venta or 0) for c in cierres)
+    total_propinas = sum((c.total_con_propina or 0) - (c.total_venta or 0) for c in cierres)
+    total_efectivo = sum((c.ventas_efectivo or 0) for c in cierres)
+    total_parrot = sum((c.ventas_parrot or 0) for c in cierres)
+    total_terminales = sum((c.ventas_terminales or 0) for c in cierres)
+    total_uber = sum((c.ventas_uber or 0) for c in cierres)
+    total_rappi = sum((c.ventas_rappi or 0) for c in cierres)
+    total_cortesias = sum((c.cortesias or 0) for c in cierres)
+    total_otros = sum((c.otros_ingresos or 0) for c in cierres)
+    dias = [{"fecha": str(c.fecha), "total_venta": c.total_venta or 0, "total_con_propina": c.total_con_propina or 0} for c in cierres]
+    return {
+        "mes": mes, "anio": anio, "dias_registrados": len(cierres),
+        "total_venta": total_venta, "total_propinas": total_propinas,
+        "total_con_propina": total_venta + total_propinas,
+        "por_canal": {
+            "efectivo": total_efectivo, "parrot": total_parrot, "terminales": total_terminales,
+            "uber": total_uber, "rappi": total_rappi, "cortesias": total_cortesias, "otros": total_otros
+        },
+        "dias": dias
+    }
+
 # Servir frontend en produccion
 frontend_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "dist")
 if os.path.exists(frontend_path):
