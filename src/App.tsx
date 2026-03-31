@@ -137,4 +137,26 @@ function Dashboard() {
 }
 
 
+function App() {
+  const { currentRoute } = useStore();
+  return (
+    <Layout>
+      {currentRoute === "/" && <Dashboard />}
+      {currentRoute === "/cierre-turno" && <CierreTurno />}
+      {currentRoute === "/gastos" && <CapturaGastos />}
+      {currentRoute === "/arqueo" && <ArqueoCaja />}
+      {currentRoute === "/cuentas" && <CuentasPorPagar />}
+      {currentRoute === "/inventario" && <Inventario />}
+      {currentRoute === "/nomina" && <Nomina />}
+      {currentRoute === "/pl" && <EstadoResultados />}
+      {currentRoute === "/distribucion" && <DistribucionUtilidades />}
+      {currentRoute === "/reportes" && <Reportes />}
+      {currentRoute === "/banco" && <ReconciliacionBancaria />}
+      {currentRoute === "/dashboard-gastos" && <DashboardGastos />}
+      {currentRoute === "/finder" && <InvoiceFinder />}
+      {currentRoute === "/propinas" && <Propinas />}
+    </Layout>
+  );
+}
+
 export default App;
