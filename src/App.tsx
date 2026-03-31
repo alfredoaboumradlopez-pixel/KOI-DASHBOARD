@@ -136,3 +136,5 @@ function Dashboard() {
   );
 }
 
+
+export default App;
