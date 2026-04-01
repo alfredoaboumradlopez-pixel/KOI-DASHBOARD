@@ -14,19 +14,16 @@ export const CierreTurno: React.FC = () => {
   const [elaboradoPor, setElaboradoPor] = useState("");
   const [semana, setSemana] = useState("");
   const [saldoInicial, setSaldoInicial] = useState("");
-
-  // Canales de venta
   const [ventasEfectivo, setVentasEfectivo] = useState("");
-  const [propinasEfectivo, setPropinasEfectivo] = useState("");
   const [ventasParrot, setVentasParrot] = useState("");
-  const [propinasParrot, setPropinasParrot] = useState("");
   const [ventasTerminales, setVentasTerminales] = useState("");
-  const [propinasTerminales, setPropinasTerminales] = useState("");
   const [ventasUber, setVentasUber] = useState("");
   const [ventasRappi, setVentasRappi] = useState("");
   const [cortesias, setCortesias] = useState("");
   const [otrosIngresos, setOtrosIngresos] = useState("");
-
+  const [propinasEfectivo, setPropinasEfectivo] = useState("");
+  const [propinasParrot, setPropinasParrot] = useState("");
+  const [propinasTerminales, setPropinasTerminales] = useState("");
   const [efectivoFisico, setEfectivoFisico] = useState("");
   const [notas, setNotas] = useState("");
   const [loading, setLoading] = useState(false);
@@ -41,48 +38,30 @@ export const CierreTurno: React.FC = () => {
   const diferencia = n(efectivoFisico) > 0 ? n(efectivoFisico) - saldoEsperado : 0;
 
   const handleSubmit = async () => {
-    if (!fecha || !responsable || !elaboradoPor) {
-      setError("Completa fecha, responsable y elaborado por");
-      return;
-    }
-    setLoading(true);
-    setError(null);
+    if (!fecha || !responsable || !elaboradoPor) { setError("Completa fecha, responsable y elaborado por"); return; }
+    setLoading(true); setError(null);
     try {
       await api.post("/api/cierre-turno", {
-        fecha,
-        responsable,
-        elaborado_por: elaboradoPor,
-        saldo_inicial: n(saldoInicial),
-        ventas_efectivo: n(ventasEfectivo),
-        propinas_efectivo: n(propinasEfectivo),
-        ventas_parrot: n(ventasParrot),
-        propinas_parrot: n(propinasParrot),
-        ventas_terminales: n(ventasTerminales),
-        propinas_terminales: n(propinasTerminales),
-        ventas_uber: n(ventasUber),
-        ventas_rappi: n(ventasRappi),
-        cortesias: n(cortesias),
-        otros_ingresos: n(otrosIngresos),
-        semana_numero: parseInt(semana) || 0,
-        gastos: [],
-        propinas: [],
-        efectivo_fisico: n(efectivoFisico) || null,
-        notas: notas || null,
+        fecha, responsable, elaborado_por: elaboradoPor, saldo_inicial: n(saldoInicial),
+        ventas_efectivo: n(ventasEfectivo), propinas_efectivo: n(propinasEfectivo),
+        ventas_parrot: n(ventasParrot), propinas_parrot: n(propinasParrot),
+        ventas_terminales: n(ventasTerminales), propinas_terminales: n(propinasTerminales),
+        ventas_uber: n(ventasUber), ventas_rappi: n(ventasRappi),
+        cortesias: n(cortesias), otros_ingresos: n(otrosIngresos),
+        semana_numero: parseInt(semana) || 0, gastos: [], propinas: [],
+        efectivo_fisico: n(efectivoFisico) || null, notas: notas || null,
       });
-      setSuccess("Registro de ventas guardado!");
+      setSuccess("Registro guardado!");
       setTimeout(() => setSuccess(null), 3000);
-      // Reset
       setVentasEfectivo(""); setPropinasEfectivo(""); setVentasParrot(""); setPropinasParrot("");
       setVentasTerminales(""); setPropinasTerminales(""); setVentasUber(""); setVentasRappi("");
       setCortesias(""); setOtrosIngresos(""); setEfectivoFisico(""); setNotas("");
-    } catch (e: any) {
-      setError(e.message || "Error al guardar");
-    }
+    } catch (e: any) { setError(e.message || "Error al guardar"); }
     setLoading(false);
   };
 
-  const inputStyle = { width:"100%", padding:"10px 12px", borderRadius:"8px", border:"1px solid #E5E7EB", fontSize:"14px", fontFamily:"'Inter',monospace" };
-  const labelStyle = { fontSize:"11px", fontWeight:"600" as const, color:"#6B7280", display:"block", marginBottom:"4px" };
+  const inputStyle: React.CSSProperties = { width:"100%", padding:"10px 12px", borderRadius:"8px", border:"1px solid #E5E7EB", fontSize:"14px" };
+  const labelStyle: React.CSSProperties = { fontSize:"11px", fontWeight:"600", color:"#6B7280", display:"block", marginBottom:"4px" };
 
   return (
     <div style={{maxWidth:"1200px", margin:"0 auto"}}>
@@ -93,7 +72,7 @@ export const CierreTurno: React.FC = () => {
           </div>
           <div>
             <h1 style={{fontSize:"22px",fontWeight:"800",color:"#111827",margin:0}}>Cierre de Turno</h1>
-            <p style={{fontSize:"13px",color:"#9CA3AF",margin:0}}>Registro diario de ventas y arqueo de caja</p>
+            <p style={{fontSize:"13px",color:"#9CA3AF",margin:0}}>Registro diario de ventas, propinas y arqueo</p>
           </div>
         </div>
       </div>
@@ -105,7 +84,7 @@ export const CierreTurno: React.FC = () => {
 
       {tabCierre === "historial" && <ArqueoCaja />}
       {tabCierre === "nuevo" && (
-        <div style={{display:"flex",flexDirection:"column" as const,gap:"16px"}}>
+        <div style={{display:"flex",flexDirection:"column",gap:"16px"}}>
 
           {/* INFO BASICA */}
           <div style={{background:"#FFF",borderRadius:"14px",padding:"20px",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
@@ -118,49 +97,44 @@ export const CierreTurno: React.FC = () => {
             </div>
           </div>
 
-          {/* CANALES DE VENTA */}
-          <div style={{background:"#FFF",borderRadius:"14px",padding:"20px",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
-            <h3 style={{fontSize:"14px",fontWeight:"700",color:"#111827",marginBottom:"14px"}}>Canales de Venta</h3>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"2px",background:"#F3F4F6",borderRadius:"10px",overflow:"hidden"}}>
-              {/* Header */}
-              <div style={{background:"#3D1C1E",padding:"8px 14px"}}><span style={{fontSize:"11px",fontWeight:"700",color:"#C8FF00"}}>CANAL</span></div>
-              <div style={{background:"#3D1C1E",padding:"8px 14px"}}><span style={{fontSize:"11px",fontWeight:"700",color:"#C8FF00"}}>VENTA $</span></div>
-              <div style={{background:"#3D1C1E",padding:"8px 14px"}}><span style={{fontSize:"11px",fontWeight:"700",color:"#C8FF00"}}>PROPINA $</span></div>
+          {/* VENTAS Y PROPINAS LADO A LADO */}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"16px"}}>
 
-              {/* Efectivo */}
-              <div style={{background:"#FFF",padding:"10px 14px",display:"flex",alignItems:"center"}}><span style={{fontSize:"13px",fontWeight:"700",color:"#111827"}}>Efectivo</span></div>
-              <div style={{background:"#FFF",padding:"6px 10px"}}><input type="number" step="0.01" value={ventasEfectivo} onChange={e => setVentasEfectivo(e.target.value)} placeholder="0.00" style={{...inputStyle,border:"1px solid #E5E7EB"}} /></div>
-              <div style={{background:"#FFF",padding:"6px 10px"}}><input type="number" step="0.01" value={propinasEfectivo} onChange={e => setPropinasEfectivo(e.target.value)} placeholder="0.00" style={{...inputStyle,border:"1px solid #E5E7EB"}} /></div>
+            <div style={{background:"#FFF",borderRadius:"14px",padding:"20px",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
+              <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"14px"}}>
+                <div style={{width:"8px",height:"8px",borderRadius:"50%",background:"#059669"}} />
+                <h3 style={{fontSize:"14px",fontWeight:"700",color:"#111827",margin:0}}>Ventas por Canal</h3>
+              </div>
+              <div style={{display:"flex",flexDirection:"column",gap:"10px"}}>
+                <div><label style={labelStyle}>Efectivo</label><input type="number" step="0.01" value={ventasEfectivo} onChange={e => setVentasEfectivo(e.target.value)} placeholder="0.00" style={inputStyle} /></div>
+                <div><label style={labelStyle}>Parrot Pay</label><input type="number" step="0.01" value={ventasParrot} onChange={e => setVentasParrot(e.target.value)} placeholder="0.00" style={inputStyle} /></div>
+                <div><label style={labelStyle}>Terminales</label><input type="number" step="0.01" value={ventasTerminales} onChange={e => setVentasTerminales(e.target.value)} placeholder="0.00" style={inputStyle} /></div>
+                <div><label style={labelStyle}>Uber Eats</label><input type="number" step="0.01" value={ventasUber} onChange={e => setVentasUber(e.target.value)} placeholder="0.00" style={inputStyle} /></div>
+                <div><label style={labelStyle}>Rappi</label><input type="number" step="0.01" value={ventasRappi} onChange={e => setVentasRappi(e.target.value)} placeholder="0.00" style={inputStyle} /></div>
+                <div><label style={labelStyle}>Cortesias</label><input type="number" step="0.01" value={cortesias} onChange={e => setCortesias(e.target.value)} placeholder="0.00" style={inputStyle} /></div>
+                <div><label style={labelStyle}>Otros Ingresos</label><input type="number" step="0.01" value={otrosIngresos} onChange={e => setOtrosIngresos(e.target.value)} placeholder="0.00" style={inputStyle} /></div>
+                <div style={{padding:"10px 12px",borderRadius:"8px",background:"#ECFDF5",display:"flex",justifyContent:"space-between"}}>
+                  <span style={{fontSize:"13px",fontWeight:"700",color:"#059669"}}>Total Ventas</span>
+                  <span style={{fontSize:"15px",fontWeight:"800",color:"#059669"}}>{formatMXN(totalVenta)}</span>
+                </div>
+              </div>
+            </div>
 
-              {/* Parrot Pay */}
-              <div style={{background:"#FAFBFC",padding:"10px 14px",display:"flex",alignItems:"center"}}><span style={{fontSize:"13px",fontWeight:"700",color:"#111827"}}>Parrot Pay</span></div>
-              <div style={{background:"#FAFBFC",padding:"6px 10px"}}><input type="number" step="0.01" value={ventasParrot} onChange={e => setVentasParrot(e.target.value)} placeholder="0.00" style={{...inputStyle,border:"1px solid #E5E7EB"}} /></div>
-              <div style={{background:"#FAFBFC",padding:"6px 10px"}}><input type="number" step="0.01" value={propinasParrot} onChange={e => setPropinasParrot(e.target.value)} placeholder="0.00" style={{...inputStyle,borr:"1px solid #E5E7EB"}} /></div>
-
-              {/* Terminales */}
-              <div style={{background:"#FFF",padding:"10px 14px",display:"flex",alignItems:"center"}}><span style={{fontSize:"13px",fontWeight:"700",color:"#111827"}}>Terminales</span></div>
-              <div sle={{background:"#FFF",padding:"6px 10px"}}><input type="number" step="0.01" value={ventasTerminales} onChange={e => setVentasTerminales(e.target.value)} placeholder="0.00" style={{...inputStyle,border:"1px solid #E5E7EB"}} /></div>
-              <div style={{background:"#FFF",padding:"6px 10px"}}><input type="number" step="0.01" value={propinasTerminales} onChange={e => setPropinasTerminales(e.target.value)} placeholder="0.00" style={{...inputStyle,border:"1px solid #E5E7EB"}} /></div>
-
-              {/* Uber Eats */}
-              <div style={{background:"#FAFBFC",padding:"10px 14px",display:"flex",alignItems:"center"}}><span style={{fontSize:"13px",fontWeight:"700",color:"#111827"}}>Uber Eats</span></div>
-              <div style={{background:"#FAFBFC",padding:"6px 10px"}}><input type="number" step="0.01" value={ventasUber} onChange={e => setVentasUber(e.target.value)} placeholder="0.00" style={{...inputStyle,border:"1px solid #E5E7EB"}} /></div>
-              <div style={{background:"#FAFBFC",padding:"6px 10px",display:"flex",alignItems:"center"}}><span style={{fontSize:"11px",color:"#9CA3AF"}}>N/A</span></div>
-
-              {/* Rappi */}
-              <div style={{background:"#FFF",padding:"10px 14px",display:"flex",alignItems:"center"}}><span style={{fontSize:"13px",fontWeight:"700",color:"#111827"}}>Rappi</span></div>
-              <div style={{background:"#FFF",padding:"6px 10px"}}><input type="number" step="0.01" value={ventasRappi} onChange={e => setVentasRappi(e.target.value)} placeholder="0.00" style={{...inputStyle,border:"1px solid #E5E7EB"}} /></div>
-              <div style={{background:"#FFF",padding:"6px 10px",display:"flex",alignItems:"center"}}><span style={{fontSize:"11px",color:"#9CA3AF"}}>N/A</span></div>
-
-              {/* Cortesias */}
-              <div style={{background:"#FAFBFC",padding:"10px 14px",display:"flex",alignItems:"center"}}><span style={{fontSize:"13px",fontWeight:"700",color:"#111827"}}>Cortesias</span></div>
-              <div style={{background:"#FAFBFC",padding:"6px 10px"}}><input type="number" step="0.01" value={cortesias} onChange={e => setCortesias(e.target.value)} placeholder="0.00" style={{...inputStyle,border:"1px solid #E5E7EB"}} /></div>
-              <div style={{background:"#FAFBFC",padding:"6px 10px",display:"flex",alignItems:"center"}}><span style={{fontSize:"11px",color:"#9CA3AF"}}>N/A</span></div>
-
-              {/* Otros */}
-              <div style={{background:"#FFF",padding:"10px 14px",display:"flex",alignItems:"center"}}><span style={{fontSize:"13px",fontWeight:"700",color:"#111827"}}>Otros Ingresos</span></div>
-              <div style={{background:"#FFF",padding:"6px 10px"}}><input type="number" step="0.01" value={otrosIngresos} onChange={e => setOtrosIngresos(e.target.value)} placeholder="0.00" style={{...inputStyle,border:"1px solid #E5E7EB"}} /></div>
-              <div style={{background:"#FFF",padding:"6px 10px",display:"flex",alignItems:"center"}}><span style={{fontSize:"11px",color:"#9CA3AF"}}>N/A</span></div>
+            <div style={{background:"#FFF",borderRadius:"14px",padding:"20px",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
+              <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"14px"}}>
+                <div style={{width:"8px",height:"8px",borderRadius:"50%",background:"#7C3AED"}} />
+                <h3 style={{fontSize:"14px",fontWeight:"700",color:"#111827",margin:0}}>Propinas por Canal</h3>
+                <span style={{fontSize:"10px",padding:"2px 8px",borderRadius:"6px",background:"#F5F3FF",color:"#7C3AED",fontWeight:"600"}}>Gerenta</span>
+              </div>
+              <div style={{display:"flex",flexDirection:"column",gap:"10px"}}>
+                <div><label style={labelStyle}>Propinas Efectivo</label><input type="number" step="0.01" value={propinasEfectivo} onChange={e => setPropinasEfectivo(e.target.value)} placeholder="0.00" style={inputStyle} /></div>
+                <div><label style={labelStyle}>Propinas Parrot Pay</label><input type="number" step="0.01" value={propinasParrot} onChange={e => setPropinasParrot(e.target.value)} placeholder="0.00" style={inputStyle} /></div>
+                <div><label style={labelStyle}>Propinas Terminales</label><input type="number" step="0.01" value={propinasTerminales} onChange={e => setPropinasTerminales(e.target.value)} placeholder="0.00" style={inputStyle} /></div>
+                <div style={{padding:"10px 12px",borderRadius:"8px",background:"#F5F3FF",display:"flex",justifyContent:"space-between"}}>
+                  <span style={{fontSize:"13px",fontWeight:"700",color:"#7C3AED"}}>Total Propinas</span>
+                  <span style={{fontSize:"15px",fontWeight:"800",color:"#7C3AED"}}>{formatMXN(totalPropinas)}</span>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -196,10 +170,9 @@ export const CierreTurno: React.FC = () => {
           {/* NOTAS */}
           <div style={{background:"#FFF",borderRadius:"14px",padding:"20px",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
             <label style={labelStyle}>Notas del dia</label>
-            <textarea value={notas} onChange={e => setNotas(e.target.value)} placeholder="Observaciones, incidentes, etc." rows={3} style={{...inputStyle,resize:"vertical" as const}} />
+            <textarea value={notas} onChange={e => setNotas(e.target.value)} placeholder="Observaciones, incidentes, etc." rows={3} style={{...inputStyle,resize:"vertical"}} />
           </div>
 
-          {/* MENSAJES Y BOTON */}
           {error && <div style={{padding:"12px 16px",borderRadius:"10px",background:"#FEF2F2",color:"#DC2626",fontSize:"13px",fontWeight:"600"}}>{error}</div>}
           {success && <div style={{padding:"12px 16px",borderRadius:"10px",background:"#ECFDF5",color:"#059669",fontSize:"13px",fontWeight:"600",display:"flex",alignItems:"center",gap:"8px"}}><CheckCircle style={{width:"16px",height:"16px"}} />{success}</div>}
 
