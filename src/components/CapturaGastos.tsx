@@ -35,6 +35,11 @@ export const CapturaGastos: React.FC = () => {
   const [rapidoMetodo, setRapidoMetodo] = useState("EFECTIVO");
   const [rapidoCategoria, setRapidoCategoria] = useState("");
   const [rapidoFecha, setRapidoFecha] = useState(new Date().toISOString().split("T")[0]);
+  const [rapidoLineas, setRapidoLineas] = useState([{categoria:"",descripcion:"",monto:""}]);
+  const addRapidoLinea = () => setRapidoLineas([...rapidoLineas, {categoria:"",descripcion:"",monto:""}]);
+  const removeRapidoLinea = (i: number) => { if (rapidoLineas.length > 1) setRapidoLineas(rapidoLineas.filter((_,idx) => idx !== i)); };
+  const updateRapidoLinea = (i: number, field: string, value: string) => { const u = [...rapidoLineas]; (u[i] as any)[field] = value; setRapidoLineas(u); };
+  const rapidoLineasTotal = rapidoLineas.reduce((s,l) => s + (parseFloat(l.monto) || 0), 0);
   const [rapidoSaving, setRapidoSaving] = useState(false);
   const [gastosSession, setGastosSession] = useState<any[]>([]);
   const [rapidoSuccess, setRapidoSuccess] = useState(false);
@@ -45,20 +50,41 @@ export const CapturaGastos: React.FC = () => {
   };
 
   const guardarRapido = async () => {
-    if (!rapidoProv || !rapidoMonto || parseFloat(rapidoMonto) <= 0) return;
+    const lineasValidas = rapidoLineas.filter(l => l.categoria && parseFloat(l.monto) > 0);
+    if (!rapidoProv) return;
+    if (lineasValidas.length === 0 && (!rapidoMonto || parseFloat(rapidoMonto) <= 0)) return;
     setRapidoSaving(true);
     try {
-      await api.post("/api/gastos", {
-        fecha: rapidoFecha,
-        proveedor: rapidoProv.nombre,
-        categoria: rapidoCategoria,
-        monto: parseFloat(rapidoMonto),
-        metodo_pago: rapidoMetodo,
-        comprobante: rapidoComprobante,
-        descripcion: rapidoDesc || null,
-      });
+      if (lineasValidas.length > 0) {
+        for (const linea of lineasValidas) {
+          await api.post("/api/gastos", {
+            fecha: rapidoFecha,
+            proveedor: rapidoProv.nombre,
+            categoria: linea.categoria,
+            monto: parseFloat(linea.monto),
+            metodo_pago: rapidoMetodo,
+            comprobante: rapidoComprobante,
+            descripcion: linea.descripcion || null,
+          });
+        }
+      } else {
+        await api.post("/api/gastos", {
+          fecha: rapidoFecha,
+          proveedor: rapidoProv.nombre,
+          categoria: rapidoCategoria,
+          monto: parseFloat(rapidoMonto),
+          metodo_pago: rapidoMetodo,
+          comprobante: rapidoComprobante,
+          descripcion: rapidoDesc || null,
+        });
+      }
       setRapidoSuccess(true);
-      setGastosSession(prev => [...prev, { proveedor: rapidoProv.nombre, categoria: rapidoCategoria, monto: parseFloat(rapidoMonto), descripcion: rapidoDesc, fecha: rapidoFecha, metodo: rapidoMetodo, comprobante: rapidoComprobante }]);
+      if (lineasValidas.length > 0) {
+        setGastosSession(prev => [...prev, ...lineasValidas.map(l => ({ proveedor: rapidoProv.nombre, categoria: l.categoria, monto: parseFloat(l.monto), descripcion: l.descripcion, fecha: rapidoFecha, metodo: rapidoMetodo, comprobante: rapidoComprobante }))]);
+        setRapidoLineas([{categoria:"",descripcion:"",monto:""}]);
+      } else {
+        setGastosSession(prev => [...prev, { proveedor: rapidoProv.nombre, categoria: rapidoCategoria, monto: parseFloat(rapidoMonto), descripcion: rapidoDesc, fecha: rapidoFecha, metodo: rapidoMetodo, comprobante: rapidoComprobante }]);
+      }
       setRapidoMonto("");
       setRapidoDesc("");
       setTimeout(() => { setRapidoSuccess(false); }, 1500);
@@ -379,6 +405,29 @@ export const CapturaGastos: React.FC = () => {
                   <button onClick={guardarRapido} disabled={rapidoSaving || !rapidoMonto} style={{padding:"12px 24px",borderRadius:"10px",border:"none",background:rapidoSaving?"#9CA3AF":"#059669",color:"#FFF",fontSize:"14px",fontWeight:"700",cursor:"pointer"}}>{rapidoSaving ? "Guardando..." : "Guardar Gasto"}</button>
                   {rapidoSuccess && <span style={{fontSize:"13px",color:"#059669",fontWeight:"600"}}>✓ Guardo!</span>}
                   <span style={{fontSize:"12px",color:"#9CA3AF",marginLeft:"auto"}}>Tip: Enter para guardar rapido</span>
+                </div>
+                <div style={{marginTop:"14px",borderTop:"1px solid #F3F4F6",paddingTop:"14px"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"8px"}}>
+                    <span style={{fontSize:"12px",fontWeight:"600",color:"#374151"}}>Desglose (si el ticket tiene multiples categorias)</span>
+                    <button type="button" onClick={addRapidoLinea} style={{fontSize:"11px",padding:"4px 10px",borderRadius:"6px",border:"none",background:"#EFF6FF",color:"#2563EB",fontWeight:"600",cursor:"pointer"}}>+ Linea</button>
+                  </div>
+                  {rapidoLineas.map((l,i) => (
+                    <div key={i} style={{display:"grid",gridTemplateColumns:"1fr 1fr 100px 30px",gap:"6px",marginBottom:"6px",alignItems:"end"}}>
+                      <select value={l.categoria} onChange={e => updateRapidoLinea(i,"categoria",e.target.value)} style={{padding:"8px 10px",borderRadius:"6px",border:"1px solid #E5E7EB",fontSize:"12px"}}>
+                        <option value="">Categoria...</option>
+                        {CATEGORIAS.map(cat => <option key={cat} value={cat}>{cat.replace(/_/g," ")}</option>)}
+                      </select>
+                      <input value={l.descripcion} onChange={e => updateRapidoLinea(i,"descripcion",e.target.value)} placeholder="Detalle" style={{padding:"8px 10px",borderRadius:"6px",border:"1px solid #E5E7EB",fontSize:"12px"}} />
+                      <input type="number" step="0.01" value={l.monto} onChange={e => updateRapidoLinea(i,"monto",e.target.value)} placeholder="$0.00" style={{padding:"8px 10px",borderRadius:"6px",border:"1px solid #E5E7EB",fontSize:"12px",fontWeight:"700"}} />
+                      {rapidoLineas.length > 1 && <button onClick={() => removeRapidoLinea(i)} style={{border:"none",background:"none",cursor:"pointer",padding:"4px"}}><Trash2 style={{width:"14px",height:"14px",color:"#DC2626"}} /></button>}
+                    </div>
+                  ))}
+                  {rapidoLineasTotal > 0 && (
+                    <div style={{display:"flex",justifyContent:"flex-end",marginTop:"4px"}}>
+                      <span style={{fontSize:"12px",color:"#6B7280"}}>Total desglose: </span>
+                      <span style={{fontSize:"13px",fontWeight:"700",color:"#111827",marginLeft:"6px"}}>{formatMXN(rapidoLineasTotal)}</span>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
