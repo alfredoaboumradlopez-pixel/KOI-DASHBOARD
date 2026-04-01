@@ -118,14 +118,57 @@ export const ArqueoCaja: React.FC = () => {
 
               {isOpen && (
                 <div className="px-6 pb-5 border-t border-slate-100 pt-4 space-y-4">
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"12px",marginBottom:"12px"}}>
+                    <div style={{background:"#ECFDF5",borderRadius:"10px",padding:"12px"}}>
+                      <p style={{fontSize:"11px",fontWeight:"600",color:"#059669",marginBottom:"8px"}}>VENTAS POR CANAL</p>
+                      {[
+                        {l:"Efectivo",v:c.ventas_efectivo},
+                        {l:"Parrot Pay",v:c.ventas_parrot},
+                        {l:"Terminales",v:c.ventas_terminales},
+                        {l:"Uber Eats",v:c.ventas_uber},
+                        {l:"Rappi",v:c.ventas_rappi},
+                        {l:"Cortesias",v:c.cortesias},
+                        {l:"Otros",v:c.otros_ingresos},
+                      ].filter(x => (x.v||0) > 0).map((x,i) => (
+                        <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"3px 0"}}>
+                          <span style={{fontSize:"12px",color:"#374151"}}>{x.l}</span>
+                          <span style={{fontSize:"12px",fontWeight:"700",color:"#111827"}}>{formatMXN(x.v||0)}</span>
+                        </div>
+                      ))}
+                      <div style={{display:"flex",justifyContent:"space-between",borderTop:"1px solid #059669",paddingTop:"6px",marginTop:"6px"}}>
+                        <span style={{fontSize:"13px",fontWeight:"800",color:"#059669"}}>Total Venta</span>
+                        <span style={{fontSize:"14px",fontWeight:"800",color:"#059669"}}>{formatMXN(c.total_venta||0)}</span>
+                      </div>
+                    </div>
+                    <div style={{background:"#F5F3FF",borderRadius:"10px",padding:"12px"}}>
+                      <p style={{fontSize:"11px",fontWeight:"600",color:"#7C3AED",marginBottom:"8px"}}>PROPINAS POR CANAL</p>
+                      {[
+                        {l:"Efectivo",v:c.propinas_efectivo},
+                        {l:"Parrot Pay",v:c.propinas_parrot},
+                        {l:"Terminales",v:c.propinas_terminales},
+                      ].filter(x => (x.v||0) > 0).map((x,i) => (
+                        <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"3px 0"}}>
+                          <span style={{fontSize:"12px",color:"#374151"}}>{x.l}</span>
+                          <span style={{fontSize:"12px",fontWeight:"700",color:"#111827"}}>{formatMXN(x.v||0)}</span>
+                        </div>
+                      ))}
+                      {!(c.propinas_efectivo||0) && !(c.propinas_parrot||0) && !(c.propinas_terminales||0) && (
+                        <p style={{fontSize:"12px",color:"#9CA3AF",fontStyle:"italic"}}>Sin propinas registradas</p>
+                      )}
+                      <div style={{display:"flex",justifyContent:"space-between",borderTop:"1px solid #7C3AED",paddingTop:"6px",marginTop:"6px"}}>
+                        <span style={{fontSize:"13px",fontWeight:"800",color:"#7C3AED"}}>Total Propinas</span>
+                        <span style={{fontSize:"14px",fontWeight:"800",color:"#7C3AED"}}>{formatMXN((c.propinas_efectivo||0)+(c.propinas_parrot||0)+(c.propinas_terminales||0))}</span>
+                      </div>
+                    </div>
+                  </div>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div className="bg-slate-50 rounded-lg p-3">
                       <p className="text-xs text-slate-500">Saldo Inicial</p>
                       <p className="text-sm font-mono font-bold text-slate-900">{formatMXN(c.saldo_inicial)}</p>
                     </div>
                     <div className="bg-slate-50 rounded-lg p-3">
-                      <p className="text-xs text-slate-500">Ventas Efectivo</p>
-                      <p className="text-sm font-mono font-bold text-emerald-600">{formatMXN(c.ventas_efectivo)}</p>
+                      <p className="text-xs text-slate-500">Total con Propina</p>
+                      <p className="text-sm font-mono font-bold text-emerald-600">{formatMXN(c.total_con_propina||0)}</p>
                     </div>
                     <div className="bg-slate-50 rounded-lg p-3">
                       <p className="text-xs text-slate-500">Total Gastos</p>
