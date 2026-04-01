@@ -752,6 +752,21 @@ def ventas_mes_desde_cierres(mes: int = None, anio: int = None, db: Session = De
         "dias": dias
     }
 
+
+@app.put("/api/cierre-turno/{cierre_id}/propinas")
+async def actualizar_propinas(cierre_id: int, request: Request, db: Session = Depends(get_db)):
+    cierre = db.query(models.CierreTurno).filter(models.CierreTurno.id == cierre_id).first()
+    if not cierre:
+        raise HTTPException(status_code=404, detail="Cierre no encontrado")
+    body = await request.json()
+    cierre.propinas_efectivo = body.get("propinas_efectivo", 0)
+    cierre.propinas_parrot = body.get("propinas_parrot", 0)
+    cierre.propinas_terminales = body.get("propinas_terminales", 0)
+    total_propinas = cierre.propinas_efectivo + cierre.propinas_parrot + cierre.propinas_terminales
+    cierre.total_con_propina = (cierre.total_venta or 0) + total_propinas
+    db.commit()
+    return {"mensaje": "Propinas actualizadas", "total_propinas": total_propinas}
+
 # Servir frontend en produccion
 frontend_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "dist")
 if os.path.exists(frontend_path):
