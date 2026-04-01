@@ -6,14 +6,7 @@ const menuItems = [
   { name: 'Cierre de Turno', icon: ClipboardList, path: '/cierre-turno' },
   { name: 'Gastos & Proveedores', icon: Receipt, path: '/gastos' },
   { name: 'Dashboard Gastos', icon: BarChart3, path: '/dashboard-gastos' },
-  { name: 'Inventario', icon: Package, path: '/inventario' },
-  { name: 'Nomina', icon: Banknote, path: '/nomina' },
-  { name: 'Estado de Resultados', icon: PieChart, path: '/pl' },
-  { name: 'Distribucion', icon: Users, path: '/distribucion' },
   { name: 'Reportes', icon: BarChart3, path: '/reportes' },
-  { name: 'Banco Santander', icon: Landmark, path: '/banco' },
-  { name: 'Smart Finder', icon: Search, path: '/finder' },
-  { name: 'Propinas', icon: Calculator, path: '/propinas' },
 ];
 
 export const Sidebar = () => {

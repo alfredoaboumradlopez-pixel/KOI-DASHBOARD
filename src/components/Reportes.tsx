@@ -1,178 +1,155 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
+import { BarChart3, Download, FileSpreadsheet } from "lucide-react";
 import { api } from "../services/api";
-import { Loader2, TrendingUp, BarChart3 } from "lucide-react";
 
-const formatMXN = (n: number) => new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(n);
-const meses = ["","Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+const formatMXN = (n: number) => n.toLocaleString("es-MX", { style: "currency", currency: "MXN" });
+const MESES = ["","Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 
-const coloresCanal: Record<string, string> = {
-  Efectivo: "#10b981", Pay: "#3b82f6", Terminales: "#6366f1",
-  "Uber Eats": "#22c55e", Rappi: "#f97316", Propinas: "#8b5cf6",
-  Cortesias: "#ec4899", Otros: "#64748b"
+const exportToCSV = (data: any[], filename: string) => {
+  if (data.length === 0) return;
+  const headers = Object.keys(data[0]);
+  const csv = [headers.join(","), ...data.map(row => headers.map(h => {
+    const v = row[h];
+    if (typeof v === "string" && (v.includes(",") || v.includes('"'))) return '"' + v.replace(/"/g, '""') + '"';
+    return v ?? "";
+  }).join(","))].join("\n");
+  const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
 };
 
-export const Reportes: React.FC = () => {
-  const now = new Date();
-  const [mes, setMes] = useState(now.getMonth() + 1);
-  const [anio, setAnio] = useState(now.getFullYear());
-  const [canales, setCanales] = useState<any>(null);
-  const [ventasDiarias, setVentasDiarias] = useState<any[]>([]);
-  const [ventasSemana, setVentasSemana] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+export const Reportes = () => {
+  const [mes, setMes] = useState(new Date().getMonth() + 1);
+  const [anio] = useState(2026);
+  const [ventas, setVentas] = useState<any>(null);
+  const [gastos, setGastos] = useState<any[]>([]);
+  const [pl, setPl] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
 
-  const fetchData = async () => {
-    setLoading(true);
-    try {
-      const results = await Promise.allSettled([
-        api.get("/api/reportes/ventas-por-canal?mes=" + mes + "&anio=" + anio),
-        api.get("/api/reportes/ventas-diarias?mes=" + mes + "&anio=" + anio),
-        api.get("/api/reportes/ventas-por-semana?mes=" + mes + "&anio=" + anio),
-      ]);
-      if (results[0].status === "fulfilled") setCanales(results[0].value);
-      if (results[1].status === "fulfilled") setVentasDiarias(results[1].value);
-      if (results[2].status === "fulfilled") setVentasSemana(results[2].value);
-    } catch (e) { console.error(e); }
-    setLoading(false);
+  useEffect(() => {
+    const f = async () => {
+      setLoading(true);
+      try {
+        const m = String(mes).padStart(2,"0");
+        const ini = anio+"-"+m+"-01";
+        const last = new Date(anio, mes, 0).getDate();
+        const fin = anio+"-"+m+"-"+String(last).padStart(2,"0");
+        const [v, g, p] = await Promise.all([
+          api.get("/api/dashboard/ventas-mes?mes="+mes+"&anio="+anio),
+          api.get("/api/gastos?fecha_inicio="+ini+"&fecha_fin="+fin),
+          api.get("/api/pl/"+mes+"/"+anio).catch(() => null),
+        ]);
+        setVentas(v);
+        setGastos(Array.isArray(g) ? g : []);
+        setPl(p);
+      } catch(e) {}
+      setLoading(false);
+    };
+    f();
+  }, [mes, anio]);
+
+  const totalGastos = gastos.reduce((s, g) => s + (g.monto || 0), 0);
+
+  const exportVentas = () => {
+    if (!ventas?.dias) return;
+    exportToCSV(ventas.dias.map((d: any) => ({
+      Fecha: d.fecha,
+      "Total Venta": d.total_venta,
+      "Total con Propina": d.total_con_propina,
+    })), "KOI_Ventas_" + MESES[mes] + "_" + anio + ".csv");
   };
 
-  useEffect(() => { fetchData(); }, [mes, anio]);
+  const exportGastos = () => {
+    exportToCSV(gastos.map((g: any) => ({
+      Fecha: g.fecha,
+      Proveedor: g.proveedor,
+      Categoria: (g.categoria || "").replace(/_/g, " "),
+      Monto: g.monto,
+      "Metodo Pago": (g.metodo_pago || "").replace(/_/g, " "),
+      Comprobante: (g.comprobante || "").replace(/_/g, " "),
+      Descripcion: g.descripcion || "",
+    })), "KOI_Gastos_" + MESES[mes] + "_" + anio + ".csv");
+  };
 
-  const diasConVentas = ventasDiarias.filter((v: any) => v.total > 0);
-  const totalMes = diasConVentas.reduce((s: number, v: any) => s + v.total, 0);
-  const promDiario = diasConVentas.length > 0 ? totalMes / diasConVentas.length : 0;
-  const mejorDia = diasConVentas.length > 0 ? diasConVentas.reduce((best: any, v: any) => v.total > best.total ? v : best, diasConVentas[0]) : null;
-  const peorDia = diasConVentas.length > 0 ? diasConVentas.reduce((worst: any, v: any) => v.total < worst.total ? v : worst, diasConVentas[0]) : null;
+  const exportPL = () => {
+    if (!pl) return;
+    const rows = [
+      { Concepto: "VENTAS TOTALES", Monto: pl.ventas_totales, "% sobre Ventas": "100%" },
+      { Concepto: "Propinas recibidas", Monto: pl.total_propinas, "% sobre Ventas": pl.ventas_totales > 0 ? (pl.total_propinas/pl.ventas_totales*100).toFixed(1)+"%" : "--" },
+      { Concepto: "(-) Costo Materia Prima", Monto: -pl.costo_materia_prima, "% sobre Ventas": pl.ventas_totales > 0 ? (pl.costo_materia_prima/pl.ventas_totales*100).toFixed(1)+"%" : "--" },
+      { Concepto: "UTILIDAD BRUTA", Monto: pl.utilidad_bruta, "% sobre Ventas": pl.ventas_totales > 0 ? (pl.utilidad_bruta/pl.ventas_totales*100).toFixed(1)+"%" : "--" },
+      { Concepto: "(-) Gastos Operativos", Monto: -pl.gastos_operativos, "% sobre Ventas": pl.ventas_totales > 0 ? (pl.gastos_operativos/pl.ventas_totales*100).toFixed(1)+"%" : "--" },
+      { Concepto: "(-) Gastos Fijos", Monto: -pl.gastos_fijos, "% sobre Ventas": pl.ventas_totales > 0 ? (pl.gastos_fijos/pl.ventas_totales*100).toFixed(1)+"%" : "--" },
+      { Concepto: "(-) Nomina", Monto: -pl.gastos_nomina, "% sobre Ventas": pl.ventas_totales > 0 ? (pl.gastos_nomina/pl.ventas_totales*100).toFixed(1)+"%" : "--" },
+      { Concepto: "(-) Comisiones", Monto: -pl.comisiones, "% sobre Ventas": pl.ventas_totales > 0 ? (pl.comisiones/pl.ventas_totales*100).toFixed(1)+"%" : "--" },
+      { Concepto: "(-) Impuestos", Monto: -pl.impuestos, "% sobre Ventas": pl.ventas_totales > 0 ? (pl.impuestos/pl.ventas_totales*100).toFixed(1)+"%" : "--" },
+      { Concepto: "UTILIDAD NETA", Monto: pl.utilidad_neta, "% sobre Ventas": pl.ventas_totales > 0 ? (pl.utilidad_neta/pl.ventas_totales*100).toFixed(1)+"%" : "--" },
+    ];
+    exportToCSV(rows, "KOI_PL_" + MESES[mes] + "_" + anio + ".csv");
+  };
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">Reportes de Ventas</h1>
-        <p className="text-sm text-slate-500 mt-1">Analisis por canal, tendencias diarias y semanales.</p>
-      </div>
-
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
-        <div className="flex items-center gap-4">
-          <div>
-            <label className="text-xs text-slate-500">Mes</label>
-            <select value={mes} onChange={e => setMes(Number(e.target.value))}
-              className="block w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg text-sm">
-              {meses.map((m, i) => i > 0 && <option key={i} value={i}>{m}</option>)}
-            </select>
+    <div style={{maxWidth:"1000px",margin:"0 auto"}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"24px"}}>
+        <div style={{display:"flex",alignItems:"center",gap:"12px"}}>
+          <div style={{width:"40px",height:"40px",borderRadius:"12px",background:"linear-gradient(135deg,#3D1C1E,#5C2D30)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+            <BarChart3 style={{width:"20px",height:"20px",color:"#C8FF00"}} />
           </div>
           <div>
-            <label className="text-xs text-slate-500">Anio</label>
-            <select value={anio} onChange={e => setAnio(Number(e.target.value))}
-              className="block w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg text-sm">
-              <option value={2025}>2025</option>
-              <option value={2026}>2026</option>
-            </select>
+            <h1 style={{fontSize:"22px",fontWeight:"800",color:"#111827",margin:0}}>Reportes</h1>
+            <p style={{fontSize:"13px",color:"#9CA3AF",margin:0}}>Descarga reportes en Excel/CSV</p>
           </div>
+        </div>
+        <div style={{display:"flex",gap:"4px",background:"#FFF",borderRadius:"10px",padding:"3px",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
+          {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => (
+            <button key={m} onClick={() => setMes(m)} style={{padding:"6px 10px",borderRadius:"8px",border:"none",background:mes===m?"#3D1C1E":"transparent",color:mes===m?"#C8FF00":"#9CA3AF",fontSize:"11px",fontWeight:"700",cursor:"pointer"}}>{MESES[m].slice(0,3)}</button>
+          ))}
         </div>
       </div>
 
-      {loading && <div className="flex justify-center py-12"><Loader2 className="w-8 h-8 animate-spin text-indigo-600" /></div>}
+      {loading ? (
+        <div style={{textAlign:"center",padding:"40px"}}><p style={{color:"#9CA3AF"}}>Cargando...</p></div>
+      ) : (
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"16px"}}>
 
-      {!loading && diasConVentas.length === 0 && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-amber-700 text-sm">No hay datos de ventas para {meses[mes]} {anio}</div>
-      )}
-
-      {!loading && diasConVentas.length > 0 && (
-        <>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
-              <div className="text-xs text-slate-500 mb-1">Total del Mes</div>
-              <p className="text-xl font-bold text-slate-900">{formatMXN(totalMes)}</p>
+          <div style={{background:"#FFF",borderRadius:"14px",padding:"20px",boxShadow:"0 1px 3px rgba(0,0,0,0.04),0 4px 12px rgba(0,0,0,0.02)"}}>
+            <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"16px"}}>
+              <FileSpreadsheet style={{width:"20px",height:"20px",color:"#059669"}} />
+              <h3 style={{fontSize:"15px",fontWeight:"700",color:"#111827",margin:0}}>Reporte de Ventas</h3>
             </div>
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
-              <div className="text-xs text-slate-500 mb-1">Promedio Diario</div>
-              <p className="text-xl font-bold text-indigo-600">{formatMXN(promDiario)}</p>
-            </div>
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
-              <div className="text-xs text-slate-500 mb-1">Mejor Dia</div>
-              <p className="text-xl font-bold text-emerald-600">{formatMXN(mejorDia.total)}</p>
-              <p className="text-xs text-slate-400">{mejorDia.fecha}</p>
-            </div>
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
-              <div className="text-xs text-slate-500 mb-1">Peor Dia</div>
-              <p className="text-xl font-bold text-red-600">{formatMXN(peorDia.total)}</p>
-              <p className="text-xs text-slate-400">{peorDia.fecha}</p>
-            </div>
+            <div style={{fontSize:"24px",fontWeight:"800",color:"#111827",marginBottom:"4px"}}>{formatMXN(ventas?.total_venta || 0)}</div>
+            <p style={{fontSize:"12px",color:"#9CA3AF",marginBottom:"16px"}}>{ventas?.dias_registrados || 0} dias registrados en {MESES[mes]}</p>
+            <button onClick={exportVentas} disabled={!ventas?.dias?.length} style={{width:"100%",padding:"10px",borderRadius:"10px",border:"none",background:ventas?.dias?.length?"#059669":"#E5E7EB",color:ventas?.dias?.length?"#FFF":"#9CA3AF",fontSize:"13px",fontWeight:"700",cursor:ventas?.dias?.length?"pointer":"default",display:"flex",alignItems:"center",justifyContent:"center",gap:"6px"}}>
+              <Download style={{width:"14px",height:"14px"}} /> Descargar CSV
+            </button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {canales && canales.canales && (
-              <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-                <h3 className="text-sm font-semibold text-slate-800 mb-4 flex items-center gap-2"><BarChart3 className="w-4 h-4 text-indigo-600" /> Ventas por Canal</h3>
-                <div className="space-y-3">
-                  {canales.canales.filter((c: any) => c.monto > 0).sort((a: any, b: any) => b.monto - a.monto).map((c: any) => {
-                    const pct = totalMes > 0 ? (c.monto / totalMes * 100) : 0;
-                    return (
-                      <div key={c.nombre}>
-                        <div className="flex justify-between text-sm mb-1">
-                          <span className="text-slate-700">{c.nombre}</span>
-                          <span className="font-mono font-medium text-slate-900">{formatMXN(c.monto)} <span className="text-slate-400 text-xs">({pct.toFixed(1)}%)</span></span>
-                        </div>
-                        <div className="w-full bg-slate-100 rounded-full h-2.5">
-                          <div className="h-2.5 rounded-full" style={{width: pct + "%", backgroundColor: coloresCanal[c.nombre] || "#64748b"}}></div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {ventasSemana && ventasSemana.length > 0 && (
-              <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-                <h3 className="text-sm font-semibold text-slate-800 mb-4 flex items-center gap-2"><TrendingUp className="w-4 h-4 text-emerald-600" /> Ventas por Semana</h3>
-                <div className="space-y-3">
-                  {ventasSemana.map((s: any, i: number) => {
-                    const maxSemana = Math.max(...ventasSemana.map((x: any) => x.total));
-                    const pct = maxSemana > 0 ? (s.total / maxSemana * 100) : 0;
-                    return (
-                      <div key={i}>
-                        <div className="flex justify-between text-sm mb-1">
-                          <span className="text-slate-700">Semana {s.semana}</span>
-                          <span className="font-mono font-medium text-slate-900">{formatMXN(s.total)}</span>
-                        </div>
-                        <div className="w-full bg-slate-100 rounded-full h-2.5">
-                          <div className="h-2.5 rounded-full bg-emerald-500" style={{width: pct + "%"}}></div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
+          <div style={{background:"#FFF",borderRadius:"14px",padding:"20px",boxShadow:"0 1px 3px rgba(0,0,0,0.04),0 4px 12px rgba(0,0,0,0.02)"}}>
+            <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"16px"}}>
+              <FileSpreadsheet style={{width:"20px",height:"20px",color:"#DC2626"}} />
+              <h3 style={{fontSize:"15px",fontWeight:"700",color:"#111827",margin:0}}>Reporte de Gastos</h3>
+            </div>
+            <div style={{fontSize:"24px",fontWeight:"800",color:"#111827",marginBottom:"4px"}}>{formatMXN(totalGastos)}</div>
+            <p style={{fontSize:"12px",color:"#9CA3AF",marginBottom:"16px"}}>{gastos.length} gastos en {MESES[mes]}</p>
+            <button onClick={exportGastos} disabled={!gastos.length} style={{width:"100%",padding:"10px",borderRadius:"10px",border:"none",background:gastos.length?"#DC2626":"#E5E7EB",color:gastos.length?"#FFF":"#9CA3AF",fontSize:"13px",fontWeight:"700",cursor:gastos.length?"pointer":"default",display:"flex",alignItems:"center",justifyContent:"center",gap:"6px"}}>
+              <Download style={{width:"14px",height:"14px"}} /> Descargar CSV
+            </button>
           </div>
 
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-            <h3 className="text-sm font-semibold text-slate-800 mb-4">Ventas Diarias - {meses[mes]} {anio}</h3>
-            <div style={{display: "flex", alignItems: "flex-end", gap: "6px", height: "224px"}}>
-              {diasConVentas.map((v: any, i: number) => {
-                const max = Math.max(...diasConVentas.map((x: any) => x.total));
-                const barHeight = max > 0 ? Math.max((v.total / max) * 200, 8) : 0;
-                const esMejor = v.fecha === mejorDia.fecha;
-                const esPeor = v.fecha === peorDia.fecha;
-                const color = esMejor ? "#10b981" : esPeor ? "#f87171" : "#6366f1";
-                return (
-                  <div key={i} style={{flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end", height: "100%", position: "relative"}} className="group">
-                    <div className="hidden group-hover:block absolute bg-slate-800 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-10" style={{top: "-10px"}}>
-                      {v.fecha}: {formatMXN(v.total)}
-                    </div>
-                    <div style={{width: "100%", height: barHeight + "px", backgroundColor: color, borderRadius: "4px 4px 0 0", transition: "opacity 0.2s"}} className="hover:opacity-80" />
-                    <span style={{fontSize: "9px", color: "#94a3b8", marginTop: "4px"}}>{new Date(v.fecha + "T12:00:00").getDate()}</span>
-                  </div>
-                );
-              })}
+          <div style={{background:"#FFF",borderRadius:"14px",padding:"20px",boxShadow:"0 1px 3px rgba(0,0,0,0.04),0 4px 12px rgba(0,0,0,0.02)"}}>
+            <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"16px"}}>
+              <FileSpreadsheet style={{width:"20px",height:"20px",color:"#7C3AED"}} />
+              <h3 style={{fontSize:"15px",fontWeight:"700",color:"#111827",margin:0}}>Estado de Resultados</h3>
             </div>
-            <div className="flex gap-4 mt-3 text-xs text-slate-400">
-              <span className="flex items-center gap-1"><span className="w-3 h-3 bg-emerald-500 rounded-sm inline-block"></span> Mejor dia</span>
-              <span className="flex items-center gap-1"><span className="w-3 h-3 bg-red-400 rounded-sm inline-block"></span> Peor dia</span>
-              <span className="flex items-center gap-1"><span className="w-3 h-3 bg-indigo-500 rounded-sm inline-block"></span> Normal</span>
-            </div>
+            <div style={{fontSize:"24px",fontWeight:"800",color:pl?.utilidad_neta>=0?"#059669":"#DC2626",marginBottom:"4px"}}>{formatMXN(pl?.utilidad_neta || 0)}</div>
+            <p style={{fontSize:"12px",color:"#9CA3AF",marginBottom:"16px"}}>Utilidad neta {MESES[mes]}</p>
+            <button onClick={exportPL} disabled={!pl} style={{width:"100%",padding:"10px",borderRadius:"10px",border:"none",background:pl?"#7C3AED":"#E5E7EB",color:pl?"#FFF":"#9CA3AF",fontSize:"13px",fontWeight:"700",cursor:pl?"pointer":"default",display:"flex",alignItems:"center",justifyContent:"center",gap:"6px"}}>
+              <Download style={{width:"14px",height:"14px"}} /> Descargar CSV
+            </button>
           </div>
-        </>
+        </div>
       )}
     </div>
   );
