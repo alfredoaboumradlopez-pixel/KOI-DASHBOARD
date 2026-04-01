@@ -372,39 +372,94 @@ Si no puedes leer algun campo, dejalo null."""
         raise HTTPException(status_code=422, detail=f"Error procesando imagen: {str(e)}")
 
 
-@app.get("/api/pl/{mes}/{anio}", response_model=schemas.PLMensualResponse)
+@app.get("/api/pl/{mes}/{anio}")
 def calcular_pl(mes: int, anio: int, db: Session = Depends(get_db)):
-    ventas = db.query(func.sum(models.VentaDiaria.total_venta)).filter(extract("month", models.VentaDiaria.fecha) == mes, extract("year", models.VentaDiaria.fecha) == anio).scalar() or 0.0
-    def sumar_gc(cat):
-        return db.query(func.sum(models.GastoDiario.monto)).join(models.CierreTurno).filter(extract("month", models.CierreTurno.fecha) == mes, extract("year", models.CierreTurno.fecha) == anio, models.GastoDiario.categoria == cat).scalar() or 0.0
-    def sumar_gg(cat):
-        return db.query(func.sum(models.Gasto.monto)).filter(extract("month", models.Gasto.fecha) == mes, extract("year", models.Gasto.fecha) == anio, models.Gasto.categoria == cat).scalar() or 0.0
-    def tc(cat):
-        return sumar_gc(cat) + sumar_gg(cat)
-    ci = tc(models.CategoriaGasto.PROTEINA)
-    gs = tc(models.CategoriaGasto.SERVICIOS)
-    gr = tc(models.CategoriaGasto.RENTA)
-    gm = tc(models.CategoriaGasto.LIMPIEZA_MANTTO_MANTTO)
-    gl = tc(models.CategoriaGasto.LIMPIEZA_MANTTO)
-    gcp = tc(models.CategoriaGasto.PERSONAL)
-    go = tc(models.CategoriaGasto.OTROS)
-    gn = db.query(func.sum(models.NominaPago.neto_pagado)).filter(extract("month", models.NominaPago.fecha_pago) == mes, extract("year", models.NominaPago.fecha_pago) == anio).scalar() or 0.0
-    imp = tc(models.CategoriaGasto.IMPUESTOS)
-    ub = ventas - ci
-    uo = ub - (gs + gr + gm + gl + gcp + go)
-    un = uo - gn - imp
-    pl = db.query(models.PLMensual).filter(models.PLMensual.mes == mes, models.PLMensual.anio == anio).first()
-    d = dict(ventas_totales=ventas, costo_insumos=ci, gastos_servicios=gs, gastos_renta=gr, gastos_mantenimiento=gm, gastos_limpieza=gl, gastos_comida_personal=gcp, gastos_otros=go, gastos_nomina=gn, impuestos=imp, utilidad_bruta=ub, utilidad_operativa=uo, utilidad_neta=un)
-    if pl:
-        for k, v in d.items():
-            setattr(pl, k, v)
-    else:
-        pl = models.PLMensual(mes=mes, anio=anio, **d)
-        db.add(pl)
-    db.commit()
-    db.refresh(pl)
-    return pl
+    # Ventas desde CierreTurno
+    cierres = db.query(models.CierreTurno).filter(
+        extract("month", models.CierreTurno.fecha) == mes,
+        extract("year", models.CierreTurno.fecha) == anio
+    ).all()
+    ventas_totales = sum((c.total_venta or 0) for c in cierres)
+    total_propinas = sum(((c.total_con_propina or 0) - (c.total_venta or 0)) for c in cierres)
 
+    # Gastos desde tabla Gasto (gastos independientes)
+    def sumar_gasto(cat_str):
+        try:
+            cat = models.CategoriaGasto(cat_str)
+            return db.query(func.sum(models.Gasto.monto)).filter(
+                extract("month", models.Gasto.fecha) == mes,
+                extract("year", models.Gasto.fecha) == anio,
+                models.Gasto.categoria == cat
+            ).scalar() or 0.0
+        except Exception:
+            return 0.0
+
+    # Materia Prima
+    mp_cats = ["PROTEINA", "VEGETALES_FRUTAS", "ABARROTES", "BEBIDAS", "PRODUCTOS_ASIATICOS"]
+    costo_mp = sum(sumar_gasto(c) for c in mp_cats)
+
+    # Gastos Operativos
+    op_cats = ["DESECHABLES_EMPAQUES", "LIMPIEZA_MANTTO", "UTENSILIOS", "PERSONAL", "SERVICIOS", "EQUIPO", "MARKETING", "PAPELERIA"]
+    gastos_operativos = sum(sumar_gasto(c) for c in op_cats)
+
+    # Gastos Fijos
+    gastos_renta = sumar_gasto("RENTA")
+    gastos_luz = sumar_gasto("LUZ")
+    gastos_software = sumar_gasto("SOFTWARE")
+    gastos_fijos = gastos_renta + gastos_luz + gastos_software
+
+    # Nomina
+    gastos_nomina = sumar_gasto("NOMINA")
+
+    # Comisiones
+    comisiones_bancarias = sumar_gasto("COMISIONES_BANCARIAS")
+    comisiones_plataformas = sumar_gasto("COMISIONES_PLATAFORMAS")
+
+    # Impuestos
+    impuestos = sumar_gasto("IMPUESTOS")
+
+    # Propinas pagadas
+    propinas = sumar_gasto("PROPINAS")
+
+    # Otros
+    otros = sumar_gasto("OTROS")
+
+    # Calculos
+    utilidad_bruta = ventas_totales - costo_mp
+    total_gastos = gastos_operativos + gastos_fijos + gastos_nomina + comisiones_bancarias + comisiones_plataformas + propinas + otros
+    utilidad_operativa = utilidad_bruta - total_gastos
+    utilidad_neta = utilidad_operativa - impuestos
+
+    # Desglose por categoria
+    desglose = {}
+    for cat in ["PROTEINA", "VEGETALES_FRUTAS", "ABARROTES", "BEBIDAS", "PRODUCTOS_ASIATICOS",
+                "DESECHABLES_EMPAQUES", "LIMPIEZA_MANTTO", "UTENSILIOS", "PERSONAL", "PROPINAS",
+                "SERVICIOS", "EQUIPO", "MARKETING", "PAPELERIA", "RENTA", "LUZ", "SOFTWARE",
+                "COMISIONES_BANCARIAS", "IMPUESTOS", "NOMINA", "COMISIONES_PLATAFORMAS", "OTROS"]:
+        v = sumar_gasto(cat)
+        if v > 0:
+            desglose[cat] = v
+
+    return {
+        "mes": mes, "anio": anio,
+        "ventas_totales": ventas_totales,
+        "total_propinas": total_propinas,
+        "costo_materia_prima": costo_mp,
+        "pct_materia_prima": (costo_mp / ventas_totales * 100) if ventas_totales > 0 else 0,
+        "utilidad_bruta": utilidad_bruta,
+        "gastos_operativos": gastos_operativos,
+        "gastos_fijos": gastos_fijos,
+        "gastos_nomina": gastos_nomina,
+        "comisiones": comisiones_bancarias + comisiones_plataformas,
+        "propinas_pagadas": propinas,
+        "otros": otros,
+        "impuestos": impuestos,
+        "utilidad_operativa": utilidad_operativa,
+        "utilidad_neta": utilidad_neta,
+        "pct_utilidad_neta": (utilidad_neta / ventas_totales * 100) if ventas_totales > 0 else 0,
+        "dias_registrados": len(cierres),
+        "desglose_categorias": desglose,
+    }
 
 @app.get("/api/distribucion/{mes}/{anio}", response_model=schemas.DistribucionResumen)
 def calcular_distribucion(mes: int, anio: int, db: Session = Depends(get_db)):

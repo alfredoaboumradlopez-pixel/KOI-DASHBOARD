@@ -1,123 +1,111 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
+import { FileText, TrendingUp, TrendingDown, DollarSign, AlertTriangle } from "lucide-react";
 import { api } from "../services/api";
-import { Loader2, TrendingUp, TrendingDown, DollarSign } from "lucide-react";
 
-const formatMXN = (n: number) => new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(n);
+const formatMXN = (n: number) => n.toLocaleString("es-MX", { style: "currency", currency: "MXN" });
+const MESES = ["","Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 
-const meses = ["","Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
-
-export const EstadoResultados: React.FC = () => {
-  const now = new Date();
-  const [mes, setMes] = useState(now.getMonth() + 1);
-  const [anio, setAnio] = useState(now.getFullYear());
-  const [pl, setPl] = useState<any>(null);
+export const EstadoResultados = () => {
+  const [mes, setMes] = useState(new Date().getMonth() + 1);
+  const [anio] = useState(2026);
+  const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
-  const fetchPL = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await api.get("/api/pl/" + mes + "/" + anio);
-      setPl(data);
-    } catch (e: any) {
-      setError("No hay datos para este periodo");
-      setPl(null);
-    }
-    setLoading(false);
-  };
+  useEffect(() => {
+    const f = async () => {
+      setLoading(true);
+      try {
+        const d = await api.get("/api/pl/" + mes + "/" + anio);
+        setData(d);
+      } catch(e) { setData(null); }
+      setLoading(false);
+    };
+    f();
+  }, [mes, anio]);
 
-  useEffect(() => { fetchPL(); }, [mes, anio]);
-
-  const Row = ({ label, value, bold, color, indent }: { label: string; value: number; bold?: boolean; color?: string; indent?: boolean }) => (
-    <div className={"flex justify-between py-2 " + (bold ? "font-bold border-t border-slate-200 pt-3" : "") + (indent ? " pl-6" : "")}>
-      <span className={"text-sm " + (bold ? "text-slate-900" : "text-slate-600")}>{label}</span>
-      <span className={"text-sm font-mono " + (color || (value >= 0 ? "text-slate-900" : "text-red-600"))}>{formatMXN(value)}</span>
-    </div>
-  );
+  const pct = (n: number, total: number) => total > 0 ? (n / total * 100).toFixed(1) + "%" : "--";
+  const v = data?.ventas_totales || 0;
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">Estado de Resultados</h1>
-        <p className="text-sm text-slate-500 mt-1">P&L mensual calculado automaticamente.</p>
-      </div>
-
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
-        <div className="flex items-center gap-4">
-          <div>
-            <label className="text-xs text-slate-500">Mes</label>
-            <select value={mes} onChange={e => setMes(Number(e.target.value))}
-              className="block w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg text-sm">
-              {meses.map((m, i) => i > 0 && <option key={i} value={i}>{m}</option>)}
-            </select>
+    <div style={{maxWidth:"900px",margin:"0 auto"}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"24px"}}>
+        <div style={{display:"flex",alignItems:"center",gap:"12px"}}>
+          <div style={{width:"40px",height:"40px",borderRadius:"12px",background:"linear-gradient(135deg,#3D1C1E,#5C2D30)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+            <FileText style={{width:"20px",height:"20px",color:"#C8FF00"}} />
           </div>
           <div>
-            <label className="text-xs text-slate-500">Anio</label>
-            <select value={anio} onChange={e => setAnio(Number(e.target.value))}
-              className="block w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg text-sm">
-              <option value={2025}>2025</option>
-              <option value={2026}>2026</option>
-            </select>
+            <h1 style={{fontSize:"22px",fontWeight:"800",color:"#111827",margin:0}}>Estado de Resultados</h1>
+            <p style={{fontSize:"13px",color:"#9CA3AF",margin:0}}>P&L mensual automatico</p>
           </div>
+        </div>
+        <div style={{display:"flex",gap:"4px",background:"#FFF",borderRadius:"10px",padding:"3px",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
+          {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => (
+            <button key={m} onClick={() => setMes(m)} style={{padding:"6px 10px",borderRadius:"8px",border:"none",background:mes===m?"#3D1C1E":"transparent",color:mes===m?"#C8FF00":"#9CA3AF",fontSize:"11px",fontWeight:"700",cursor:"pointer"}}>{MESES[m].slice(0,3)}</button>
+          ))}
         </div>
       </div>
 
-      {loading && <div className="flex justify-center py-12"><Loader2 className="w-8 h-8 animate-spin text-indigo-600" /></div>}
-
-      {error && <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-amber-700 text-sm">{error}</div>}
-
-      {pl && (
-        <>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
-              <div className="flex items-center gap-2 text-slate-500 text-xs mb-2"><DollarSign className="w-4 h-4" /> Ventas Totales</div>
-              <p className="text-2xl font-bold text-slate-900">{formatMXN(pl.ventas_totales)}</p>
-            </div>
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
-              <div className="flex items-center gap-2 text-slate-500 text-xs mb-2"><TrendingUp className="w-4 h-4" /> Utilidad Bruta</div>
-              <p className={"text-2xl font-bold " + (pl.utilidad_bruta >= 0 ? "text-emerald-600" : "text-red-600")}>{formatMXN(pl.utilidad_bruta)}</p>
-            </div>
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
-              <div className="flex items-center gap-2 text-slate-500 text-xs mb-2">{pl.utilidad_neta >= 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />} Utilidad Neta</div>
-              <p className={"text-2xl font-bold " + (pl.utilidad_neta >= 0 ? "text-emerald-600" : "text-red-600")}>{formatMXN(pl.utilidad_neta)}</p>
-            </div>
+      {loading ? (
+        <div style={{textAlign:"center",padding:"40px"}}><p style={{color:"#9CA3AF"}}>Cargando...</p></div>
+      ) : !data ? (
+        <div style={{textAlign:"center",padding:"40px"}}><p style={{color:"#9CA3AF"}}>Sin datos para {MESES[mes]} {anio}</p></div>
+      ) : (
+        <div style={{background:"#FFF",borderRadius:"14px",overflow:"hidden",boxShadow:"0 1px 3px rgba(0,0,0,0.04),0 4px 12px rgba(0,0,0,0.02)"}}>
+          <div style={{padding:"16px 24px",background:"#FAFBFC",borderBottom:"1px solid #F3F4F6",display:"flex",justifyContent:"space-between"}}>
+            <span style={{fontSize:"15px",fontWeight:"700",color:"#111827"}}>P&L {MESES[mes]} {anio}</span>
+            <span style={{fontSize:"12px",color:"#9CA3AF"}}>{data.dias_registrados} dias registrados</span>
           </div>
 
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-            <h2 className="text-lg font-semibold text-slate-900 mb-4">{meses[pl.mes]} {pl.anio}</h2>
+          {[
+            {label:"VENTAS TOTALES",value:data.ventas_totales,pct:"100%",bold:true,color:"#059669",bg:"#ECFDF5"},
+            {label:"Propinas recibidas",value:data.total_propinas,pct:pct(data.total_propinas,v),indent:true,color:"#6B7280"},
+            {label:"(-) Costo Materia Prima",value:-data.costo_materia_prima,pct:pct(data.costo_materia_prima,v),color:"#DC2626"},
+            {label:"UTILIDAD BRUTA",value:data.utilidad_bruta,pct:pct(data.utilidad_bruta,v),bold:true,color:data.utilidad_bruta>=0?"#059669":"#DC2626",bg:"#F9FAFB"},
+            {label:"(-) Gastos Operativos",value:-data.gastos_operativos,pct:pct(data.gastos_operativos,v),color:"#DC2626"},
+            {label:"(-) Gastos Fijos (Renta, Luz, Software)",value:-data.gastos_fijos,pct:pct(data.gastos_fijos,v),color:"#DC2626"},
+            {label:"(-) Nomina",value:-data.gastos_nomina,pct:pct(data.gastos_nomina,v),color:"#DC2626"},
+            {label:"(-) Comisiones (Bancarias + Plataformas)",value:-data.comisiones,pct:pct(data.comisiones,v),color:"#DC2626"},
+            {label:"(-) Propinas Pagadas",value:-data.propinas_pagadas,pct:pct(data.propinas_pagadas,v),color:"#DC2626"},
+            {label:"(-) Otros",value:-data.otros,pct:pct(data.otros,v),color:"#6B7280"},
+            {label:"UTILIDAD OPERATIVA",value:data.utilidad_operativa,pct:pct(data.utilidad_operativa,v),bold:true,color:data.utilidad_operativa>=0?"#059669":"#DC2626",bg:"#F9FAFB"},
+            {label:"(-) Impuestos",value:-data.impuestos,pct:pct(data.impuestos,v),color:"#DC2626"},
+            {label:"UTILIDAD NETA",value:data.utilidad_neta,pct:pct(data.utilidad_neta,v),bold:true,color:data.utilidad_neta>=0?"#059669":"#DC2626",bg:data.utilidad_neta>=0?"#ECFDF5":"#FEF2F2"},
+          ].map((row, i) => (
+            <div key={i} style={{display:"grid",gridTemplateColumns:"1fr 150px 80px",padding:row.bold?"14px 24px":"10px 24px",paddingLeft:row.indent?"48px":"24px",borderBottom:"1px solid #F9FAFB",background:row.bg||"transparent",alignItems:"center"}}>
+              <span style={{fontSize:row.bold?"14px":"13px",fontWeight:row.bold?"800":"500",color:row.bold?row.color:"#374151"}}>{row.label}</span>
+              <span style={{fontSize:row.bold?"15px":"13px",fontWeight:row.bold?"800":"600",color:row.color,textAlign:"right",fontFeatureSettings:"'tnum'"}}>{formatMXN(row.value)}</span>
+              <span style={{fontSize:"11px",fontWeight:"600",color:row.color,textAlign:"right"}}>{row.pct}</span>
+            </div>
+          ))}
 
-            <div className="space-y-0">
-              <Row label="Ventas Totales" value={pl.ventas_totales} bold color="text-slate-900" />
-
-              <div className="mt-4 mb-1"><span className="text-xs font-semibold text-slate-400 uppercase">Costo de Ventas</span></div>
-              <Row label="Compras de Insumos" value={-pl.costo_insumos} indent color="text-red-600" />
-              <Row label="Utilidad Bruta" value={pl.utilidad_bruta} bold color={pl.utilidad_bruta >= 0 ? "text-emerald-600" : "text-red-600"} />
-
-              <div className="mt-4 mb-1"><span className="text-xs font-semibold text-slate-400 uppercase">Gastos Operativos</span></div>
-              <Row label="Servicios (luz, agua, gas)" value={-pl.gastos_servicios} indent color="text-red-600" />
-              <Row label="Renta" value={-pl.gastos_renta} indent color="text-red-600" />
-              <Row label="Mantenimiento" value={-pl.gastos_mantenimiento} indent color="text-red-600" />
-              <Row label="Limpieza" value={-pl.gastos_limpieza} indent color="text-red-600" />
-              <Row label="Comida de Personal" value={-pl.gastos_comida_personal} indent color="text-red-600" />
-              <Row label="Otros Gastos" value={-pl.gastos_otros} indent color="text-red-600" />
-              <Row label="Utilidad Operativa" value={pl.utilidad_operativa} bold color={pl.utilidad_operativa >= 0 ? "text-emerald-600" : "text-red-600"} />
-
-              <div className="mt-4 mb-1"><span className="text-xs font-semibold text-slate-400 uppercase">Nomina e Impuestos</span></div>
-              <Row label="Nomina" value={-pl.gastos_nomina} indent color="text-red-600" />
-              <Row label="Impuestos" value={-pl.impuestos} indent color="text-red-600" />
-
-              <div className="mt-2 pt-3 border-t-2 border-slate-300">
-                <Row label="UTILIDAD NETA" value={pl.utilidad_neta} bold color={pl.utilidad_neta >= 0 ? "text-emerald-700" : "text-red-700"} />
+          {data.desglose_categorias && Object.keys(data.desglose_categorias).length > 0 && (
+            <>
+              <div style={{padding:"14px 24px",background:"#FAFBFC",borderTop:"2px solid #F3F4F6"}}>
+                <span style={{fontSize:"13px",fontWeight:"700",color:"#111827"}}>Desglose por Categoria</span>
               </div>
-              {pl.ventas_totales > 0 && (
-                <div className="text-right text-xs text-slate-400 mt-1">
-                  Margen neto: {((pl.utilidad_neta / pl.ventas_totales) * 100).toFixed(1)}%
+              {Object.entries(data.desglose_categorias).sort((a: any, b: any) => b[1] - a[1]).map(([cat, monto]: any, i: number) => (
+                <div key={i} style={{display:"grid",gridTemplateColumns:"1fr 150px 80px",padding:"8px 24px 8px 48px",borderBottom:"1px solid #F9FAFB",alignItems:"center"}}>
+                  <span style={{fontSize:"12px",color:"#374151"}}>{cat.replace(/_/g," ")}</span>
+                  <span style={{fontSize:"12px",fontWeight:"600",color:"#111827",textAlign:"right"}}>{formatMXN(monto)}</span>
+                  <span style={{fontSize:"11px",color:"#9CA3AF",textAlign:"right"}}>{pct(monto, v)}</span>
                 </div>
-              )}
-            </div>
+              ))}
+            </>
+          )}
+        </div>
+      )}
+
+      {data && (
+        <div style={{background:"#3D1C1E",borderRadius:"14px",padding:"20px 24px",display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:"16px"}}>
+          <div>
+            <span style={{fontSize:"12px",color:"rgba(255,255,255,0.5)"}}>UTILIDAD NETA {MESES[mes].toUpperCase()}</span>
+            <div style={{fontSize:"28px",fontWeight:"900",color:data.utilidad_neta>=0?"#C8FF00":"#FF6B6B",marginTop:"4px"}}>{formatMXN(data.utilidad_neta)}</div>
           </div>
-        </>
+          <div style={{textAlign:"right"}}>
+            <span style={{fontSize:"12px",color:"rgba(255,255,255,0.5)"}}>MARGEN NETO</span>
+            <div style={{fontSize:"28px",fontWeight:"900",color:"#FFF",marginTop:"4px"}}>{data.pct_utilidad_neta?.toFixed(1)||"--"}%</div>
+          </div>
+        </div>
       )}
     </div>
   );
