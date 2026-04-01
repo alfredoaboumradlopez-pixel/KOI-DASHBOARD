@@ -3,6 +3,7 @@ import { UploadCloud, ChevronDown, ChevronUp, Trash2, Edit2, Pencil, FileText as
 import { api } from '../services/api';
 import { CuentasPorPagar } from "./CuentasPorPagar";
 
+const formatMXN = (n: number) => n.toLocaleString("es-MX", { style: "currency", currency: "MXN" });
 const CATEGORIAS = ["PROTEINA","VEGETALES_FRUTAS","ABARROTES","BEBIDAS","PRODUCTOS_ASIATICOS","DESECHABLES_EMPAQUES","LIMPIEZA_MANTTO","UTENSILIOS","PERSONAL","PROPINAS","SERVICIOS","EQUIPO","MARKETING","PAPELERIA","RENTA","LUZ","SOFTWARE","COMISIONES_BANCARIAS","IMPUESTOS","NOMINA","COMISIONES_PLATAFORMAS","OTROS"];
 
 interface ExpenseFormData {
@@ -35,6 +36,7 @@ export const CapturaGastos: React.FC = () => {
   const [rapidoCategoria, setRapidoCategoria] = useState("");
   const [rapidoFecha, setRapidoFecha] = useState(new Date().toISOString().split("T")[0]);
   const [rapidoSaving, setRapidoSaving] = useState(false);
+  const [gastosSession, setGastosSession] = useState<any[]>([]);
   const [rapidoSuccess, setRapidoSuccess] = useState(false);
 
   const selectRapidoProv = (p: any) => {
@@ -56,9 +58,10 @@ export const CapturaGastos: React.FC = () => {
         descripcion: rapidoDesc || null,
       });
       setRapidoSuccess(true);
+      setGastosSession(prev => [...prev, { proveedor: rapidoProv.nombre, categoria: rapidoCategoria, monto: parseFloat(rapidoMonto), descripcion: rapidoDesc, fecha: rapidoFecha, metodo: rapidoMetodo, comprobante: rapidoComprobante }]);
       setRapidoMonto("");
       setRapidoDesc("");
-      setTimeout(() => { setRapidoSuccess(false); }, 2000);
+      setTimeout(() => { setRapidoSuccess(false); }, 1500);
       fetchGastos();
     } catch(e) { alert("Error al guardar"); }
     setRapidoSaving(false);
@@ -380,6 +383,24 @@ export const CapturaGastos: React.FC = () => {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {tabGastos === "gastos" && gastoRapido && gastosSession.length > 0 && (
+        <div style={{background:"#FFF",borderRadius:"14px",overflow:"hidden",boxShadow:"0 1px 3px rgba(0,0,0,0.04)",marginTop:"16px"}}>
+          <div style={{padding:"12px 20px",borderBottom:"1px solid #F3F4F6",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <span style={{fontSize:"13px",fontWeight:"700",color:"#111827"}}>Gastos registrados en esta sesion ({gastosSession.length})</span>
+            <span style={{fontSize:"14px",fontWeight:"800",color:"#059669"}}>{formatMXN(gastosSession.reduce((s: number,g: any) => s+g.monto, 0))}</span>
+          </div>
+          {gastosSession.map((g: any, i: number) => (
+            <div key={i} style={{display:"grid",gridTemplateColumns:"90px 1fr 100px 90px 90px",padding:"8px 20px",borderBottom:"1px solid #F9FAFB",alignItems:"center",fontSize:"12px"}}>
+              <span style={{color:"#6B7280"}}>{g.fecha}</span>
+              <div><span style={{fontWeight:"600",color:"#111827"}}>{g.proveedor}</span>{g.descripcion && <span style={{color:"#9CA3AF",marginLeft:"8px"}}>{g.descripcion}</span>}</div>
+              <span style={{fontWeight:"700",color:"#111827",textAlign:"right"}}>{formatMXN(g.monto)}</span>
+              <span style={{color:"#6B7280",textAlign:"center"}}>{(g.categoria||"").replace(/_/g," ").slice(0,12)}</span>
+              <span style={{fontSize:"10px",padding:"2px 6px",borderRadius:"4px",background:"#FDF4FF",color:"#7C3AED",textAlign:"center"}}>{(g.comprobante||"").replace(/_/g," ")}</span>
+            </div>
+          ))}
         </div>
       )}
 
