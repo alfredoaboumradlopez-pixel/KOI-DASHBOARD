@@ -991,7 +991,7 @@ async def importar_bitacora(file: UploadFile = File(...)):
         descripcion = text_before
         
         # Ignorar lineas de TOTAL, SALDO, etc
-        if any(kw in proveedor.upper() for kw in ["TOTAL", "SALDO", "VENTAS", "DIFERENCIA", "EFECTIVO FISICO", "GASTOS DEL"]):
+        if any(kw in proveedor.upper() for kw in ["TOTAL", "SALDO", "VENTAS", "DIFERENCIA", "EFECTIVO FISICO", "GASTOS DEL", "ESPERADO", "CIERRE", "CONTADO", "FALTANTE", "SOBRANTE", "ELABORA"]):
             continue
         
         gastos_parsed.append({
@@ -1014,6 +1014,9 @@ async def importar_bitacora(file: UploadFile = File(...)):
             "saldo_inicial": float(saldo_match.group(1).replace(",", "")),
             "ventas_efectivo": float(ventas_match.group(1).replace(",", "")) if ventas_match else 0,
         }
+    
+    # Filtrar gastos con proveedor vacio o monto muy alto otales)
+    gastos_parsed = [g for g in gastos_parsed if g["proveedor"].strip() and g["monto"] < 50000]
     
     return {
         "fecha": fecha,
