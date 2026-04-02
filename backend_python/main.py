@@ -155,7 +155,39 @@ def get_ventas(mes: Optional[str] = None, fecha_inicio: Optional[date] = None, f
 def crear_cierre_turno(cierre: schemas.CierreTurnoCreate, db: Session = Depends(get_db)):
     existing = db.query(models.CierreTurno).filter(models.CierreTurno.fecha == cierre.fecha).first()
     if existing:
-        raise HTTPException(status_code=400, detail=f"Ya existe un cierre para {cierre.fecha}")
+        # Actualizar el cierre existente
+        existing.responsable = cierre.responsable
+        existing.elaborado_por = cierre.elaborado_por
+        existing.saldo_inicial = cierre.saldo_inicial
+        existing.ventas_efectivo = cierre.ventas_efectivo
+        existing.propinas_efectivo = cierre.propinas_efectivo or existing.propinas_efectivo or 0
+        existing.ventas_parrot = cierre.ventas_parrot
+        existing.propinas_parrot = cierre.propinas_parrot or existing.propinas_parrot or 0
+        existing.ventas_terminales = cierre.ventas_terminales
+        existing.propinas_terminales = cierre.propinas_terminales or existing.propinas_terminales or 0
+        existing.ventas_uber = cierre.ventas_uber
+        existing.ventas_rappi = cierre.ventas_rappi
+        existing.cortesias = cierre.cortesias
+        existing.otros_ingresos = cierre.otros_ingresos
+        existing.semana_numero = cierre.semana_numero
+        existing.total_venta = cierre.ventas_efectivo + cierre.ventas_parrot + cierre.ventas_terminales + cierre.ventas_uber + cierre.ventas_rappi + cierre.cortesias + cierre.otros_ingresos
+        existing.total_con_propina = existing.total_venta + (existing.propinas_efectivo or 0) + (existing.propinas_parrot or 0) + (existing.propinas_terminales or 0)
+        if cierre.efectivo_fisico is not None:
+            existing.efectivo_fisico = cierre.efectivo_fisico
+            saldo_esp = cierre.saldo_inicial + cierre.ventas_efectivo + (existing.propinas_efectivo or 0)
+            existing.saldo_final_esperado = saldo_esp
+            existing.diferencia = cierre.efectivo_fisico - saldo_esp
+            if abs(existing.diferencia) < 0.01:
+                existing.estado = models.EstadoArqueo.CUADRADA
+            elif existing.diferencia > 0:
+                existing.estado = models.EstadoArqueo.SOBRANTE
+            else:
+                existing.estado = models.EstadoArqueo.FALTANTE
+        if cierre.notas:
+            existing.notas = cierre.notas
+        db.commit()
+        db.refresh(existing)
+        return existing
     total_venta = cierre.ventas_efectivo + cierre.ventas_parrot + cierre.ventas_terminales + cierre.ventas_uber + cierre.ventas_rappi + cierre.cortesias + cierre.otros_ingresos
     total_propinas_canales = cierre.propinas_efectivo + cierre.propinas_parrot + cierre.propinas_terminales
     total_con_propina = total_venta + total_propinas_canales
