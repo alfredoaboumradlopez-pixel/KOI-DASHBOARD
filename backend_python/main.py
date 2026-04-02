@@ -343,34 +343,101 @@ async def parse_factura(file: UploadFile = File(...)):
 
 @app.post("/api/gastos/ocr")
 async def ocr_gasto(file: UploadFile = File(...)):
-    try:
-        import google.generativeai as genai
-    except ImportError:
-        raise HTTPException(status_code=501, detail="google-generativeai no instalado")
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        raise HTTPException(status_code=500, detail="GEMINI_API_KEY no configurada")
-    genai.configure(api_key=api_key)
     contents = await file.read()
-    mime_map = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".pdf": "application/pdf"}
     ext = os.path.splitext(file.filename or "")[1].lower()
-    mime_type = mime_map.get(ext, "image/jpeg")
-    model = genai.GenerativeModel("gemini-1.5-flash")
-    prompt = """Analiza esta imagen de un ticket o factura de un restaurante en Mexico.
-Extrae la siguiente informacion y responde SOLO en formato JSON:
-{"fecha": "YYYY-MM-DD", "proveedor": "nombre", "categoria": "una de: PROTEINA, VEGETALES_FRUTAS, ABARROTES, BEBIDAS, PRODUCTOS_ASIATICOS, DESECHABLES_EMPAQUES, LIMPIEZA_MANTTO, UTENSILIOS, PERSONAL, PROPINAS, SERVICIOS, EQUIPO, MARKETING, PAPELERIA, RENTA, LUZ, SOFTWARE, COMISIONES_BANCARIAS, IMPUESTOS, NOMINA, COMISIONES_PLATAFORMAS, OTROS", "total": 0.00, "descripcion": "breve", "confianza": 0.0}
-Si no puedes leer algun campo, dejalo null."""
-    try:
-        response = model.generate_content([prompt, {"mime_type": mime_type, "data": contents}])
-        text = response.text.strip()
-        text = re.sub(r'^```json\s*', '', text)
-        text = re.sub(r'\s*```$', '', text)
-        import json
-        result = json.loads(text)
-        return schemas.OCRResult(**result)
-    except Exception as e:
-        raise HTTPException(status_code=422, detail=f"Error procesando imagen: {str(e)}")
-
+    
+    if ext == ".pdf":
+        # Intentar con pdfplumber
+        try:
+            import pdfplumber, io, re as _re
+            pdf = pdfplumber.open(io.BytesIO(contents))
+            full_text = ""
+            for page in pdf.pages:
+                t = page.extract_text()
+                if t:
+                    full_text += t + "\n"
+                tables = page.extract_tables()
+                for table in tables:
+                    for row in table:
+                        if row:
+                            full_text += " ".join([str(c) for c in row if c]) + "\n"
+            pdf.close()
+            
+            if len(full_text.strip()) < 20:
+                raise HTTPException(status_code=422, detail="El PDF no contiene texto extraible. Sube un PDF con texto, no una imagen escaneada.")
+            
+            # Detectar proveedor
+            PROV_MAP = {
+                "BUENA TIERRA": {"nombre": "LA BUENA TIERRA", "categoria": "VEGETALES_FRUTAS"},
+                "CESAR HUMBERTO CARRANZA": {"nombre": "LA BUENA TIERRA", "categoria": "VEGETALES_FRUTAS"},
+                "COMERCIAL TOYO": {"nombre": "TOYO", "categoria": "PRODUCTOS_ASIATICOS"},
+                "TOYO": {"nombre": "TOYO", "categoria": "PRODUCTOS_ASIATICOS"},
+                "EL NAVEGANTE": {"nombre": "EL NAVEGANTE", "categoria": "PROTEINA"},
+                "MARIA ISABEL HERNANDEZ": {"nombre": "EL NAVEGANTE", "categoria": "PROTEINA"},
+                "VACA NEGRA": {"nombre": "VACA NEGRA", "categoria": "PROTEINA"},
+                "ALIMENTOS Y CARNES": {"nombre": "VACA NEGRA", "categoria": "PROTEINA"},
+                "KUME": {"nombre": "KUME", "categoria": "PRODUCTOS_ASIATICOS"},
+                "KUME IMPORTACIONES": {"nombre": "KUME", "categoria": "PRODUCTOS_ASIATICOS"},
+                "FREKO": {"nombre": "FREKO", "categoria": "ABARROTES"},
+                "WALMART": {"nombre": "WALMART", "categoria": "ABARROTES"},
+                "SAMS": {"nombre": "SAMS", "categoria": "ABARROTES"},
+                "COSTCO": {"nombre": "COSTCO", "categoria": "ABARROTES"},
+                "AMAZON": {"nombre": "AMAZON", "categoria": "DESECHABLES_EMPAQUES"},
+                "MERCADO LIBRE": {"nombre": "MERCADO LIBRE", "categoria": "EQUIPO"},
+                "FEMSA": {"nombre": "FEMSA", "categoria": "BEBIDAS"},
+            }
+            
+            text_upper = full_text.upper()
+            proveedor = None
+            categoria = "OTROS"
+            for key, info in PROV_MAP.items():
+                if key.upper() in text_upper:
+                    proveedor = info["nombre"]
+                    categoria = info["categoria"]
+                    break
+            
+            # Extraer total
+            total = None
+            for pattern in [r"TOTAL[:\s]*\$?\s*([\d,]+\.\d{2})", r"Total[:\s]*\$?\s*([\d,]+\.\d{2})", r"TOTAL\s+\$([\d,]+\.\d{2})"]:
+                m = _re.search(pattern, full_text)
+                if m:
+                    total = float(m.group(1).replace(",", ""))
+                    break
+            
+            # Extraer fecha
+            fecha = None
+            for pattern in [r"(\d{4}-\d{2}-\d{2})", r"(\d{1,2}/\d{1,2}/\d{4})", r"Fecha[:\s]*(\d{4}-\d{2}-\d{2})"]:
+                m = _re.search(pattern, full_text)
+                if m:
+                    d = m.group(1)
+                    if "-" in d and len(d) == 10:
+                        fecha = d
+                    elif "/" in d:
+                        parts = d.split("/")
+                        if len(parts) == 3 and len(parts[2]) == 4:
+                            fecha = f"{parts[2]}-{parts[1].zfill(2)}-{parts[0].zfill(2)}"
+                    break
+            
+            # Extraer descripcion de conceptos
+            lines = [l.strip() for l in full_text.split("\n") if len(l.strip()) > 5]
+            keywords = ["SALMON","CARNE","NEW YORK","ATUN","CAMARON","SAKE","MIRIN","NARANJA","AGUACATE","LIMON","PEPINO","NORI","SESAME","ZANAHORIA","CEBOLL"]
+            desc_items = [l for l in lines if any(kw in l.upper() for kw in keywords)]
+            descripcion = "; ".join(desc_items[:3]) if desc_items else None
+            
+            return {
+                "fecha": fecha,
+                "proveedor": proveedor,
+                "categoria": categoria,
+                "total": total,
+                "descripcion": descripcion,
+                "confianza": 0.8 if proveedor else 0.3,
+            }
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=422, detail=f"Error procesando PDF: {str(e)}")
+    else:
+        raise HTTPException(status_code=422, detail="Solo se aceptan archivos PDF por ahora.")
 
 @app.get("/api/pl/{mes}/{anio}")
 def calcular_pl(mes: int, anio: int, db: Session = Depends(get_db)):
