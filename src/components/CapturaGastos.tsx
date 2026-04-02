@@ -28,6 +28,46 @@ export const CapturaGastos: React.FC = () => {
   const [gastosLista, setGastosLista] = useState<any[]>([]);
   const [showNuevoGasto, setShowNuevoGasto] = useState(false);
   const [gastoRapido, setGastoRapido] = useState(false);
+  const [bitacoraMode, setBitacoraMode] = useState(false);
+  const [bitacoraData, setBitacoraData] = useState<any>(null);
+  const [bitacoraLoading, setBitacoraLoading] = useState(false);
+  const [bitacoraFile, setBitacoraFile] = useState<File|null>(null);
+
+  const handleBitacoraUpload = async (file: File) => {
+    setBitacoraLoading(true);
+    setBitacoraFile(file);
+    try {
+      const result = await api.upload("/api/gastos/importar-bitacora", file);
+      setBitacoraData(result);
+    } catch(e: any) { alert("Error al procesar: " + (e.message||e)); }
+    setBitacoraLoading(false);
+  };
+
+  const confirmarBitacora = async () => {
+    if (!bitacoraData?.gastos?.length) return;
+    setBitacoraLoading(true);
+    let ok = 0;
+    for (const g of bitacoraData.gastos) {
+      try {
+        await api.post("/api/gastos", {
+          fecha: g.fecha,
+          proveedor: g.proveedor,
+          categoria: g.categoria,
+          monto: g.monto,
+          metodo_pago: g.metodo_pago,
+          comprobante: g.comprobante,
+          descripcion: g.descripcion,
+        });
+        ok++;
+      } catch(e) {}
+    }
+    alert(ok + " gastos registrados de " + bitacoraData.gastos.length);
+    setBitacoraData(null);
+    setBitacoraMode(false);
+    setBitacoraFile(null);
+    fetchGastos();
+    setBitacoraLoading(false);
+  };
   const [rapidoProv, setRapidoProv] = useState<any>(null);
   const [rapidoMonto, setRapidoMonto] = useState("");
   const [rapidoDesc, setRapidoDesc] = useState("");
@@ -278,7 +318,8 @@ export const CapturaGastos: React.FC = () => {
             <span style={{fontSize:"14px",fontWeight:"700",color:"#111827"}}>Gastos Registrados ({gastosLista.length})</span>
             <div style={{display:"flex",gap:"8px"}}>
               <button onClick={fetchGastos} style={{padding:"6px 12px",borderRadius:"8px",border:"1px solid #E5E7EB",background:"#FFF",fontSize:"12px",color:"#6B7280",cursor:"pointer"}}>Actualizar</button>
-              <button onClick={() => { setGastoRapido(true); setShowNuevoGasto(false); setRapidoProv(null); }} style={{padding:"6px 14px",borderRadius:"8px",border:"none",background:"#059669",color:"#FFF",fontSize:"12px",fontWeight:"700",cursor:"pointer"}}>⚡ Gasto Rapido</button>
+              <button onClick={() => { setBitacoraMode(true); setGastoRapido(false); setShowNuevoGasto(false); }} style={{padding:"6px 14px",borderRadius:"8px",border:"none",background:"#2563EB",color:"#FFF",fontSize:"12px",fontWeight:"700",cursor:"pointer"}}>📄 Subir Bitacora</button>
+              <button onClick={() => { setGastoRapido(true); setShowNuevoGasto(false); setBitacoraMode(false); setRapidoProv(null); }} style={{padding:"6px 14px",borderRadius:"8px",border:"none",background:"#059669",color:"#FFF",fontSize:"12px",fontWeight:"700",cursor:"pointer"}}>⚡ Gasto Rapido</button>
               <button onClick={() => { setShowNuevoGasto(true); setGastoRapido(false); }} style={{padding:"6px 14px",borderRadius:"8px",border:"none",background:"#3D1C1E",color:"#C8FF00",fontSize:"12px",fontWeight:"700",cursor:"pointer"}}>+ Manual</button>
             </div>
           </div>
@@ -345,6 +386,57 @@ export const CapturaGastos: React.FC = () => {
           )}
         </div>
       )}
+      {tabGastos === "gastos" && bitacoraMode && (
+        <div>
+          <div style={{marginBottom:"12px"}}>
+            <button onClick={() => { setBitacoraMode(false); setBitacoraData(null); fetchGastos(); }} style={{padding:"8px 16px",borderRadius:"8px",border:"1px solid #E5E7EB",background:"#FFF",fontSize:"12px",color:"#6B7280",cursor:"pointer"}}>← Volver a lista</button>
+          </div>
+          <div style={{background:"#FFF",borderRadius:"14px",padding:"20px",boxShadow:"0 1px 3px rgba(0,0,0,0.04),0 4px 12px rgba(0,0,0,0.02)"}}>
+            <h3 style={{fontSize:"16px",fontWeight:"700",color:"#111827",marginBottom:"4px"}}>📄 Importar Bitacora de Gastos</h3>
+            <p style={{fontSize:"12px",color:"#9CA3AF",marginBottom:"16px"}}>SubePDF de la bitacora diaria y se registran todos los gastos automaticamente</p>
+            {!bitacoraData ? (
+              <div>
+                <input type="file" accept=".pdf" onChange={e => e.target.files?.[0] && handleBitacoraUpload(e.target.files[0])} style={{display:"none"}} id="bitacora-input" />
+                <label htmlFor="bitacora-input" style={{display:"block",padding:"30px",border:"2px dashed #E5E7EB",borderRadius:"12px",textAlign:"center" as const,cursor:"pointer",background:"#FAFBFC"}}>
+                  {bitacoraLoading ? (
+                    <span style={{fontSize:"14px",color:"#6B7280"}}>Procesando PDF...</span>
+                  ) : (
+                    <div><span style={{fontSize:"14px",fontWeight:"600",color:"#111827"}}>Click para seleccionar PDF de bitacora</span><br/><span style={{fontSize:"12px",color:"#9CA3AF"}}>El formato debe ser la bitacora de gastos diaria</span></div>
+                  )}
+                </label>
+              </div>
+            ) : (
+              <div>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"12px",padding:"10px 14px",borderRadius:"8px",background:"#EFF6FF"}}>
+                  <div>
+                    <span style={{fontSize:"13px",fontWeight:"700",color:"#2563EB"}}>Bitacora procesada</span>
+                    <span style={{fontSize:"12px",color:"#6B7280",marginLeft:"8px"}}>{bitacoraData.responsable} | {bitacoraData.fecha || "Sin fecha"}</span>
+                  </div>
+                  <span style={{fontSize:"14px",fontWeight:"800",color:"#2563EB"}}>{bitacoraData.gastos_count} gastos | {formatMXN(bitacoraData.total_gastos)}</span>
+                </div>
+                <div style={{borderRadius:"10px",overflow:"hidden",border:"1px solid #F3F4F6"}}>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 110px 90px 90px",padding:"8px 14px",background:"#FAFBFC",borderBottom:"1px solid #F3F4F6"}}>
+                    {["Proveedor","Categoria","Comprobante","Monto"].map(h => <span key={h} style={{fontSize:"10px",fontWeight:"700",color:"#9CA3AF",textTransform:"uppercase" as const}}>{h}</span>)}
+                  </div>
+                  {bitacoraData.gastos.map((g: any, i: number) => (
+                    <div key={i} style={{display:"grid",gridTemplateColumns:"1fr 110px 90px 90px",padding:"8px 14px",borderBottom:"1px solid #F9FAFB",alignItems:"center"}}>
+                      <div><span style={{fontSize:"13px",fontWeight:"600",color:"#111827"}}>{g.proveedor}</span>{g.descripcion && <div style={{fontSize:"11px",color:"#9CA3AF"}}>{g.descripcion.slice(0,60)}</div>}</div>
+                      <span style={{fontSize:"11px",padding:"2px 6px",borderRadius:"4px",background:"#F3F4F6",color:"#374151"}}>{(g.categoria||"").replace(/_/g," ")}</span>
+                      <span style={{fontSize:"10px",padding:"2px 6px",borderRadius:"4px",background:"#FDF4FF",color:"#7C3AED"}}>{(g.comprobante||"").replace(/_/g," ")}</span>
+                      <span style={{fontSize:"13px",fontWeight:"700",color:"#111827",textAlign:"right" as const}}>{formatMXN(g.monto)}</span>
+                    </div>
+                  ))}
+                </div>
+                <div style={{display:"flex",gap:"10px",marginTop:"14px"}}>
+                  <button onClick={confirmarBitacora} disabled={bitacoraLoading} style={{flex:1,padding:"12px",borderRadius:"10px",border:"none",background:"#2563EB",color:"#FFF",fontSize:"14px",fontWeight:"700",cursor:"pointer"}}>{bitacoraLoading ? "Registrando..." : "Confirmar y Registrar " + bitacoraData.gastos_count + " Gastos"}</button>
+                  <button onClick={() => { setBitacoraData(null); setBitacoraFile(null); }} style={{padding:"12px 20px",borderRadius:"10px",border:"1px solid #E5E7EB",background:"#FFF",fontSize:"13px",cursor:"pointer"}}>Cancelar</button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {tabGastos === "gastos" && gastoRapido && (
         <div>
           <div style={{marginBottom:"12px"}}>
