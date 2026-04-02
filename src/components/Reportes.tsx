@@ -112,7 +112,7 @@ export const Reportes = () => {
       {loading ? (
         <div style={{textAlign:"center",padding:"40px"}}><p style={{color:"#9CA3AF"}}>Cargando...</p></div>
       ) : (
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"16px"}}>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"16px"}}>
 
           <div style={{background:"#FFF",borderRadius:"14px",padding:"20px",boxShadow:"0 1px 3px rgba(0,0,0,0.04),0 4px 12px rgba(0,0,0,0.02)"}}>
             <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"16px"}}>
@@ -138,17 +138,7 @@ export const Reportes = () => {
             </button>
           </div>
 
-          <div style={{background:"#FFF",borderRadius:"14px",padding:"20px",boxShadow:"0 1px 3px rgba(0,0,0,0.04),0 4px 12px rgba(0,0,0,0.02)"}}>
-            <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"16px"}}>
-              <FileSpreadsheet style={{width:"20px",height:"20px",color:"#7C3AED"}} />
-              <h3 style={{fontSize:"15px",fontWeight:"700",color:"#111827",margin:0}}>Estado de Resultados</h3>
-            </div>
-            <div style={{fontSize:"24px",fontWeight:"800",color:pl?.utilidad_neta>=0?"#059669":"#DC2626",marginBottom:"4px"}}>{formatMXN(pl?.utilidad_neta || 0)}</div>
-            <p style={{fontSize:"12px",color:"#9CA3AF",marginBottom:"16px"}}>Utilidad neta {MESES[mes]}</p>
-            <button onClick={exportPL} disabled={!pl} style={{width:"100%",padding:"10px",borderRadius:"10px",border:"none",background:pl?"#7C3AED":"#E5E7EB",color:pl?"#FFF":"#9CA3AF",fontSize:"13px",fontWeight:"700",cursor:pl?"pointer":"default",display:"flex",alignItems:"center",justifyContent:"center",gap:"6px"}}>
-              <Download style={{width:"14px",height:"14px"}} /> Descargar CSV
-            </button>
-          </div>
+
         </div>
       )}
     </div>
