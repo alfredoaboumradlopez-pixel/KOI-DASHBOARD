@@ -31,6 +31,30 @@ export const CapturaGastos: React.FC = () => {
   const [bitacoraMode, setBitacoraMode] = useState(false);
   const [bitacoraData, setBitacoraData] = useState<any>(null);
   const [bitacoraLoading, setBitacoraLoading] = useState(false);
+  const [bitacoraFecha, setBitacoraFecha] = useState(new Date().toISOString().split("T")[0]);
+  const [rompiendoIdx, setRompiendoIdx] = useState<number|null>(null);
+  const [romperLineas, setRomperLineas] = useState<{categoria:string,descripcion:string,monto:string}[]>([]);
+
+  const iniciarRomper = (idx: number) => {
+    const g = bitacoraData.gastos[idx];
+    setRompiendoIdx(idx);
+    setRomperLineas([{categoria:g.categoria,descripcion:g.descripcion,monto:String(g.monto)}]);
+  };
+
+  const addRomperLinea = () => setRomperLineas([...romperLineas, {categoria:"",descripcion:"",monto:""}]);
+
+  const confirmarRomper = () => {
+    if (rompiendoIdx === null || !bitacoraData) return;
+    const lineasValidas = romperLineas.filter(l => l.categoria && parseFloat(l.monto) > 0);
+    if (lineasValidas.length === 0) return;
+    const original = bitacoraData.gastos[rompiendoIdx];
+    const nuevos = lineasValidas.map(l => ({...original, categoria: l.categoria, descripcion: l.descripcion, monto: parseFloat(l.monto)}));
+    const gastosNuevos = [...bitacoraData.gastos];
+    gastosNuevos.splice(rompiendoIdx, 1, ...nuevos);
+    setBitacoraData({...bitacoraData, gastos: gastosNuevos, gastos_count: gastosNuevos.length, total_gastos: gastosNuevos.reduce((s: number,g: any) => s+g.monto, 0)});
+    setRompiendoIdx(null);
+    setRomperLineas([]);
+  };
   const [bitacoraFile, setBitacoraFile] = useState<File|null>(null);
 
   const handleBitacoraUpload = async (file: File) => {
@@ -38,6 +62,7 @@ export const CapturaGastos: React.FC = () => {
     setBitacoraFile(file);
     try {
       const result = await api.upload("/api/gastos/importar-bitacora", file);
+      if (result.fecha) setBitacoraFecha(result.fecha);
       setBitacoraData(result);
     } catch(e: any) { alert("Error al procesar: " + (e.message||e)); }
     setBitacoraLoading(false);
@@ -50,7 +75,7 @@ export const CapturaGastos: React.FC = () => {
     for (const g of bitacoraData.gastos) {
       try {
         await api.post("/api/gastos", {
-          fecha: g.fecha,
+          fecha: bitacoraFecha,
           proveedor: g.proveedor,
           categoria: g.categoria,
           monto: g.monto,
@@ -407,26 +432,56 @@ export const CapturaGastos: React.FC = () => {
               </div>
             ) : (
               <div>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"12px",padding:"10px 14px",borderRadius:"8px",background:"#EFF6FF"}}>
-                  <div>
-                    <span style={{fontSize:"13px",fontWeight:"700",color:"#2563EB"}}>Bitacora procesada</span>
-                    <span style={{fontSize:"12px",color:"#6B7280",marginLeft:"8px"}}>{bitacoraData.responsable} | {bitacoraData.fecha || "Sin fecha"}</span>
+                <div style={{padding:"12px 14px",borderRadius:"8px",background:"#EFF6FF",marginBottom:"12px"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"8px"}}>
+                    <div>
+                      <span style={{fontSize:"13px",fontWeight:"700",color:"#2563EB"}}>Bitacora procesada</span>
+                      <span style={{fontSize:"12px",color:"#6B7280",marginLeft:"8px"}}>{bitacoraData.responsable}</span>
+                    </div>
+                    <span style={{fontSize:"14px",fontWeight:"800",color:"#2563EB"}}>{bitacoraData.gastos_count} gastos | {formatMXN(bitacoraData.total_gastos)}</span>
                   </div>
-                  <span style={{fontSize:"14px",fontWeight:"800",color:"#2563EB"}}>{bitacoraData.gastos_count} gastos | {formatMXN(bitacoraData.total_gastos)}</span>
+                  <div style={{display:"flex",gap:"10px",alignItems:"center"}}>
+                    <label style={{fontSize:"11px",fontWeight:"600",color:"#6B7280"}}>Fecha:</label>
+                    <input type="date" value={bitacoraFecha} onChange={e => setBitacoraFecha(e.target.value)} style={{padding:"6px 10px",borderRadius:"6px",border:"1px solid #BFDBFE",fontSize:"13px",fontWeight:"600"}} />
+                  </div>
                 </div>
                 <div style={{borderRadius:"10px",overflow:"hidden",border:"1px solid #F3F4F6"}}>
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 110px 90px 90px",padding:"8px 14px",background:"#FAFBFC",borderBottom:"1px solid #F3F4F6"}}>
-                    {["Proveedor","Categoria","Comprobante","Monto"].map(h => <span key={h} style={{fontSize:"10px",fontWeight:"700",color:"#9CA3AF",textTransform:"uppercase" as const}}>{h}</span>)}
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 100px 80px 80px 50px",padding:"8px 14px",background:"#FAFBFC",borderBottom:"1px solid #F3F4F6"}}>
+                    {["Proveedor","Categoria","Comprobante","Monto",""].map(h => <span key={h} style={{fontSize:"10px",fontWeight:"700",color:"#9CA3AF",textTransform:"uppercase" as const}}>{h}</span>)}
                   </div>
                   {bitacoraData.gastos.map((g: any, i: number) => (
-                    <div key={i} style={{display:"grid",gridTemplateColumns:"1fr 110px 90px 90px",padding:"8px 14px",borderBottom:"1px solid #F9FAFB",alignItems:"center"}}>
+                    <div key={i} style={{display:"grid",gridTemplateColumns:"1fr 100px 80px 80px 50px",padding:"8px 14px",borderBottom:"1px solid #F9FAFB",alignItems:"center"}}>
                       <div><span style={{fontSize:"13px",fontWeight:"600",color:"#111827"}}>{g.proveedor}</span>{g.descripcion && <div style={{fontSize:"11px",color:"#9CA3AF"}}>{g.descripcion.slice(0,60)}</div>}</div>
                       <span style={{fontSize:"11px",padding:"2px 6px",borderRadius:"4px",background:"#F3F4F6",color:"#374151"}}>{(g.categoria||"").replace(/_/g," ")}</span>
                       <span style={{fontSize:"10px",padding:"2px 6px",borderRadius:"4px",background:"#FDF4FF",color:"#7C3AED"}}>{(g.comprobante||"").replace(/_/g," ")}</span>
                       <span style={{fontSize:"13px",fontWeight:"700",color:"#111827",textAlign:"right" as const}}>{formatMXN(g.monto)}</span>
+                      <button onClick={() => iniciarRomper(i)} style={{fontSize:"10px",padding:"2px 8px",borderRadius:"4px",border:"1px solid #E5E7EB",background:"#FFF",color:"#6B7280",cursor:"pointer"}}>Romper</button>
                     </div>
                   ))}
                 </div>
+                {rompiendoIdx !== null && (
+                  <div style={{padding:"14px",borderRadius:"10px",background:"#FFFBEB",border:"1px solid #FDE68A",marginTop:"10px"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"8px"}}>
+                      <span style={{fontSize:"13px",fontWeight:"700",color:"#92400E"}}>Romper gasto: {bitacoraData.gastos[rompiendoIdx]?.proveedor} ({formatMXN(bitacoraData.gastos[rompiendoIdx]?.monto||0)})</span>
+                      <button onClick={addRomperLinea} style={{fontSize:"11px",padding:"4px 10px",borderRadius:"6px",border:"none",background:"#FDE68A",color:"#92400E",fontWeight:"600",cursor:"pointer"}}>+ Linea</button>
+                    </div>
+                    {romperLineas.map((l,i) => (
+                      <div key={i} style={{display:"grid",gridTemplateColumns:"1fr 1fr 100px 30px",gap:"6px",marginBottom:"6px"}}>
+                        <select value={l.categoria} onChange={e => {const u=[...romperLineas];u[i].categoria=e.target.value;setRomperLineas(u);}} style={{padding:"6px 8px",borderRadius:"6px",border:"1px solid #E5E7EB",fontSize:"12px"}}>
+                          <option value="">Categoria...</option>
+                          {CATEGORIAS.map(cat => <option key={cat} value={cat}>{cat.replace(/_/g," ")}</option>)}
+                        </select>
+                        <input value={l.descripcion} onChange={e => {const u=[...romperLineas];u[i].descripcion=e.target.value;setRomperLineas(u);}} placeholder="Detalle" style={{padding:"6px 8px",borderRadius:"6px",border:"1px solid #E5E7EB",fontSize:"12px"}} />
+                        <input type="number" step="0.01" value={l.monto} onChange={e => {const u=[...romperLineas];u[i].monto=e.target.value;setRomperLineas(u);}} placeholder="$0" style={{padding:"6px 8px",borderRadius:"6px",border:"1px solid #E5E7EB",fontSize:"12px",fontWeight:"700"}} />
+                        {romperLineas.length > 1 && <button onClick={() => setRomperLineas(romperLineas.filter((_,idx)=>idx!==i))} style={{border:"none",background:"none",cursor:"pointer",color:"#DC2626",fontSize:"14px"}}>×</button>}
+                      </div>
+                    ))}
+                    <div style={{display:"flex",gap:"8px",marginTop:"8px"}}>
+                      <button onClick={confirmarRomper} style={{padding:"6px 14px",borderRadius:"6px",border:"none",background:"#92400E",color:"#FFF",fontSize:"12px",fontWeight:"700",cursor:"pointer"}}>Confirmar Desglose</button>
+                      <button onClick={() => {setRompiendoIdx(null);setRomperLineas([]);}} style={{padding:"6px 14px",borderRadius:"6px",border:"1px solid #E5E7EB",background:"#FFF",fontSize:"12px",cursor:"pointer"}}>Cacelar</button>
+                    </div>
+                  </div>
+                )}
                 <div style={{display:"flex",gap:"10px",marginTop:"14px"}}>
                   <button onClick={confirmarBitacora} disabled={bitacoraLoading} style={{flex:1,padding:"12px",borderRadius:"10px",border:"none",background:"#2563EB",color:"#FFF",fontSize:"14px",fontWeight:"700",cursor:"pointer"}}>{bitacoraLoading ? "Registrando..." : "Confirmar y Registrar " + bitacoraData.gastos_count + " Gastos"}</button>
                   <button onClick={() => { setBitacoraData(null); setBitacoraFile(null); }} style={{padding:"12px 20px",borderRadius:"10px",border:"1px solid #E5E7EB",background:"#FFF",fontSize:"13px",cursor:"pointer"}}>Cancelar</button>
