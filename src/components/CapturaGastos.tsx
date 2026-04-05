@@ -164,7 +164,7 @@ export const CapturaGastos: React.FC = () => {
   const [editGasto, setEditGasto] = useState<any>(null);
 
   const iniciarEdicion = (g: any) => {
-    setEditGasto({...g, total: g.total || g.monto || 0});
+    setEditGasto({...g, total: g.total || g.monto || 0, descripcion: g.descripcion || '', comprobante: g.comprobante || 'SIN_COMPROBANTE'});
     setEditingId(g.id);
   };
 
