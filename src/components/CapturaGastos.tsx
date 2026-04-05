@@ -177,6 +177,7 @@ export const CapturaGastos: React.FC = () => {
         categoria: editGasto.categoria,
         monto: parseFloat(editGasto.total) || 0,
         metodo_pago: editGasto.metodo_pago || "EFECTIVO",
+        comprobante: editGasto.comprobante || "SIN_COMPROBANTE",
         descripcion: editGasto.descripcion || "",
       });
       setEditingId(null);
