@@ -161,6 +161,22 @@ export const ArqueoCaja: React.FC = () => {
                       </div>
                     </div>
                   </div>
+                  {(() => {
+                    const tv = c.total_venta || 0;
+                    const tp = (c.propinas_efectivo||0)+(c.propinas_parrot||0)+(c.propinas_terminales||0);
+                    const pct = tv > 0 ? (tp/tv*100) : 0;
+                    return tv > 0 && (pct < 10 || pct > 15) ? (
+                      <div style={{padding:"10px 14px",borderRadius:"8px",background:pct<10?"#FEF2F2":"#FEF3C7",display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"12px"}}>
+                        <span style={{fontSize:"12px",fontWeight:"600",color:pct<10?"#DC2626":"#D97706"}}>{pct<10?"⚠ Propinas bajas":"⚠ Propinas altas"}: {pct.toFixed(1)}% (esperado 10%-15%)</span>
+                        <span style={{fontSize:"12px",fontWeight:"700",color:pct<10?"#DC2626":"#D97706"}}>{formatMXN(tp)} / {formatMXN(tv)}</span>
+                      </div>
+                    ) : tv > 0 ? (
+                      <div style={{padding:"10px 14px",borderRadius:"8px",background:"#ECFDF5",display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"12px"}}>
+                        <span style={{fontSize:"12px",fontWeight:"600",color:"#059669"}}>✓ Propinas OK: {pct.toFixed(1)}% (rango 10%-15%)</span>
+                        <span style={{fontSize:"12px",fontWeight:"700",color:"#059669"}}>{formatMXN(tp)} / {formatMXN(tv)}</span>
+                      </div>
+                    ) : null;
+                  })()}
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div className="bg-slate-50 rounded-lg p-3">
                       <p className="text-xs text-slate-500">Saldo Inicial</p>
