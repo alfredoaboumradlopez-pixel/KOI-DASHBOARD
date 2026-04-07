@@ -28,6 +28,8 @@ export const CierreTurno: React.FC = () => {
   const [propinasParrot, setPropinasParrot] = useState("");
   const [propinasTerminales, setPropinasTerminales] = useState("");
   const [propinaResponsable, setPropinaResponsable] = useState("");
+  const [comisionUber, setComisionUber] = useState("30");
+  const [comisionRappi, setComisionRappi] = useState("25");
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -35,6 +37,7 @@ export const CierreTurno: React.FC = () => {
   const n = (v: string) => parseFloat(v) || 0;
   const totalVenta = n(ventasEfectivo) + n(ventasParrot) + n(ventasTerminales) + n(ventasUber) + n(ventasRappi) + n(cortesias) + n(otrosIngresos);
   const totalPropinas = n(propinasEfectivo) + n(propinasParrot) + n(propinasTerminales);
+  const pctPropinas = totalVenta > 0 ? (totalPropinas / totalVenta * 100) : 0;
   const saldoEsperado = n(saldoInicial) + n(ventasEfectivo);
   const diferencia = n(efectivoFisico) > 0 ? n(efectivoFisico) - saldoEsperado : 0;
 
@@ -122,13 +125,42 @@ export const CierreTurno: React.FC = () => {
             </div>
           </div>
           <div style={{background:"#FFF",borderRadius:"14px",padding:"20px",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
-            <h3 style={{fontSize:"14px",fontWeight:"700",color:"#111827",marginBottom:"14px"}}>Ventas por Canal</h3>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"14px"}}>
+              <h3 style={{fontSize:"14px",fontWeight:"700",color:"#111827",margin:0}}>Ventas por Canal</h3>
+              <div style={{display:"flex",gap:"8px",alignItems:"center"}}>
+                <span style={{fontSize:"10px",color:"#9CA3AF"}}>Comisiones:</span>
+                <div style={{display:"flex",alignItems:"center",gap:"2px"}}><span style={{fontSize:"10px",color:"#6B7280"}}>Uber</span><input type="number" value={comisionUber} onChange={e => setComisionUber(e.target.value)} style={{width:"40px",padding:"2px 4px",borderRadius:"4px",border:"1px solid #E5E7EB",fontSize:"11px",textAlign:"center"}} /><span style={{fontSize:"10px",color:"#6B7280"}}>%</span></div>
+                <div style={{display:"flex",alignItems:"center",gap:"2px"}}><span style={{fontSize:"10px",color:"#6B7280"}}>Rappi</span><input type="number" value={comisionRappi} onChange={e => setComisionRappi(e.target.value)} style={{width:"40px",padding:"2px 4px",borderRadius:"4px",border:"1px solid #E5E7EB",fontSize:"11px",textAlign:"center"}} /><span style={{fontSize:"10px",color:"#6B7280"}}>%</span></div>
+              </div>
+            </div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px"}}>
               <div><label style={labelStyle}>Efectivo</label><input type="number" step="0.01" value={ventasEfectivo} onChange={e => setVentasEfectivo(e.target.value)} placeholder="0.00" style={inputStyle} /></div>
               <div><label style={labelStyle}>Parrot Pay</label><input type="number" step="0.01" value={ventasParrot} onChange={e => setVentasParrot(e.target.value)} placeholder="0.00" style={inputStyle} /></div>
               <div><label style={labelStyle}>Terminales</label><input type="number" step="0.01" value={ventasTerminales} onChange={e => setVentasTerminales(e.target.value)} placeholder="0.00" style={inputStyle} /></div>
-              <div><label style={labelStyle}>Uber Eats</label><input type="number" step="0.01" value={ventasUber} onChange={e => setVentasUber(e.target.value)} placeholder="0.00" style={inputStyle} /></div>
-              <div><label style={labelStyle}>Rappi</label><input type="number" step="0.01" value={ventasRappi} onChange={e => setVentasRappi(e.target.value)} placeholder="0.00" style={inputStyle} /></div>
+              <div>
+                <label style={labelStyle}>Uber Eats</label>
+                <input type="number" step="0.01" value={ventasUber} onChange={e => setVentasUber(e.target.value)} placeholder="0.00" style={inputStyle} />
+                {n(ventasUber) > 0 && <div style={{marginTop:"4px",display:"flex",justifyContent:"space-between",padding:"4px 8px",borderRadius:"6px",background:"#FEF2F2"}}>
+                  <span style={{fontSize:"10px",color:"#DC2626"}}>Comision {comisionUber}%</span>
+                  <span style={{fontSize:"11px",fontWeight:"700",color:"#DC2626"}}>-{formatMXN(n(ventasUber)*n(comisionUber)/100)}</span>
+                </div>}
+                {n(ventasUber) > 0 && <div style={{display:"flex",justifyContent:"space-between",padding:"4px 8px"}}>
+                  <span style={{fontSize:"10px",color:"#059669"}}>Ingreso real</span>
+                  <span style={{fontSize:"11px",fontWeight:"700",color:"#059669"}}>{formatMXN(n(ventasUber)*(1-n(comisionUber)/100))}</span>
+                </div>}
+              </div>
+              <div>
+                <label style={labelStyle}>Rappi</label>
+                <input type="number" step="0.01" value={ventasRappi} onChange={e => setVentasRappi(e.target.value)} placeholder="0.00" style={inputStyle} />
+                {n(ventasRappi) > 0 && <div style={{marginTop:"4px",display:"flex",justifyContent:"space-between",padding:"4px 8px",borderRadius:"6px",background:"#FEF2F2"}}>
+                  <span style={{fontSize:"10px",color:"#DC2626"}}>Comision {comisionRappi}%</span>
+                  <span style={{fontSize:"11px",fontWeight:"700",color:"#DC2626"}}>-{formatMXN(n(ventasRappi)*n(comisionRappi)/100)}</span>
+                </div>}
+                {n(ventasRappi) > 0 && <div style={{display:"flex",justifyContent:"space-between",padding:"4px 8px"}}>
+                  <span style={{fontSize:"10px",color:"#059669"}}>Ingreso real</span>
+                  <span style={{fontSize:"11px",fontWeight:"700",color:"#059669"}}>{formatMXN(n(ventasRappi)*(1-n(comisionRappi)/100))}</span>
+                </div>}
+              </div>
               <div><label style={labelStyle}>Cortesias</label><input type="number" step="0.01" value={cortesias} onChange={e => setCortesias(e.target.value)} placeholder="0.00" style={inputStyle} /></div>
               <div style={{gridColumn:"span 2"}}><label style={labelStyle}>Otros Ingresos</label><input type="number" step="0.01" value={otrosIngresos} onChange={e => setOtrosIngresos(e.target.value)} placeholder="0.00" style={inputStyle} /></div>
             </div>
