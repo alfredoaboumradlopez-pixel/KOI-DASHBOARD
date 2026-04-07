@@ -198,7 +198,7 @@ export const CapturaGastos: React.FC = () => {
     try { await api.del("/api/gastos/" + id); fetchGastos(); } catch(e) { alert("Error al eliminar"); }
   };
 
-  const [tabGastos, setTabGastos] = useState<"gastos"|"proveedores">("gastos");
+  const [tabGastos, setTabGastos] = useState<"caja"|"rbs"|"proveedores">("caja");
   const [proveedores, setProveedores] = useState<{id:number;nombre:string;categoria_default:string}[]>([]);
 
   useEffect(() => {
@@ -333,7 +333,8 @@ export const CapturaGastos: React.FC = () => {
       </div>
 
       <div style={{display:"flex", gap:"4px", background:"#FFF", borderRadius:"12px", padding:"4px", marginBottom:"20px", boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
-        <button onClick={() => setTabGastos("gastos")} style={{flex:1, padding:"10px 16px", borderRadius:"10px", border:"none", cursor:"pointer", background:tabGastos==="gastos"?"#3D1C1E":"transparent", color:tabGastos==="gastos"?"#FFF":"#6B7280", fontSize:"13px", fontWeight:"600", transition:"all 0.15s"}}>Gastos</button>
+        <button onClick={() => setTabGastos("caja")} style={{flex:1, padding:"10px 16px", borderRadius:"10px", border:"none", cursor:"pointer", background:tabGastos==="caja"?"#059669":"transparent", color:tabGastos==="caja"?"#FFF":"#6B7280", fontSize:"13px", fontWeight:"600", transition:"all 0.15s"}}>Caja KOI</button>
+        <button onClick={() => setTabGastos("rbs")} style={{flex:1, padding:"10px 16px", borderRadius:"10px", border:"none", cursor:"pointer", background:tabGastos==="rbs"?"#7C3AED":"transparent", color:tabGastos==="rbs"?"#FFF":"#6B7280", fontSize:"13px", fontWeight:"600", transition:"all 0.15s"}}>RBS</button>
         <button onClick={() => setTabGastos("proveedores")} style={{flex:1, padding:"10px 16px", borderRadius:"10px", border:"none", cursor:"pointer", background:tabGastos==="proveedores"?"#3D1C1E":"transparent", color:tabGastos==="proveedores"?"#FFF":"#6B7280", fontSize:"13px", fontWeight:"600", transition:"all 0.15s"}}>Proveedores</button>
       </div>
 
@@ -417,7 +418,7 @@ export const CapturaGastos: React.FC = () => {
           )}
         </div>
       )}
-      {tabGastos === "gastos" && bitacoraMode && (
+      {tabGastos === "caja" && bitacoraMode && (
         <div>
           <div style={{marginBottom:"12px"}}>
             <button onClick={() => { setBitacoraMode(false); setBitacoraData(null); fetchGastos(); }} style={{padding:"8px 16px",borderRadius:"8px",border:"1px solid #E5E7EB",background:"#FFF",fontSize:"12px",color:"#6B7280",cursor:"pointer"}}>← Volver a lista</button>
@@ -498,7 +499,7 @@ export const CapturaGastos: React.FC = () => {
         </div>
       )}
 
-      {tabGastos === "gastos" && gastoRapido && (
+      {tabGastos === "caja" && gastoRapido && (
         <div>
           <div style={{marginBottom:"12px"}}>
             <button onClick={() => { setGastoRapido(false); fetchGastos(); }} style={{padding:"8px 16px",borderRadius:"8px",border:"1px solid #E5E7EB",ckground:"#FFF",fontSize:"12px",color:"#6B7280",cursor:"pointer"}}>← Volver a lista</button>
@@ -588,7 +589,7 @@ export const CapturaGastos: React.FC = () => {
         </div>
       )}
 
-      {tabGastos === "gastos" && gastoRapido && gastosSession.length > 0 && (
+      {tabGastos === "caja" && gastoRapido && gastosSession.length > 0 && (
         <div style={{background:"#FFF",borderRadius:"14px",overflow:"hidden",boxShadow:"0 1px 3px rgba(0,0,0,0.04)",marginTop:"16px"}}>
           <div style={{padding:"12px 20px",borderBottom:"1px solid #F3F4F6",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <span style={{fontSize:"13px",fontWeight:"700",color:"#111827"}}>Gastos registrados en esta sesion ({gastosSession.length})</span>
@@ -606,7 +607,18 @@ export const CapturaGastos: React.FC = () => {
         </div>
       )}
 
-      {tabGastos === "gastos" && showNuevoGasto && (
+      
+      {tabGastos === "rbs" && !showNuevoGasto && (
+        <div style={{background:"#FFF",borderRadius:"14px",overflow:"hidden",boxShadow:"0 1px 3px rgba(0,0,0,0.04),0 4px 12px rgba(0,0,0,0.02)"}}>
+          <div style={{padding:"16px 24px",borderBottom:"1px solid #F3F4F6",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div><span style={{fontSize:"14px",fontWeight:"700",color:"#111827"}}>Gastos RBS</span><span style={{fontSize:"11px",color:"#9CA3AF",marginLeft:"8px"}}>Facturas, transferencias y gastos privados</span></div>
+            <button onClick={() => setShowNuevoGasto(true)} style={{padding:"6px 14px",borderRadius:"8px",border:"none",background:"#7C3AED",color:"#FFF",fontSize:"12px",fontWeight:"700",cursor:"pointer"}}>+ Nuevo Gasto / Subir PDF</button>
+          </div>
+          <div style={{padding:"24px",textAlign:"center" as const}}><p style={{fontSize:"13px",color:"#9CA3AF"}}>Registra gastos privados con factura o manual</p></div>
+        </div>
+      )}
+
+      {(tabGastos === "caja" || tabGastos === "rbs") && showNuevoGasto && (
       <>
         <div style={{marginBottom:"12px"}}>
           <button onClick={() => { setShowNuevoGasto(false); fetchGastos(); }} style={{padding:"8px 16px",borderRadius:"8px",border:"1px solid #E5E7EB",background:"#FFF",fontSize:"12px",color:"#6B7280",cursor:"pointer"}}>← Volver a lista</button>
