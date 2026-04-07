@@ -346,7 +346,7 @@ export const CapturaGastos: React.FC = () => {
               <button onClick={fetchGastos} style={{padding:"6px 12px",borderRadius:"8px",border:"1px solid #E5E7EB",background:"#FFF",fontSize:"12px",color:"#6B7280",cursor:"pointer"}}>Actualizar</button>
               <button onClick={() => { setBitacoraMode(true); setGastoRapido(false); setShowNuevoGasto(false); }} style={{padding:"6px 14px",borderRadius:"8px",border:"none",background:"#2563EB",color:"#FFF",fontSize:"12px",fontWeight:"700",cursor:"pointer"}}>📄 Subir Bitacora</button>
               <button onClick={() => { setGastoRapido(true); setShowNuevoGasto(false); setBitacoraMode(false); setRapidoProv(null); }} style={{padding:"6px 14px",borderRadius:"8px",border:"none",background:"#059669",color:"#FFF",fontSize:"12px",fontWeight:"700",cursor:"pointer"}}>⚡ Gasto Rapido</button>
-              <button onClick={() => { setShowNuevoGasto(true); setGastoRapido(false); }} style={{padding:"6px 14px",borderRadius:"8px",border:"none",background:"#3D1C1E",color:"#C8FF00",fontSize:"12px",fontWeight:"700",cursor:"pointer"}}>+ Manual</button>
+              <button onClick={() => { setShowNuevoGasto(true); setGastoRapido(false); setBitacoraMode(false); }} style={{padding:"6px 14px",borderRadius:"8px",border:"none",background:"#3D1C1E",color:"#C8FF00",fontSize:"12px",fontWeight:"700",cursor:"pointer"}}>+ Manual</button>
             </div>
           </div>
           
