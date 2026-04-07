@@ -339,7 +339,7 @@ export const CapturaGastos: React.FC = () => {
       </div>
 
       {tabGastos === "proveedores" && <CuentasPorPagar />}
-      {tabGastos === "gastos" && !showNuevoGasto && !gastoRapido && (
+      {tabGastos === "caja" && !showNuevoGasto && !gastoRapido && !bitacoraMode && (
         <div style={{background:"#FFF",borderRadius:"14px",overflow:"hidden",boxShadow:"0 1px 3px rgba(0,0,0,0.04),0 4px 12px rgba(0,0,0,0.02)"}}>
           <div style={{padding:"16px 24px",borderBottom:"1px solid #F3F4F6",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <span style={{fontSize:"14px",fontWeight:"700",color:"#111827"}}>Gastos Registrados ({gastosLista.length})</span>
