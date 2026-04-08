@@ -262,6 +262,14 @@ export const CapturaGastos: React.FC = () => {
         descripcion: result.descripcion || '',
       });
       setOcrState('success');
+      // Si hay items individuales, auto-llenar desglose
+      if (result.items && result.items.length > 0) {
+        setLineasGasto(result.items.map((item: any) => ({
+          categoria: item.categoria || '',
+          descripcion: item.descripcion || '',
+          monto: String(item.monto || ''),
+        })));
+      }
     } catch (e: any) {
       setOcrState('error');
       setError('No se pudo procesar el ticket. Puedes llenar los datos manualmente.');

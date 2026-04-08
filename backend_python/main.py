@@ -456,6 +456,44 @@ async def ocr_gasto(file: UploadFile = File(...)):
             desc_items = [l for l in lines if any(kw in l.upper() for kw in keywords)]
             descripcion = "; ".join(desc_items[:3]) if desc_items else None
             
+            # Extraer items individuales de la tabla
+            items = []
+            for line in full_text.split("\n"):
+                # Buscar patron: cantidad + unidad + descripcion + precio + importe
+                import re as _re2
+                m = _re2.match(r"^\s*(\d+(?:\.\d+)?)\s+(?:KGM|KG|H87|PZA|Pieza|L)\s+(.+?)\s+(\d[\d,]*\.\d{2})\s*$", line.strip())
+                if m:
+                    cant = m.group(1)
+                    desc = m.group(2).strip()
+                    # Quitar ClaveProdServ
+                    desc = _re.sub(r"ClaveProdServ\s*-\s*\d+", "", desc).strip()
+                    importe = float(m.group(3).replace(",",""))
+                    if importe > 0 and len(desc) > 2:
+                        items.append({"descripcion": desc, "monto": importe, "categoria": categoria})
+            
+            # Si no encontramos items con regex, intentar con tablas de pdfplumber
+            if not items:
+                try:
+                    pdf2 = pdfplumber.open(io.BytesIO(contents))
+                    for page in pdf2.pages:
+                        tables = page.extract_tables()
+                        for table in tables:
+                            for row in table:
+                                if row and len(row) >= 4:
+                                    try:
+                                        last_val = str(row[-1] or "").replace(",","").replace("$","").strip()
+                                        importe = float(last_val)
+                                        desc_parts = [str(c) for c in row[1:-1] if c and not str(c).replace(".","").replace(",","").isdigit()]
+                                        desc = " ".join(desc_parts).strip()
+                                        desc = _re.sub(r"ClaveProdServ\s*-\s*\d+", "", desc).strip()
+                                        if importe > 0 and len(desc) > 2 and importe < (total or 999999):
+                                            items.append({"descripcion": desc, "monto": importe, "categoria": categoria})
+                                    except:
+                                        pass
+                    pdf2.close()
+                except:
+                    pass
+            
             return {
                 "fecha": fecha,
                 "proveedor": proveedor,
@@ -463,6 +501,7 @@ async def ocr_gasto(file: UploadFile = File(...)):
                 "total": total,
                 "descripcion": descripcion,
                 "confianza": 0.8 if proveedor else 0.3,
+                "items": items,
             }
         except HTTPException:
             raise
