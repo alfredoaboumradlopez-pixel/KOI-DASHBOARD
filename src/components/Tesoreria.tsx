@@ -36,7 +36,8 @@ const PAGOS_FIJOS: PagoRecurrente[] = [
 function getDiaActual() { return new Date().getDate(); }
 function getDiasEnMes() { const d = new Date(); return new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate(); }
 
-function getStatus(deadline: string): { status: "urgente" | "proximo" | "ok" | "continuo"; label: string } {
+function getStatus(deadline: string | undefined): { status: "urgente" | "proximo" | "ok" | "continuo"; label: string } {
+  if (!deadline) return { status: "ok" as const, label: "-" };
   const dia = getDiaActual();
   if (deadline === "Continuo" || deadline === "Variable") return { status: "continuo", label: deadline };
   if (deadline === "Cierre mes") {
