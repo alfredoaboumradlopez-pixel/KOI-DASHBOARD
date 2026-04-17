@@ -7,6 +7,7 @@ const menuItems = [
   { name: 'Gastos & Proveedores', icon: Receipt, path: '/gastos' },
   { name: 'Dashboard Gastos', icon: BarChart3, path: '/dashboard-gastos' },
   { name: 'Reportes', icon: BarChart3, path: '/reportes' },
+  { name: 'Calendario Pagos', icon: BarChart3, path: '/tesoreria' },
 ];
 
 export const Sidebar = () => {
