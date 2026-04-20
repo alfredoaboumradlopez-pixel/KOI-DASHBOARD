@@ -45,7 +45,7 @@ function getStatus(deadline: string | undefined): { status: "urgente" | "proximo
     const f = diasMes - dia;
     if (f <= 3) return { status: "urgente", label: "En " + f + " dias" };
     if (f <= 7) return { status: "proximo", label: "En " + f + " dias" };
-    return { stat: "ok", label: "Dia " + diasMes };
+    return { status: "ok", label: "Dia " + diasMes };
   }
   // Extraer todos los numeros del deadline
   const nums = deadline.match(/\d+/g);
