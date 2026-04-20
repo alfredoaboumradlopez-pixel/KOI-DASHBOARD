@@ -37,31 +37,29 @@ function getDiaActual() { return new Date().getDate(); }
 function getDiasEnMes() { const d = new Date(); return new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate(); }
 
 function getStatus(deadline: string | undefined): { status: "urgente" | "proximo" | "ok" | "continuo"; label: string } {
-  if (!deadline) return { status: "ok" as const, label: "-" };
+  if (!deadline) return { status: "ok", label: "-" };
   const dia = getDiaActual();
+  const diasMes = getDiasEnMes();
   if (deadline === "Continuo" || deadline === "Variable") return { status: "continuo", label: deadline };
-  if (deadline === "Cierre mes") {
-    const diasFalta = getDiasEnMes() - dia;
-    if (diasFalta <= 3) return { status: "urgente", label: "En " + diasFalta + " días" };
-    if (diasFalta <= 7) return { status: "proximo", label: "En " + diasFalta + " días" };
-    return { status: "ok", label: "Día " + getDiasEnMes() };
+  if (deadline === "Cierre mes" || deadline === "Último día") {
+    const f = diasMes - dia;
+    if (f <= 3) return { status: "urgente", label: "En " + f + " dias" };
+    if (f <= 7) return { status: "proximo", label: "En " + f + " dias" };
+    return { stat: "ok", label: "Dia " + diasMes };
   }
-  if (deadline === "Último día") {
-    const diasFalta = getDiasEnMes() - dia;
-    if (diasFalta <= 3) return { status: "urgente", label: "En " + diasFalta + " días" };
-    return { status: "ok", label: "Día " + getDiasEnMes() };
-  }
-  const match = deadline.match(/Día (\d+)(?:\s*[-y]\s*(\d+))?/);
-  if (match) {
-    const d1 = parseInt(match[1]);
-    const d2 = match[2] ? parseInt(match[2]) : d1;
-    if (dia > d2) return { status: "ok", label: "✓ Pagado (venció día " + d2 + ")" };
-    if (dia >= d1) return { status: "urgente", label: "¡HOY! Vence día " + d2 };
-    if (d1 - dia <= 5) return { status: "proximo", label: "En " + (d1 - dia) + " días" };
+  // Extraer todos los numeros del deadline
+  const nums = deadline.match(/\d+/g);
+  if (nums && nums.length > 0) {
+    const d1 = parseInt(nums[0]);
+    const d2 = nums.length > 1 ? parseInt(nums[nums.length - 1]) : d1;
+    if (dia > d2) return { status: "ok", label: "Vencio dia " + d2 };
+    if (dia >= d1) return { status: "urgente", label: "Vence dia " + d2 };
+    if (d1 - dia <= 5) return { status: "proximo", label: "En " + (d1 - dia) + " dias" };
     return { status: "ok", label: deadline };
   }
   return { status: "ok", label: deadline };
 }
+
 
 export const Tesoreria = () => {
   const [filtro, setFiltro] = useState<"todos"|"urgentes"|"proximos">("todos");
