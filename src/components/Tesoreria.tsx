@@ -121,7 +121,7 @@ export const Tesoreria = () => {
           ))}
         </div>
         {filtrados.map((p, i) => {
-          const sc = statusColors[p.status];
+          const sc = statusColors[p.status] || statusColors.ok;
           return (
             <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 120px 120px 110px 100px 120px", padding: "12px 20px", borderBottom: "1px solid #F9FAFB", alignItems: "center", background: p.status === "urgente" ? "#FEF2F2" : "transparent" }}>
               <div>
