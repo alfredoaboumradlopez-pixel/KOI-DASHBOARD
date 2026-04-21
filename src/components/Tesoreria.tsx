@@ -64,7 +64,7 @@ function getStatus(deadline: string | undefined): { status: "urgente" | "proximo
 export const Tesoreria = () => {
   const [filtro, setFiltro] = useState<"todos"|"urgentes"|"proximos">("todos");
 
-  const pagosConStatus = PAGOS_FIJOS.map(p => ({ ...p, ...getStatus(p.deadline) }));
+  const pagosConStatus = PAGOS_FIJOS.map(p => { const s = getStatus(p.deadline); return { ...p, status: s.status || "ok", label: s.label || "-" }; });
   const urgentes = pagosConStatus.filter(p => p.status === "urgente").length;
   const proximos = pagosConStatus.filter(p => p.status === "proximo").length;
 
