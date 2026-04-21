@@ -1121,13 +1121,14 @@ def update_pago_recurrente(pago_id: int, data: schemas.PagoRecurrenteUpdate, db:
     return pago
 
 
-@app.delete("/api/pagos-recurrentes/{pago_id}", status_code=status.HTTP_204_NO_CONTENT)
+@app.delete("/api/pagos-recurrentes/{pago_id}")
 def delete_pago_recurrente(pago_id: int, db: Session = Depends(get_db)):
     pago = db.query(models.PagoRecurrente).filter(models.PagoRecurrente.id == pago_id).first()
     if not pago:
         raise HTTPException(status_code=404, detail="Pago no encontrado")
     db.delete(pago)
     db.commit()
+    return {"ok": True}
 
 
 @app.post("/api/pagos-recurrentes/seed", status_code=status.HTTP_201_CREATED)

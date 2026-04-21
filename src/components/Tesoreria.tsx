@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Calendar, AlertTriangle, CheckCircle, Bell, Plus, Edit2, Trash2, X } from "lucide-react";
+import { api } from "../services/api";
 
-const API = "http://localhost:8001";
 const formatMXN = (n: number) => n.toLocaleString("es-MX", { style: "currency", currency: "MXN" });
 
 const CATEGORIAS = [
@@ -85,8 +85,10 @@ export const Tesoreria = () => {
 
   const fetchPagos = async () => {
     try {
-      const res = await fetch(`${API}/api/pagos-recurrentes`);
-      if (res.ok) setPagos(await res.json());
+      const data = await api.get("/api/pagos-recurrentes");
+      setPagos(data);
+    } catch (e) {
+      console.error("Error cargando pagos:", e);
     } finally {
       setLoading(false);
     }
@@ -131,18 +133,15 @@ export const Tesoreria = () => {
       notas: form.notas || null,
     };
     try {
-      const url = editId ? `${API}/api/pagos-recurrentes/${editId}` : `${API}/api/pagos-recurrentes`;
-      const method = editId ? "PUT" : "POST";
-      const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-      if (res.ok) {
-        setShowForm(false);
-        await fetchPagos();
+      if (editId) {
+        await api.put(`/api/pagos-recurrentes/${editId}`, body);
       } else {
-        const err = await res.json().catch(() => ({ detail: res.statusText }));
-        alert(`Error ${res.status}: ${JSON.stringify(err.detail ?? err)}`);
+        await api.post("/api/pagos-recurrentes", body);
       }
-    } catch (e) {
-      alert(`Error de conexión con el backend: ${e}`);
+      setShowForm(false);
+      await fetchPagos();
+    } catch (e: any) {
+      alert(`Error al guardar: ${e?.message ?? e}`);
     } finally {
       setSaving(false);
     }
@@ -150,7 +149,7 @@ export const Tesoreria = () => {
 
   const handleDelete = async (id: number) => {
     if (!confirm("¿Eliminar este pago recurrente?")) return;
-    await fetch(`${API}/api/pagos-recurrentes/${id}`, { method: "DELETE" });
+    try { await api.del(`/api/pagos-recurrentes/${id}`); } catch { /* 204 no-content lanza error en api.del, ignorar */ }
     await fetchPagos();
   };
 
