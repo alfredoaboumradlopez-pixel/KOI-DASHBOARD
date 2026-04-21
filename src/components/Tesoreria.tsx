@@ -37,7 +37,7 @@ interface FormData {
 }
 
 const emptyForm: FormData = {
-  concepto: "", proveedor: "", categoria: "MENSUAL", frecuencia: "MENSUAL",
+  concepto: "", proveedor: "", categoria: "RENTA", frecuencia: "MENSUAL",
   deadline_texto: "", dia_limite: "", monto_estimado: "0", notas: "",
 };
 
@@ -134,7 +134,15 @@ export const Tesoreria = () => {
       const url = editId ? `${API}/api/pagos-recurrentes/${editId}` : `${API}/api/pagos-recurrentes`;
       const method = editId ? "PUT" : "POST";
       const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-      if (res.ok) { setShowForm(false); await fetchPagos(); }
+      if (res.ok) {
+        setShowForm(false);
+        await fetchPagos();
+      } else {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        alert(`Error ${res.status}: ${JSON.stringify(err.detail ?? err)}`);
+      }
+    } catch (e) {
+      alert(`Error de conexión con el backend: ${e}`);
     } finally {
       setSaving(false);
     }
