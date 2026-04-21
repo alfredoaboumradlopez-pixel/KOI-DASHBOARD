@@ -1066,6 +1066,82 @@ async def importar_bitacora(file: UploadFile = File(...)):
         "gastos_count": len(gastos_parsed),
     }
 
+PAGOS_FIJOS_SEED = [
+    {"concepto": "Renta", "proveedor": "PABELLON BOSQUES", "categoria": "RENTA", "frecuencia": "MENSUAL", "deadline_texto": "Día 1-10", "dia_limite": 10, "monto_estimado": 0},
+    {"concepto": "Internet + Teléfono", "proveedor": "TELMEX", "categoria": "SERVICIOS", "frecuencia": "MENSUAL", "deadline_texto": "Día 1-24", "dia_limite": 24, "monto_estimado": 0},
+    {"concepto": "Mantto/Serv. local", "proveedor": "PABELLON BOSQUES", "categoria": "SERVICIOS", "frecuencia": "MENSUAL", "deadline_texto": "Día 1-15", "dia_limite": 15, "monto_estimado": 0},
+    {"concepto": "ISR / IVA / SAT", "proveedor": "SAT", "categoria": "IMPUESTOS", "frecuencia": "MENSUAL", "deadline_texto": "Día 17", "dia_limite": 17, "monto_estimado": 0},
+    {"concepto": "Impuestos varios", "proveedor": "OTRO", "categoria": "IMPUESTOS", "frecuencia": "MENSUAL", "deadline_texto": "Día 11-17", "dia_limite": 17, "monto_estimado": 0},
+    {"concepto": "IVA Rappi", "proveedor": "RAPPI", "categoria": "IMPUESTOS", "frecuencia": "MENSUAL", "deadline_texto": "Cierre mes", "dia_limite": None, "monto_estimado": 0},
+    {"concepto": "TPV Parrot", "proveedor": "PARROT", "categoria": "COMISIONES_BANCARIAS", "frecuencia": "MENSUAL", "deadline_texto": "Día 11", "dia_limite": 11, "monto_estimado": 0},
+    {"concepto": "TPV Clip", "proveedor": "CLIP", "categoria": "COMISIONES_BANCARIAS", "frecuencia": "MENSUAL", "deadline_texto": "Día 16-28", "dia_limite": 28, "monto_estimado": 0},
+    {"concepto": "TPV Getnet", "proveedor": "GETNET", "categoria": "COMISIONES_BANCARIAS", "frecuencia": "MENSUAL", "deadline_texto": "Día 1-17", "dia_limite": 17, "monto_estimado": 0},
+    {"concepto": "Comisiones banco", "proveedor": "SANTANDER", "categoria": "COMISIONES_BANCARIAS", "frecuencia": "MENSUAL", "deadline_texto": "Último día", "dia_limite": None, "monto_estimado": 0},
+    {"concepto": "Comisión retiro efectivo (4%)", "proveedor": "TPN", "categoria": "COMISIONES_BANCARIAS", "frecuencia": "MENSUAL", "deadline_texto": "Cierre mes", "dia_limite": None, "monto_estimado": 0},
+    {"concepto": "Comisión Uber Eats", "proveedor": "UBER", "categoria": "COMISIONES_PLATAFORMAS", "frecuencia": "SEMANAL", "deadline_texto": "Cierre mes", "dia_limite": None, "monto_estimado": 0},
+    {"concepto": "Comisión Rappi", "proveedor": "RAPPI", "categoria": "COMISIONES_PLATAFORMAS", "frecuencia": "SEMANAL", "deadline_texto": "Cierre mes", "dia_limite": None, "monto_estimado": 0},
+    {"concepto": "Diseño / fotos / redes", "proveedor": "PABLO PAREDES", "categoria": "MARKETING", "frecuencia": "MENSUAL", "deadline_texto": "Variable", "dia_limite": None, "monto_estimado": 0},
+    {"concepto": "Mktg plataformas", "proveedor": "RAPPI / UBER", "categoria": "MARKETING", "frecuencia": "MENSUAL", "deadline_texto": "Cierre mes", "dia_limite": None, "monto_estimado": 0},
+    {"concepto": "TIKTOK", "proveedor": "PAU", "categoria": "MARKETING", "frecuencia": "SEMANAL", "deadline_texto": "Variable", "dia_limite": None, "monto_estimado": 0},
+    {"concepto": "Comidas personal", "proveedor": "INTERNO", "categoria": "PERSONAL", "frecuencia": "DIARIO", "deadline_texto": "Continuo", "dia_limite": None, "monto_estimado": 400},
+    {"concepto": "Nómina / pagos staff", "proveedor": "INTERNO", "categoria": "NOMINA", "frecuencia": "QUINCENAL", "deadline_texto": "Día 8 y 24", "dia_limite": 24, "monto_estimado": 0},
+]
+
+
+@app.get("/api/pagos-recurrentes", response_model=List[schemas.PagoRecurrenteResponse])
+def get_pagos_recurrentes(filtro: Optional[str] = None, db: Session = Depends(get_db)):
+    q = db.query(models.PagoRecurrente).filter(models.PagoRecurrente.activo == True)
+    if filtro == "urgentes":
+        dia = date.today().day
+        q = q.filter(models.PagoRecurrente.dia_limite != None, models.PagoRecurrente.dia_limite >= dia, models.PagoRecurrente.dia_limite <= dia + 3)
+    elif filtro == "proximos":
+        dia = date.today().day
+        q = q.filter(models.PagoRecurrente.dia_limite != None, models.PagoRecurrente.dia_limite >= dia, models.PagoRecurrente.dia_limite <= dia + 7)
+    return q.order_by(models.PagoRecurrente.id).all()
+
+
+@app.post("/api/pagos-recurrentes", response_model=schemas.PagoRecurrenteResponse, status_code=status.HTTP_201_CREATED)
+def create_pago_recurrente(data: schemas.PagoRecurrenteCreate, db: Session = Depends(get_db)):
+    pago = models.PagoRecurrente(**data.model_dump())
+    db.add(pago)
+    db.commit()
+    db.refresh(pago)
+    return pago
+
+
+@app.put("/api/pagos-recurrentes/{pago_id}", response_model=schemas.PagoRecurrenteResponse)
+def update_pago_recurrente(pago_id: int, data: schemas.PagoRecurrenteUpdate, db: Session = Depends(get_db)):
+    pago = db.query(models.PagoRecurrente).filter(models.PagoRecurrente.id == pago_id).first()
+    if not pago:
+        raise HTTPException(status_code=404, detail="Pago no encontrado")
+    for field, value in data.model_dump(exclude_unset=True).items():
+        setattr(pago, field, value)
+    db.commit()
+    db.refresh(pago)
+    return pago
+
+
+@app.delete("/api/pagos-recurrentes/{pago_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_pago_recurrente(pago_id: int, db: Session = Depends(get_db)):
+    pago = db.query(models.PagoRecurrente).filter(models.PagoRecurrente.id == pago_id).first()
+    if not pago:
+        raise HTTPException(status_code=404, detail="Pago no encontrado")
+    db.delete(pago)
+    db.commit()
+
+
+@app.post("/api/pagos-recurrentes/seed", status_code=status.HTTP_201_CREATED)
+def seed_pagos_recurrentes(db: Session = Depends(get_db)):
+    count = db.query(func.count(models.PagoRecurrente.id)).scalar()
+    if count > 0:
+        return {"message": f"Ya existen {count} pagos, seed omitido"}
+    for item in PAGOS_FIJOS_SEED:
+        pago = models.PagoRecurrente(**item)
+        db.add(pago)
+    db.commit()
+    return {"message": f"{len(PAGOS_FIJOS_SEED)} pagos creados"}
+
+
 # Servir frontend en produccion
 frontend_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "dist")
 if os.path.exists(frontend_path):

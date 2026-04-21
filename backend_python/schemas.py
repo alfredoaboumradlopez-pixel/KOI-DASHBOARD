@@ -6,7 +6,7 @@ from datetime import date, datetime
 from typing import List, Optional
 from .models import (
     ClaseGasto, CategoriaGasto, TipoComprobante, MetodoPago,
-    TerminalOrigen, EstadoArqueo, EstadoPago, TipoMovimientoBanco
+    TerminalOrigen, EstadoArqueo, EstadoPago, TipoMovimientoBanco, FrecuenciaPago
 )
 
 class GastoDiarioCreate(BaseModel):
@@ -245,6 +245,32 @@ class DistribucionResumen(BaseModel):
     saldo_caja: Optional[float] = None
     total_disponible: Optional[float] = None
     distribuciones: List[DistribucionResponse]
+
+class PagoRecurrenteCreate(BaseModel):
+    concepto: str
+    proveedor: str
+    categoria: CategoriaGasto
+    frecuencia: FrecuenciaPago
+    deadline_texto: str
+    dia_limite: Optional[int] = None
+    monto_estimado: float = 0.0
+    notas: Optional[str] = None
+
+class PagoRecurrenteUpdate(BaseModel):
+    concepto: Optional[str] = None
+    proveedor: Optional[str] = None
+    categoria: Optional[CategoriaGasto] = None
+    frecuencia: Optional[FrecuenciaPago] = None
+    deadline_texto: Optional[str] = None
+    dia_limite: Optional[int] = None
+    monto_estimado: Optional[float] = None
+    activo: Optional[bool] = None
+    notas: Optional[str] = None
+
+class PagoRecurrenteResponse(PagoRecurrenteCreate):
+    id: int
+    activo: bool
+    model_config = ConfigDict(from_attributes=True)
 
 class DashboardResumen(BaseModel):
     ventas_hoy: float = 0.0

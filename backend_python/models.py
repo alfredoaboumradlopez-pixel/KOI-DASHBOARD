@@ -69,6 +69,13 @@ class TipoMovimientoBanco(str, enum.Enum):
     CARGO = "CARGO"
     ABONO = "ABONO"
 
+class FrecuenciaPago(str, enum.Enum):
+    DIARIO = "DIARIO"
+    SEMANAL = "SEMANAL"
+    QUINCENAL = "QUINCENAL"
+    MENSUAL = "MENSUAL"
+    ANUAL = "ANUAL"
+
 
 class VentaDiaria(Base):
     __tablename__ = "ventas_diarias"
@@ -256,6 +263,20 @@ class PLMensual(Base):
     utilidad_neta = Column(Float, default=0.0)
     created_at = Column(DateTime, default=datetime.utcnow)
     distribuciones = relationship("DistribucionUtilidad", back_populates="pl")
+
+
+class PagoRecurrente(Base):
+    __tablename__ = "pagos_recurrentes"
+    id = Column(Integer, primary_key=True, index=True)
+    concepto = Column(String(200), nullable=False)
+    proveedor = Column(String(100), nullable=False)
+    categoria = Column(SQLEnum(CategoriaGasto), nullable=False)
+    frecuencia = Column(SQLEnum(FrecuenciaPago), nullable=False)
+    deadline_texto = Column(String(100), nullable=False)
+    dia_limite = Column(Integer, nullable=True)
+    monto_estimado = Column(Float, default=0.0)
+    activo = Column(Boolean, default=True)
+    notas = Column(Text, nullable=True)
 
 
 SOCIOS_CONFIG = [
