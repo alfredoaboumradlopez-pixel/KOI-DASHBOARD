@@ -6,7 +6,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 import os
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from sqlalchemy import func, extract, cast, String
 import os as _os
 _USE_PG = bool(_os.environ.get("DATABASE_URL"))
@@ -48,7 +48,7 @@ from sqlalchemy import text as _text, inspect as _inspect
 try:
     _insp = _inspect(engine)
     existing_cols = [c['name'] for c in _insp.get_columns('empleados')]
-    new_cols = {"rfc": "VARCHAR(20)", "curp": "VARCHAR(20)", "numero_imss": "VARCHAR(20)", "cuenta_banco": "VARCHAR(50)"}
+    new_cols = {"rfc": "VARCHAR(20)", "curp": "VARCHAR(20)", "numero_imss": "VARCHAR(20)", "cuenta_banco": "VARCHAR(50)", "fecha_nacimiento": "DATE", "tipo_contrato": "VARCHAR(20)"}
     with engine.begin() as conn:
         for col_name, col_type in new_cols.items():
             if col_name not in existing_cols:
@@ -102,6 +102,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+UPLOADS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
+os.makedirs(os.path.join(UPLOADS_DIR, "documentos"), exist_ok=True)
 
 
 def parse_money(value: str) -> float:
@@ -837,7 +840,7 @@ def crear_empleado(emp: schemas.EmpleadoCreate, db: Session = Depends(get_db)):
 
 @app.get("/api/empleados", response_model=List[schemas.EmpleadoResponse])
 def listar_empleados(db: Session = Depends(get_db)):
-    return db.query(models.Empleado).filter(models.Empleado.activo == True).all()
+    return db.query(models.Empleado).filter(models.Empleado.activo == True).options(selectinload(models.Empleado.documentos)).all()
 
 @app.post("/api/nomina", response_model=schemas.NominaPagoResponse, status_code=201)
 def registrar_pago_nomina(pago: schemas.NominaPagoCreate, db: Session = Depends(get_db)):
@@ -881,11 +884,54 @@ def editar_empleado(emp_id: int, emp: schemas.EmpleadoCreate, db: Session = Depe
     existing = db.query(models.Empleado).filter(models.Empleado.id == emp_id).first()
     if not existing:
         raise HTTPException(status_code=404, detail="Empleado no encontrado")
-    for key, value in emp.dict().items():
+    for key, value in emp.model_dump().items():
         setattr(existing, key, value)
     db.commit()
     db.refresh(existing)
     return existing
+
+@app.post("/api/empleados/{emp_id}/documentos", response_model=schemas.DocumentoEmpleadoResponse, status_code=201)
+async def subir_documento(emp_id: int, file: UploadFile = File(...), db: Session = Depends(get_db)):
+    emp = db.query(models.Empleado).filter(models.Empleado.id == emp_id).first()
+    if not emp:
+        raise HTTPException(status_code=404, detail="Empleado no encontrado")
+    ext = os.path.splitext(file.filename or "")[1].lower()
+    filename = f"emp_{emp_id}_{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}{ext}"
+    filepath = os.path.join(UPLOADS_DIR, "documentos", filename)
+    content = await file.read()
+    with open(filepath, "wb") as f:
+        f.write(content)
+    tipo = "PDF" if ext == ".pdf" else "Imagen" if ext in [".jpg", ".jpeg", ".png"] else "Documento"
+    doc = models.DocumentoEmpleado(empleado_id=emp_id, nombre=file.filename or filename, tipo=tipo, ruta=filepath)
+    db.add(doc)
+    db.commit()
+    db.refresh(doc)
+    return doc
+
+@app.get("/api/empleados/{emp_id}/documentos", response_model=List[schemas.DocumentoEmpleadoResponse])
+def listar_documentos_empleado(emp_id: int, db: Session = Depends(get_db)):
+    return db.query(models.DocumentoEmpleado).filter(models.DocumentoEmpleado.empleado_id == emp_id).all()
+
+@app.get("/api/empleados/documentos/{doc_id}/archivo")
+def descargar_documento(doc_id: int, db: Session = Depends(get_db)):
+    doc = db.query(models.DocumentoEmpleado).filter(models.DocumentoEmpleado.id == doc_id).first()
+    if not doc or not os.path.exists(doc.ruta):
+        raise HTTPException(status_code=404, detail="Archivo no encontrado")
+    return FileResponse(doc.ruta, filename=doc.nombre)
+
+@app.delete("/api/empleados/documentos/{doc_id}")
+def eliminar_documento(doc_id: int, db: Session = Depends(get_db)):
+    doc = db.query(models.DocumentoEmpleado).filter(models.DocumentoEmpleado.id == doc_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Documento no encontrado")
+    try:
+        if os.path.exists(doc.ruta):
+            os.remove(doc.ruta)
+    except Exception:
+        pass
+    db.delete(doc)
+    db.commit()
+    return {"ok": True}
 
 
 @app.get("/api/dashboard/ventas-mes")

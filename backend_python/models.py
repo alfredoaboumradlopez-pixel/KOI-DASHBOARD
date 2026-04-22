@@ -210,12 +210,26 @@ class Empleado(Base):
     puesto = Column(String(100), nullable=False)
     salario_base = Column(Float, nullable=False)
     fecha_ingreso = Column(Date, nullable=False)
+    fecha_nacimiento = Column(Date, nullable=True)
+    tipo_contrato = Column(String(20), nullable=True)
     activo = Column(Boolean, default=True)
     rfc = Column(String(20), nullable=True)
     curp = Column(String(20), nullable=True)
     numero_imss = Column(String(20), nullable=True)
     cuenta_banco = Column(String(50), nullable=True)
     pagos = relationship("NominaPago", back_populates="empleado")
+    documentos = relationship("DocumentoEmpleado", back_populates="empleado", cascade="all, delete-orphan")
+
+
+class DocumentoEmpleado(Base):
+    __tablename__ = "documentos_empleado"
+    id = Column(Integer, primary_key=True, index=True)
+    empleado_id = Column(Integer, ForeignKey("empleados.id"), nullable=False)
+    nombre = Column(String(255), nullable=False)
+    tipo = Column(String(50), nullable=False)
+    ruta = Column(String(500), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    empleado = relationship("Empleado", back_populates="documentos")
 
 
 class NominaPago(Base):

@@ -1,6 +1,14 @@
-import { useState, useEffect, useMemo } from "react";
-import { api } from "../services/api";
-import { Users, Trash2, AlertTriangle, CheckCircle, Clock, FileText, Bell, Calendar, Shield, ChevronDown, ChevronUp, Plus, X, Edit2, Banknote } from "lucide-react";
+import { useState, useEffect } from "react";
+import { api, API_BASE } from "../services/api";
+import { Users, Trash2, AlertTriangle, CheckCircle, Clock, FileText, Bell, Calendar, Shield, Plus, X, Edit2, Banknote } from "lucide-react";
+
+interface DocEmpleado {
+  id: number;
+  empleado_id: number;
+  nombre: string;
+  tipo: string;
+  created_at: string;
+}
 
 interface Empleado {
   id: number;
@@ -8,41 +16,28 @@ interface Empleado {
   puesto: string;
   salario_mensual: number;
   fecha_ingreso: string;
+  fecha_nacimiento?: string;
   dia_pago: number;
   frecuencia_pago: "SEMANAL" | "QUINCENAL" | "MENSUAL";
-  tipo_contrato: "INDEFINIDO" | "TEMPORAL" | "PRUEBA" | "CAPACITACION";
+  tipo_contrato: "INDEFINIDO" | "TEMPORAL" | "PRUEBA" | "CAPACITACION" | "SIN_CONTRATO";
   contrato_firmado: boolean;
   fecha_fin_contrato?: string;
   imss_registrado: boolean;
   numero_imss: string;
   rfc: string;
   curp: string;
-  cif: string;
   cuenta_banco?: string;
-  contacto_emergencia?: string;
-  notas?: string;
-  archivos?: { nombre: string; tipo: string; fecha: string; url: string }[];
+  documentos: DocEmpleado[];
 }
-
-// Mock data removido, ahora usa API
-const _UNUSED = [
-  { id:1, nombre:"Anais López", puesto:"Chef Principal", salario_mensual:9000, fecha_ingreso:"2025-06-15", dia_pago:10, frecuencia_pago:"SEMANAL", tipo_contrato:"INDEFINIDO", contrato_firmado:true, imss_registrado:true, numero_imss:"1234567890", rfc:"LOPA950615ABC", curp:"LOPA950615MDFRNS09", cif:"CIF001234", cuenta_banco:"Santander ****4101" },
-  { id:2, nombre:"Sebastián Mora", puesto:"Cocinero", salario_mensual:9000, fecha_ingreso:"2025-08-01", dia_pago:10, frecuencia_pago:"SEMANAL", tipo_contrato:"INDEFINIDO", contrato_firmado:true, imss_registrado:true, numero_imss:"0987654321", rfc:"MORS980801XYZ", curp:"MORS980801HDFRRA05", cif:"CIF001235", cuenta_banco:"BBVA ****7823" },
-  { id:3, nombre:"Carlos Ruiz", puesto:"Mesero", salario_mensual:7700, fecha_ingreso:"2025-09-15", dia_pago:10, frecuencia_pago:"SEMANAL", tipo_contrato:"TEMPORAL", contrato_firmado:true, fecha_fin_contrato:"2026-03-15", imss_registrado:true, numero_imss:"1122334455", curp:"RUIC900915HDFRZR01", cif:"CIF001236", rfc:"RUIC900915ABC" },
-  { id:4, nombre:"María Torres", puesto:"Cajera", salario_mensual:9000, fecha_ingreso:"2025-11-01", dia_pago:10, frecuencia_pago:"SEMANAL", tipo_contrato:"PRUEBA", contrato_firmado:false, fecha_fin_contrato:"2026-04-01", imss_registrado:false, curp:"", cif:"", rfc:"", numero_imss:"" },
-  { id:5, nombre:"Diego Hernández", puesto:"Cocinero", salario_mensual:9000, fecha_ingreso:"2025-07-20", dia_pago:10, frecuencia_pago:"SEMANAL", tipo_contrato:"INDEFINIDO", contrato_firmado:true, imss_registrado:true, numero_imss:"5566778899", rfc:"HERD950720QWE", curp:"HERD950720HDFRNG08", cif:"CIF001238", cuenta_banco:"Santander ****4101" },
-  { id:6, nombre:"Fernanda Díaz", puesto:"Prep Cook", salario_mensual:9000, fecha_ingreso:"2025-10-10", dia_pago:10, frecuencia_pago:"SEMANAL", tipo_contrato:"INDEFINIDO", contrato_firmado:true, imss_registrado:true, numero_imss:"6677889900", rfc:"DIAF951010XYZ", curp:"DIAF951010MDFRZR03", cif:"CIF001239" },
-  { id:7, nombre:"Roberto Sánchez", puesto:"Lavaplatos", salario_mensual:9000, fecha_ingreso:"2026-01-15", dia_pago:10, frecuencia_pago:"SEMANAL", tipo_contrato:"CAPACITACION", contrato_firmado:false, fecha_fin_contrato:"2026-04-15", imss_registrado:false, curp:"", cif:"", rfc:"", numero_imss:"" },
-  { id:8, nombre:"Lucía Vega", puesto:"Mesera", salario_mensual:9000, fecha_ingreso:"2025-12-01", dia_pago:10, frecuencia_pago:"SEMANAL", tipo_contrato:"TEMPORAL", contrato_firmado:true, fecha_fin_contrato:"2026-06-01", imss_registrado:true, numero_imss:"7788990011", rfc:"VEGAL951201QWE", curp:"VEGAL951201MDFRG07", cif:"CIF001241" },
-];
 
 const formatMXN = (n: number) => n.toLocaleString("es-MX", { style: "currency", currency: "MXN" });
 
 const CONTRATO_CFG: Record<string, { label: string; bg: string; text: string; border: string }> = {
-  INDEFINIDO: { label: "Indefinido", bg: "#ECFDF5", text: "#065F46", border: "#A7F3D0" },
-  TEMPORAL: { label: "Temporal", bg: "#FFFBEB", text: "#92400E", border: "#FDE68A" },
-  PRUEBA: { label: "Prueba", bg: "#EFF6FF", text: "#1D4ED8", border: "#BFDBFE" },
+  INDEFINIDO:   { label: "Indefinido",   bg: "#ECFDF5", text: "#065F46", border: "#A7F3D0" },
+  TEMPORAL:     { label: "Temporal",     bg: "#FFFBEB", text: "#92400E", border: "#FDE68A" },
+  PRUEBA:       { label: "Prueba",       bg: "#EFF6FF", text: "#1D4ED8", border: "#BFDBFE" },
   CAPACITACION: { label: "Capacitación", bg: "#FDF4FF", text: "#7E22CE", border: "#E9D5FF" },
+  SIN_CONTRATO: { label: "Sin Contrato", bg: "#FEF2F2", text: "#991B1B", border: "#FECACA" },
 };
 
 const FREQ: Record<string, string> = { SEMANAL: "Semanal", QUINCENAL: "Quincenal", MENSUAL: "Mensual" };
@@ -66,6 +61,8 @@ function diasFin(f?: string): number | null {
   if (!f) return null; return Math.ceil((new Date(f + "T12:00:00").getTime() - new Date().getTime()) / 86400000);
 }
 
+const emptyNuevo = { nombre:'', puesto:'', salario_mensual:9000, fecha_ingreso:new Date().toISOString().slice(0,10), fecha_nacimiento:'', dia_pago:10, frecuencia_pago:'SEMANAL' as const, tipo_contrato:'INDEFINIDO' as const, contrato_firmado:false, imss_registrado:false, numero_imss:'', rfc:'', curp:'', cuenta_banco:'', fecha_fin_contrato:'' };
+
 export const Nomina = () => {
   const [emps, setEmps] = useState<Empleado[]>([]);
 
@@ -79,16 +76,17 @@ export const Nomina = () => {
           puesto: e.puesto || "",
           salario_mensual: e.salario_base || 0,
           fecha_ingreso: e.fecha_ingreso || "",
+          fecha_nacimiento: e.fecha_nacimiento || undefined,
           dia_pago: 10,
           frecuencia_pago: "SEMANAL" as const,
-          tipo_contrato: "INDEFINIDO" as const,
-          contrato_firmado: !!e.numero_imss && !!e.rfc,
+          tipo_contrato: (e.tipo_contrato || "INDEFINIDO") as Empleado["tipo_contrato"],
+          contrato_firmado: e.tipo_contrato && e.tipo_contrato !== "SIN_CONTRATO",
           imss_registrado: !!e.numero_imss,
           numero_imss: e.numero_imss || "",
           rfc: e.rfc || "",
           curp: e.curp || "",
-          cif: "",
           cuenta_banco: e.cuenta_banco || "",
+          documentos: Array.isArray(e.documentos) ? e.documentos : [],
         })));
       }
     } catch(e) {}
@@ -98,51 +96,54 @@ export const Nomina = () => {
   const [vista, setVista] = useState<"alertas" | "equipo" | "legal">("alertas");
   const [exp, setExp] = useState<number | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [archivosNuevo, setArchivosNuevo] = useState<{nombre:string;tipo:string;fecha:string;url:string}[]>([]);
-  const [nuevoEmp, setNuevoEmp] = useState({ nombre:'', puesto:'', salario_mensual:9000, fecha_ingreso:new Date().toISOString().slice(0,10), dia_pago:10, frecuencia_pago:'SEMANAL' as const, tipo_contrato:'INDEFINIDO' as const, contrato_firmado:false, imss_registrado:false, numero_imss:'', rfc:'', curp:'', cuenta_banco:'', cif:'', fecha_fin_contrato:'' });
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [nuevoEmp, setNuevoEmp] = useState(emptyNuevo);
 
-  const handleFileUpload = (files: FileList | null, empId?: number) => {
+  const handleFileUpload = async (files: FileList | null, empId?: number) => {
     if (!files) return;
-    const nuevos = Array.from(files).map(f => ({
-      nombre: f.name,
-      tipo: f.name.endsWith('.pdf') ? 'PDF' : f.name.match(/\.(jpg|jpeg|png)$/i) ? 'Imagen' : 'Documento',
-      fecha: new Date().toISOString().slice(0,10),
-      url: URL.createObjectURL(f),
-    }));
     if (empId) {
-      setEmps(p => p.map(e => e.id === empId ? { ...e, archivos: [...(e.archivos||[]), ...nuevos] } : e));
+      for (const file of Array.from(files)) {
+        try {
+          await api.upload(`/api/empleados/${empId}/documentos`, file);
+        } catch(e) { alert("Error al subir " + file.name); }
+      }
+      fetchEmpleados();
     } else {
-      setArchivosNuevo(p => [...p, ...nuevos]);
+      setPendingFiles(p => [...p, ...Array.from(files)]);
     }
+  };
+
+  const eliminarDocumento = async (docId: number) => {
+    try { await api.del(`/api/empleados/documentos/${docId}`); fetchEmpleados(); } catch(e) { alert("Error al eliminar documento"); }
   };
 
   const [editEmp, setEditEmp] = useState<any>(null);
   const [editEmpId, setEditEmpId] = useState<number | null>(null);
 
-  const iniciarEdicionEmp = (e: any) => {
-    setEditEmp({ nombre: e.nombre, puesto: e.puesto, salario_mensual: e.salario_mensual, fecha_ingreso: e.fecha_ingreso, rfc: e.rfc, curp: e.curp, numero_imss: e.numero_imss, cuenta_banco: e.cuenta_banco, dia_pago: e.dia_pago, tipo_contrato: e.tipo_contrato, fecha_fin_contrato: e.fecha_fin_contrato, contacto_emergencia: e.contacto_emergencia, contrato_firmado: e.contrato_firmado, imss_registrado: e.imss_registrado });
+  const iniciarEdicionEmp = (e: Empleado) => {
+    setEditEmp({ nombre: e.nombre, puesto: e.puesto, salario_mensual: e.salario_mensual, fecha_ingreso: e.fecha_ingreso, fecha_nacimiento: e.fecha_nacimiento || '', rfc: e.rfc, curp: e.curp, numero_imss: e.numero_imss, cuenta_banco: e.cuenta_banco, dia_pago: e.dia_pago, tipo_contrato: e.tipo_contrato, fecha_fin_contrato: e.fecha_fin_contrato || '' });
     setEditEmpId(e.id);
   };
 
   const guardarEdicionEmp = async () => {
-    console.log("GUARDAR:", editEmpId, editEmp);
-    if (!editEmp || !editEmpId) { console.log("ABORT: editEmp o editEmpId es null"); return; }
+    if (!editEmp || !editEmpId) return;
     try {
       await api.put("/api/empleados/" + editEmpId, {
         nombre: editEmp.nombre,
         puesto: editEmp.puesto,
         salario_base: parseFloat(editEmp.salario_mensual) || 1,
         fecha_ingreso: editEmp.fecha_ingreso,
+        fecha_nacimiento: editEmp.fecha_nacimiento || null,
+        tipo_contrato: editEmp.tipo_contrato || null,
         rfc: editEmp.rfc || null,
         curp: editEmp.curp || null,
         numero_imss: editEmp.numero_imss || null,
         cuenta_banco: editEmp.cuenta_banco || null,
       });
-      console.log("Empleado editado OK");
       setEditEmpId(null);
       setEditEmp(null);
       fetchEmpleados();
-    } catch(e: any) { console.error("Error editar:", e); alert("Error al editar: " + (e.message || e)); }
+    } catch(e: any) { alert("Error al editar: " + (e.message || e)); }
   };
 
   const eliminarEmpleado = async (id: number) => {
@@ -151,45 +152,59 @@ export const Nomina = () => {
   };
 
   const agregarEmpleado = async () => {
-    if (!nuevoEmp.nombre || !nuevoEmp.puesto || !nuevoEmp.curp || !nuevoEmp.rfc || !nuevoEmp.numero_imss) { alert('Completa todos los campos obligatorios (*)'); return; }
+    if (!nuevoEmp.nombre || !nuevoEmp.puesto) { alert('Completa nombre y puesto (*)'); return; }
     try {
-      await api.post("/api/empleados", {
+      const created = await api.post("/api/empleados", {
         nombre: nuevoEmp.nombre,
         puesto: nuevoEmp.puesto,
         salario_base: nuevoEmp.salario_mensual,
         fecha_ingreso: nuevoEmp.fecha_ingreso,
+        fecha_nacimiento: nuevoEmp.fecha_nacimiento || null,
+        tipo_contrato: nuevoEmp.tipo_contrato || null,
         rfc: nuevoEmp.rfc || null,
         curp: nuevoEmp.curp || null,
         numero_imss: nuevoEmp.numero_imss || null,
         cuenta_banco: nuevoEmp.cuenta_banco || null,
       });
+      if (pendingFiles.length > 0 && created?.id) {
+        for (const file of pendingFiles) {
+          try { await api.upload(`/api/empleados/${created.id}/documentos`, file); } catch(e) {}
+        }
+      }
+      setPendingFiles([]);
+      setNuevoEmp(emptyNuevo);
+      setShowForm(false);
       fetchEmpleados();
     } catch(e) { alert("Error al guardar empleado"); }
-    const nuevo: Empleado = { ...nuevoEmp, id: Math.max(0,...emps.map(e=>e.id))+1, archivos: archivosNuevo.length > 0 ? archivosNuevo : undefined, fecha_fin_contrato: nuevoEmp.fecha_fin_contrato||undefined, numero_imss: nuevoEmp.numero_imss||undefined, rfc: nuevoEmp.rfc||undefined, curp: nuevoEmp.curp||undefined, cuenta_banco: nuevoEmp.cuenta_banco||undefined };
-    setEmps(p => [...p, nuevo]);
-    setNuevoEmp({ nombre:'', puesto:'', salario_mensual:9000, fecha_ingreso:new Date().toISOString().slice(0,10), dia_pago:10, frecuencia_pago:'SEMANAL', tipo_contrato:'INDEFINIDO', contrato_firmado:false, imss_registrado:false, numero_imss:'', rfc:'', curp:'', cuenta_banco:'', cif:'', fecha_fin_contrato:'' });
-    setShowForm(false);
-    setArchivosNuevo([]);
   };
 
   const nomTotal = emps.reduce((s, e) => s + e.salario_mensual, 0);
-  const sinC = emps.filter(e => !e.contrato_firmado).length;
+  const sinC = emps.filter(e => !e.contrato_firmado || e.tipo_contrato === "SIN_CONTRATO").length;
   const sinI = emps.filter(e => !e.imss_registrado).length;
 
   const proxPagos = emps.map(e => ({ ...e, dias: diasPago(e.dia_pago, e.frecuencia_pago) })).sort((a, b) => a.dias - b.dias);
 
   const alertas: { tipo: "urgente" | "aviso"; msg: string; det: string }[] = [];
   emps.forEach(e => {
-    if (!e.contrato_firmado) alertas.push({ tipo: "urgente", msg: e.nombre + " no tiene contrato firmado", det: "Puesto: " + e.puesto + " - " + CONTRATO_CFG[e.tipo_contrato].label });
+    if (e.tipo_contrato === "SIN_CONTRATO") alertas.push({ tipo: "urgente", msg: e.nombre + " sin contrato registrado", det: "Puesto: " + e.puesto });
+    else if (!e.contrato_firmado) alertas.push({ tipo: "urgente", msg: e.nombre + " no tiene contrato firmado", det: "Puesto: " + e.puesto + " - " + (CONTRATO_CFG[e.tipo_contrato]?.label || e.tipo_contrato) });
     if (!e.imss_registrado) alertas.push({ tipo: "urgente", msg: e.nombre + " sin registro IMSS", det: "Riesgo legal: multas y responsabilidad patronal" });
     const df = diasFin(e.fecha_fin_contrato);
     if (df !== null && df < 0) alertas.push({ tipo: "urgente", msg: "Contrato de " + e.nombre + " VENCIDO", det: "Venció: " + e.fecha_fin_contrato });
     else if (df !== null && df <= 30) alertas.push({ tipo: "aviso", msg: "Contrato de " + e.nombre + " vence en " + df + " días", det: "Vence: " + e.fecha_fin_contrato });
   });
   const pp3 = proxPagos.filter(e => e.dias <= 3);
-  if (pp3.length > 0) alertas.push({ tipo: "aviso", msg: pp3.length + " pago(s) en los pr\u00f3ximos 3 días", det: "Total: " + formatMXN(pp3.reduce((s, e) => s + e.salario_mensual, 0)) });
+  if (pp3.length > 0) alertas.push({ tipo: "aviso", msg: pp3.length + " pago(s) en los próximos 3 días", det: "Total: " + formatMXN(pp3.reduce((s, e) => s + e.salario_mensual, 0)) });
 
   const upd = (id: number, k: string, v: any) => setEmps(p => p.map(e => e.id === id ? { ...e, [k]: v } : e));
+
+  const contratoOpts = [
+    { value: "INDEFINIDO", label: "Indefinido" },
+    { value: "TEMPORAL", label: "Temporal" },
+    { value: "SIN_CONTRATO", label: "Sin Contrato" },
+    { value: "PRUEBA", label: "Prueba" },
+    { value: "CAPACITACION", label: "Capacitación" },
+  ];
 
   return (
     <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
@@ -207,7 +222,7 @@ export const Nomina = () => {
           <h1 style={{ fontSize:"22px", fontWeight:"800", color:"#111827", margin:0 }}>Nómina & Legal</h1>
           <p style={{ fontSize:"13px", color:"#9CA3AF", margin:0 }}>Control de pagos, contratos y compliance</p>
         </div>
-        <button onClick={() => setShowForm(!showForm)} style={{ display:'flex', alignItems:'center', gap:'6px', padding:'10px 18px', borderRadius:'10px', border:'none', background:'#3D1C1E', color:'#C8FF00', fontSize:'13px', fontWeight:'700', cursor:'pointer' }}>
+        <button onClick={() => setShowForm(!showForm)} style={{ marginLeft:"auto", display:'flex', alignItems:'center', gap:'6px', padding:'10px 18px', borderRadius:'10px', border:'none', background:'#3D1C1E', color:'#C8FF00', fontSize:'13px', fontWeight:'700', cursor:'pointer' }}>
           {showForm ? <X style={{width:'16px',height:'16px'}} /> : <Plus style={{width:'16px',height:'16px'}} />}
           {showForm ? 'Cancelar' : 'Nuevo Empleado'}
         </button>
@@ -217,51 +232,42 @@ export const Nomina = () => {
         <div style={{ background:'#FFF', borderRadius:'14px', padding:'20px 24px', marginBottom:'16px', boxShadow:'0 1px 3px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.02)' }}>
           <h3 style={{ fontSize:'14px', fontWeight:'700', color:'#111827', marginBottom:'16px' }}>Registrar Nuevo Empleado</h3>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'12px', marginBottom:'12px' }}>
-            <div><label style={{ fontSize:'11px', fontWeight:'600', color:'#6B7280', display:'block', marginBottom:'4px' }}>Nombre completo *</label><input value={nuevoEmp.nombre} onChange={e => setNuevoEmp({...nuevoEmp, nombre:e.target.value})} style={{ width:'100%', padding:'8px 12px', borderRadius:'8px', border:'1px solid #E5E7EB', fontSize:'13px' }} placeholder='Ej: Juan' /></div>
-            <div><label style={{ fontSize:'11px', fontWeight:'600', color:'#6B7280', display:'block', marginBottom:'4px' }}>Puesto *</label><input value={nuevoEmp.puesto} onChange={e => setNuevoEmp({...nuevoEmp, puesto:e.target.value})} style={{ width:'100%', padding:'8px 12px', borderRadius:'8px', border:'1px solid #E5E7EB', fontSize:'13px' }} placeholder='Ej: Cocinero' /></div>
-            <div><label style={{ fontSize:'11px', fontWeight:'600', color:'#6B7280', display:'block', marginBottom:'4px' }}>Salario MENSUAL *</label><input type='number' step='0.01' value={nuevoEmp.salario_mensual} onChange={e => setNuevoEmp({...nuevoEmp, salario_mensual:parseFloat(e.target.value)||0})} style={{ width:'100%', padding:'8px 12px', borderRadius:'8px', border:'1px solid #E5E7EB', fontSize:'13px' }} /></div>
+            <div><label style={{ fontSize:'11px', fontWeight:'600', color:'#6B7280', display:'block', marginBottom:'4px' }}>Nombre completo *</label><input value={nuevoEmp.nombre} onChange={e => setNuevoEmp({...nuevoEmp, nombre:e.target.value})} style={{ width:'100%', padding:'8px 12px', borderRadius:'8px', border:'1px solid #E5E7EB', fontSize:'13px', boxSizing:'border-box' }} placeholder='Ej: Juan Pérez' /></div>
+            <div><label style={{ fontSize:'11px', fontWeight:'600', color:'#6B7280', display:'block', marginBottom:'4px' }}>Puesto *</label><input value={nuevoEmp.puesto} onChange={e => setNuevoEmp({...nuevoEmp, puesto:e.target.value})} style={{ width:'100%', padding:'8px 12px', borderRadius:'8px', border:'1px solid #E5E7EB', fontSize:'13px', boxSizing:'border-box' }} placeholder='Ej: Cocinero' /></div>
+            <div><label style={{ fontSize:'11px', fontWeight:'600', color:'#6B7280', display:'block', marginBottom:'4px' }}>Salario Mensual *</label><input type='number' step='0.01' value={nuevoEmp.salario_mensual} onChange={e => setNuevoEmp({...nuevoEmp, salario_mensual:parseFloat(e.target.value)||0})} style={{ width:'100%', padding:'8px 12px', borderRadius:'8px', border:'1px solid #E5E7EB', fontSize:'13px', boxSizing:'border-box' }} /></div>
           </div>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:'12px', marginBottom:'12px' }}>
-            <div><label style={{ fontSize:'11px', fontWeight:'600', color:'#6B7280', display:'block', marginBottom:'4px' }}>Fecha ingreso</label><input type='date' value={nuevoEmp.fecha_ingreso} onChange={e => setNuevoEmp({...nuevoEmp, fecha_ingreso:e.target.value})} style={{ width:'100%', padding:'8px 12px', borderRadius:'8px', border:'1px solid #E5E7EB', fontSize:'13px' }} /></div>
-            <div><label style={{ fontSize:'11px', fontWeight:'600', color:'#6B7280', display:'block', marginBottom:'4px' }}>Frecuencia</label><select value={nuevoEmp.frecuencia_pago} onChange={e => setNuevoEmp({...nuevoEmp, frecuencia_pago:e.target.value as any})} style={{ width:'100%', padding:'8px 12px', borderRadius:'8px', border:'1px solid #E5E7EB', fontSize:'13px' }}><option value='SEMANAL'>Semanal</option><option value='QUINCENAL'>Quincenal</option><option value='MENSUAL'>Mensual</option></select></div>
-            <div><label style={{ fontSize:'11px', fontWeight:'600', color:'#6B7280', display:'block', marginBottom:'4px' }}>Tipo contrato</label><select value={nuevoEmp.tipo_contrato} onChange={e => setNuevoEmp({...nuevoEmp, tipo_contrato:e.target.value as any})} style={{ width:'100%', padding:'8px 12px', borderRadius:'8px', border:'1px solid #E5E7EB', fontSize:'13px' }}><option value='INDEFINIDO'>Indefinido</option><option value='TEMPORAL'>Temporal</option><option value='PRUEBA'>Prueba</option><option value='CAPACITACION'>Capacitacion</option></select></div>
-            <div><label style={{ fontSize:'11px', fontWeight:'600', color:'#6B7280', display:'block', marginBottom:'4px' }}>Dia de pago</label><select value={nuevoEmp.dia_pago} onChange={e => setNuevoEmp({...nuevoEmp, dia_pago:parseInt(e.target.value)})} style={{ width:'100%', padding:'8px 12px', borderRadius:'8px', border:'1px solid #E5E7EB', fontSize:'13px' }}>{Array.from({length:28},(_,i)=>i+1).map(d => <option key={d} value={d}>{d}</option>)}</select></div>
+            <div><label style={{ fontSize:'11px', fontWeight:'600', color:'#6B7280', display:'block', marginBottom:'4px' }}>Fecha Ingreso</label><input type='date' value={nuevoEmp.fecha_ingreso} onChange={e => setNuevoEmp({...nuevoEmp, fecha_ingreso:e.target.value})} style={{ width:'100%', padding:'8px 12px', borderRadius:'8px', border:'1px solid #E5E7EB', fontSize:'13px', boxSizing:'border-box' }} /></div>
+            <div><label style={{ fontSize:'11px', fontWeight:'600', color:'#6B7280', display:'block', marginBottom:'4px' }}>Fecha Nacimiento</label><input type='date' value={nuevoEmp.fecha_nacimiento} onChange={e => setNuevoEmp({...nuevoEmp, fecha_nacimiento:e.target.value})} style={{ width:'100%', padding:'8px 12px', borderRadius:'8px', border:'1px solid #E5E7EB', fontSize:'13px', boxSizing:'border-box' }} /></div>
+            <div><label style={{ fontSize:'11px', fontWeight:'600', color:'#6B7280', display:'block', marginBottom:'4px' }}>Tipo Contrato</label><select value={nuevoEmp.tipo_contrato} onChange={e => setNuevoEmp({...nuevoEmp, tipo_contrato:e.target.value as any})} style={{ width:'100%', padding:'8px 12px', borderRadius:'8px', border:'1px solid #E5E7EB', fontSize:'13px', boxSizing:'border-box' }}>{contratoOpts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
+            <div><label style={{ fontSize:'11px', fontWeight:'600', color:'#6B7280', display:'block', marginBottom:'4px' }}>Frecuencia Pago</label><select value={nuevoEmp.frecuencia_pago} onChange={e => setNuevoEmp({...nuevoEmp, frecuencia_pago:e.target.value as any})} style={{ width:'100%', padding:'8px 12px', borderRadius:'8px', border:'1px solid #E5E7EB', fontSize:'13px', boxSizing:'border-box' }}><option value='SEMANAL'>Semanal</option><option value='QUINCENAL'>Quincenal</option><option value='MENSUAL'>Mensual</option></select></div>
           </div>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:'12px', marginBottom:'12px' }}>
-            <div><label style={{ fontSize:'11px', fontWeight:'600', color:'#6B7280', display:'block', marginBottom:'4px' }}>No. IMSS *</label><input value={nuevoEmp.numero_imss} onChange={e => setNuevoEmp({...nuevoEmp, numero_imss:e.target.value})} style={{ width:'100%', padding:'8px 12px', borderRadius:'8px', border:'1px solid #E5E7EB', fontSize:'13px' }} placeholder='Requerido' /></div>
-            <div><label style={{ fontSize:'11px', fontWeight:'600', color:'#6B7280', display:'block', marginBottom:'4px' }}>RFC *</label><input value={nuevoEmp.rfc} onChange={e => setNuevoEmp({...nuevoEmp, rfc:e.target.value})} style={{ width:'100%', padding:'8px 12px', borderRadius:'8px', border:'1px solid #E5E7EB', fontSize:'13px' }} placeholder='Requerido' /></div>
-            <div><label style={{ fontSize:'11px', fontWeight:'600', color:'#6B7280', display:'block', marginBottom:'4px' }}>CURP *</label><input value={nuevoEmp.curp} onChange={e => setNuevoEmp({...nuevoEmp, curp:e.target.value})} style={{ width:'100%', padding:'8px 12px', borderRadius:'8px', border:'1px solid #E5E7EB', fontSize:'13px' }} placeholder='Requerido' /></div>
-            <div><label style={{ fontSize:'11px', fontWeight:'600', color:'#6B7280', display:'block', marginBottom:'4px' }}>Cuenta banco</label><input value={nuevoEmp.cuenta_banco} onChange={e => setNuevoEmp({...nuevoEmp, cuenta_banco:e.target.value})} style={{ width:'100%', padding:'8px 12px', borderRadius:'8px', border:'1px solid #E5E7EB', fontSize:'13px' }} placeholder='Opcional' /></div>
+            <div><label style={{ fontSize:'11px', fontWeight:'600', color:'#6B7280', display:'block', marginBottom:'4px' }}>No. IMSS</label><input value={nuevoEmp.numero_imss} onChange={e => setNuevoEmp({...nuevoEmp, numero_imss:e.target.value})} style={{ width:'100%', padding:'8px 12px', borderRadius:'8px', border:'1px solid #E5E7EB', fontSize:'13px', boxSizing:'border-box' }} /></div>
+            <div><label style={{ fontSize:'11px', fontWeight:'600', color:'#6B7280', display:'block', marginBottom:'4px' }}>RFC</label><input value={nuevoEmp.rfc} onChange={e => setNuevoEmp({...nuevoEmp, rfc:e.target.value})} style={{ width:'100%', padding:'8px 12px', borderRadius:'8px', border:'1px solid #E5E7EB', fontSize:'13px', boxSizing:'border-box' }} /></div>
+            <div><label style={{ fontSize:'11px', fontWeight:'600', color:'#6B7280', display:'block', marginBottom:'4px' }}>CURP</label><input value={nuevoEmp.curp} onChange={e => setNuevoEmp({...nuevoEmp, curp:e.target.value})} style={{ width:'100%', padding:'8px 12px', borderRadius:'8px', border:'1px solid #E5E7EB', fontSize:'13px', boxSizing:'border-box' }} /></div>
+            <div><label style={{ fontSize:'11px', fontWeight:'600', color:'#6B7280', display:'block', marginBottom:'4px' }}>Cuenta Banco</label><input value={nuevoEmp.cuenta_banco} onChange={e => setNuevoEmp({...nuevoEmp, cuenta_banco:e.target.value})} style={{ width:'100%', padding:'8px 12px', borderRadius:'8px', border:'1px solid #E5E7EB', fontSize:'13px', boxSizing:'border-box' }} /></div>
           </div>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:'12px', marginBottom:'12px' }}>
-            
-            <div style={{ display:'flex', alignItems:'flex-end', paddingBottom:'4px' }}><div style={{ background:'#F0FDF4', borderRadius:'8px', padding:'8px 12px', width:'100%' }}><div style={{ fontSize:'10px', color:'#059669', fontWeight:'600' }}>SEMANAL</div><div style={{ fontSize:'14px', fontWeight:'800', color:'#065F46' }}>{formatMXN(nuevoEmp.salario_mensual/4.33)}</div></div></div>
-            <div style={{ display:'flex', alignItems:'flex-end', paddingBottom:'4px' }}><div style={{ background:'#EFF6FF', borderRadius:'8px', padding:'8px 12px', width:'100%' }}><div style={{ fontSize:'10px', color:'#1D4ED8', fontWeight:'600' }}>DIARIO</div><div style={{ fontSize:'14px', fontWeight:'800', color:'#1E40AF' }}>{formatMXN(nuevoEmp.salario_mensual/30)}</div></div></div>
-            <div style={{ display:'flex', alignItems:'flex-end', paddingBottom:'4px' }}><div style={{ background:'#FFFBEB', borderRadius:'8px', padding:'8px 12px', width:'100%' }}><div style={{ fontSize:'10px', color:'#D97706', fontWeight:'600' }}>POR HORA (8h)</div><div style={{ fontSize:'14px', fontWeight:'800', color:'#92400E' }}>{formatMXN(nuevoEmp.salario_mensual/30/8)}</div></div></div>
-          </div>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr auto auto auto', gap:'12px', alignItems:'end' }}>
-            <div><label style={{ fontSize:'11px', fontWeight:'600', color:'#6B7280', display:'block', marginBottom:'4px' }}>Fin contrato (si aplica)</label><input type='date' value={nuevoEmp.fecha_fin_contrato} onChange={e => setNuevoEmp({...nuevoEmp, fecha_fin_contrato:e.target.value})} style={{ width:'100%', padding:'8px 12px', borderRadius:'8px', border:'1px solid #E5E7EB', fontSize:'13px' }} /></div>
-            <label style={{ display:'flex', alignItems:'center', gap:'6px', fontSize:'12px', color:'#374151', cursor:'pointer', paddingBottom:'4px' }}><input type='checkbox' checked={nuevoEmp.contrato_firmado} onChange={e => setNuevoEmp({...nuevoEmp, contrato_firmado:e.target.checked})} /> Contrato firmado</label>
-            <label style={{ display:'flex', alignItems:'center', gap:'6px', fontSize:'12px', color:'#374151', cursor:'pointer', paddingBottom:'4px' }}><input type='checkbox' checked={nuevoEmp.imss_registrado} onChange={e => setNuevoEmp({...nuevoEmp, imss_registrado:e.target.checked})} /> IMSS registrado</label>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:'12px', alignItems:'end', marginBottom:'16px' }}>
+            <div><label style={{ fontSize:'11px', fontWeight:'600', color:'#6B7280', display:'block', marginBottom:'4px' }}>Fin Contrato (si aplica)</label><input type='date' value={nuevoEmp.fecha_fin_contrato} onChange={e => setNuevoEmp({...nuevoEmp, fecha_fin_contrato:e.target.value})} style={{ width:'100%', padding:'8px 12px', borderRadius:'8px', border:'1px solid #E5E7EB', fontSize:'13px', boxSizing:'border-box' }} /></div>
             <button onClick={agregarEmpleado} style={{ padding:'10px 24px', borderRadius:'10px', border:'none', background:'#3D1C1E', color:'#C8FF00', fontSize:'13px', fontWeight:'700', cursor:'pointer' }}>Guardar</button>
           </div>
-          <div style={{ marginTop:'16px', paddingTop:'16px', borderTop:'1px solid #E5E7EB' }}>
+          <div style={{ paddingTop:'16px', borderTop:'1px solid #E5E7EB' }}>
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'10px' }}>
-              <span style={{ fontSize:'13px', fontWeight:'700', color:'#111827' }}>Documentos adjuntos</span>
+              <span style={{ fontSize:'13px', fontWeight:'700', color:'#111827' }}>Documentos a adjuntar</span>
               <label style={{ display:'flex', alignItems:'center', gap:'6px', padding:'6px 14px', borderRadius:'8px', border:'1px dashed #D1D5DB', background:'#F9FAFB', fontSize:'12px', color:'#6B7280', cursor:'pointer', fontWeight:'600' }}>
-                <Plus style={{width:'14px',height:'14px'}} /> Subir archivo
+                <Plus style={{width:'14px',height:'14px'}} /> Seleccionar archivos
                 <input type='file' accept='.pdf,.jpg,.jpeg,.png' multiple onChange={e => handleFileUpload(e.target.files)} style={{ display:'none' }} />
               </label>
             </div>
-            <div style={{ fontSize:'11px', color:'#9CA3AF', marginBottom:'8px' }}>Contrato, INE, CURP, constancia IMSS, etc. (PDF o imagen)</div>
-            {archivosNuevo.length > 0 && (
+            <div style={{ fontSize:'11px', color:'#9CA3AF', marginBottom:'8px' }}>Contrato, INE, CURP, constancia IMSS, etc. Se subirán al guardar el empleado.</div>
+            {pendingFiles.length > 0 && (
               <div style={{ display:'flex', flexWrap:'wrap' as const, gap:'8px' }}>
-                {archivosNuevo.map((a, i) => (
+                {pendingFiles.map((f, i) => (
                   <div key={i} style={{ display:'flex', alignItems:'center', gap:'6px', padding:'6px 10px', borderRadius:'8px', background:'#EFF6FF', border:'1px solid #BFDBFE' }}>
                     <FileText style={{width:'14px',height:'14px',color:'#1D4ED8'}} />
-                    <span style={{ fontSize:'11px', fontWeight:'600', color:'#1D4ED8' }}>{a.nombre}</span>
-                    <span style={{ fontSize:'10px', color:'#60A5FA' }}>{a.tipo}</span>
-                    <button onClick={() => setArchivosNuevo(p => p.filter((_,j) => j!==i))} style={{ border:'none', background:'none', cursor:'pointer', padding:'0' }}><X style={{width:'12px',height:'12px',color:'#93C5FD'}} /></button>
+                    <span style={{ fontSize:'11px', fontWeight:'600', color:'#1D4ED8' }}>{f.name}</span>
+                    <button onClick={() => setPendingFiles(p => p.filter((_,j) => j!==i))} style={{ border:'none', background:'none', cursor:'pointer', padding:'0' }}><X style={{width:'12px',height:'12px',color:'#93C5FD'}} /></button>
                   </div>
                 ))}
               </div>
@@ -273,7 +279,7 @@ export const Nomina = () => {
       <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:"14px", marginBottom:"20px" }}>
         {[
           { l:"Empleados", v:String(emps.length), s:"activos", icon:Users, c:"#3D1C1E" },
-          { l:"Nómina Semanal", v:formatMXN(nomTotal), s:"base mensual", icon:Banknote, c:"#059669" },
+          { l:"Nómina Mensual", v:formatMXN(nomTotal), s:"total base", icon:Banknote, c:"#059669" },
           { l:"Sin Contrato", v:String(sinC), s:sinC>0?"¡URGENTE!":"al día", icon:FileText, c:sinC>0?"#DC2626":"#059669" },
           { l:"Sin IMSS", v:String(sinI), s:sinI>0?"riesgo legal":"al día", icon:Shield, c:sinI>0?"#DC2626":"#059669" },
         ].map((k, i) => {
@@ -298,25 +304,20 @@ export const Nomina = () => {
 
       {editEmpId && editEmp && (
         <div style={{position:"fixed",inset:0,zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.4)"}}>
-          <div style={{background:"#FFF",borderRadius:"16px",padding:"24px",width:"620px",maxHeight:"90vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.15)"}}>
+          <div style={{background:"#FFF",borderRadius:"16px",padding:"24px",width:"640px",maxHeight:"90vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.15)"}}>
             <h3 style={{fontSize:"16px",fontWeight:"700",color:"#111827",marginBottom:"16px"}}>Editar Empleado</h3>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px"}}>
-              <div><label style={{fontSize:"11px",fontWeight:"600",color:"#6B7280",display:"block",marginBottom:"4px"}}>Nombre *</label><input value={editEmp.nombre} onChange={e => setEditEmp({...editEmp, nombre:e.target.value})} style={{width:"100%",padding:"8px 12px",borderRadius:"8px",border:"1px solid #E5E7EB",fontSize:"13px"}} /></div>
-              <div><label style={{fontSize:"11px",fontWeight:"600",color:"#6B7280",display:"block",marginBottom:"4px"}}>Puesto *</label><input value={editEmp.puesto} onChange={e => setEditEmp({...editEmp, puesto:e.target.value})} style={{width:"100%",padding:"8px 12px",borderRadius:"8px",border:"1px solid #E5E7EB",fontSize:"13px"}} /></div>
-              <div><label style={{fontSize:"11px",fontWeight:"600",color:"#6B7280",display:"block",marginBottom:"4px"}}>Salario Mensual *</label><input type="number" step="0.01" value={editEmp.salario_mensual} onChange={e => setEditEmp({...editEmp, salario_mensual:parseFloat(e.target.value)||0})} style={{width:"100%",padding:"8px 12px",borderRadius:"8px",border:"1px solid #E5E7EB",fontSize:"13px"}} /></div>
-              <div><label style={{fontSize:"11px",fontWeight:"600",color:"#6B7280",display:"block",marginBottom:"4px"}}>Fecha Ingreso</label><input type="date" value={editEmp.fecha_ingreso} onChange={e => setEditEmp({...editEmp, fecha_ingreso:e.target.value})} style={{width:"100%",padding:"8px 12px",borderRadius:"8px",border:"1px solid #E5E7EB",fontSize:"13px"}} /></div>
-              <div><label style={{fontSize:"11px",fontWeight:"600",color:"#6B7280",display:"block",marginBottom:"4px"}}>RFC</label><input value={editEmp.rfc||""} onChange={e => setEditEmp({...editEmp, rfc:e.target.value})} style={{width:"100%",padding:"8px 12px",borderRadius:"8px",border:"1px solid #E5E7EB",fontSize:"13px"}} /></div>
-              <div><label style={{fontSize:"11px",fontWeight:"600",color:"#6B7280",display:"block",marginBottom:"4px"}}>CURP</label><input value={editEmp.curp||""} onChange={e => setEditEmp({...editEmp, curp:e.target.value})} style={{width:"100%",padding:"8px 12px",borderRadius:"8px",border:"1px solid #E5E7EB",fontSize:"13px"}} /></div>
-              <div><label style={{fontSize:"11px",fontWeight:"600",color:"#6B7280",display:"block",marginBottom:"4px"}}>No. IMSS</label><input value={editEmp.numero_imss||""} onChange={e => setEditEmp({...editEmp, numero_imss:e.target.value})} style={{width:"100%",padding:"8px 12px",borderRadius:"8px",border:"1px solid #E5E7EB",fontSize:"13px"}} /></div>
-              <div><label style={{fontSize:"11px",fontWeight:"600",color:"#6B7280",display:"block",marginBottom:"4px"}}>Cuenta Banco</label><input value={editEmp.cuenta_banco||""} onChange={e => setEditEmp({...editEmp, cuenta_banco:e.target.value})} style={{width:"100%",padding:"8px 12px",borderRadius:"8px",border:"1px solid #E5E7EB",fontSize:"13px"}} /></div>
-              <div><label style={{fontSize:"11px",fontWeight:"600",color:"#6B7280",display:"block",marginBottom:"4px"}}>Dia de Pago</label><select value={editEmp.dia_pago||10} onChange={e => setEditEmp({...editEmp, dia_pago:parseInt(e.target.value)})} style={{width:"100%",padding:"8px 12px",borderRadius:"8px",border:"1px solid #E5E7EB",fontSize:"13px"}}>{Array.from({length:28},(_,i)=>i+1).map(d => <option key={d} value={d}>{d}</option>)}</select></div>
-              <div><label style={{fontSize:"11px",fontWeight:"600",color:"#6B7280",display:"block",marginBottom:"4px"}}>Tipo Contrato</label><select value={editEmp.tipo_contrato||"INDEFINIDO"} onChange={e => setEditEmp({...editEmp, tipo_contrato:e.target.value})} style={{width:"100%",padding:"8px 12px",borderRadius:"8px",border:"1px solid #E5E7EB",fontSize:"13px"}}><option value="INDEFINIDO">Indefinido</option><option value="TEMPORAL">Temporal</option><option value="PRUEBA">Prueba</option><option value="CAPACITACION">Capacitacion</option></select></div>
-              <div><label style={{fontSize:"11px",fontWeight:"600",color:"#6B7280",display:"block",marginBottom:"4px"}}>Fin Contrato</label><input type="date" value={editEmp.fecha_fin_contrato||""} onChange={e => setEditEmp({...editEmp, fecha_fin_contrato:e.target.value})} style={{width:"100%",padding:"8px 12px",borderRadius:"8px",border:"1px solid #E5E7EB",fontSize:"13px"}} /></div>
-              <div><label style={{fontSize:"11px",fontWeight:"600",color:"#6B7280",display:"block",marginBottom:"4px"}}>Contacto Emergencia</label><input value={editEmp.contacto_emergencia||""} onChange={e => setEditEmp({...editEmp, contacto_emergencia:e.target.value})} style={{width:"100%",padding:"8px 12px",borderRadius:"8px",border:"1px solid #E5E7EB",fontSize:"13px"}} /></div>
-            </div>
-            <div style={{display:"flex",gap:"12px",marginTop:"14px"}}>
-              <label style={{display:"flex",alignItems:"center",gap:"6px",fontSize:"12px",color:"#374151",cursor:"pointer"}}><input type="checkbox" checked={editEmp.contrato_firmado||false} onChange={e => setEditEmp({...editEmp, contrato_firmado:e.target.checked})} /> Contrato firmado</label>
-              <label style={{display:"flex",alignItems:"center",gap:"6px",fontSize:"12px",color:"#374151",cursor:"pointer"}}><input type="checkbox" checked={editEmp.imss_registrado||false} onChange={e => setEditEmp({...editEmp, imss_registrado:e.target.checked})} /> IMSS registrado</label>
+              <div><label style={{fontSize:"11px",fontWeight:"600",color:"#6B7280",display:"block",marginBottom:"4px"}}>Nombre *</label><input value={editEmp.nombre} onChange={e => setEditEmp({...editEmp, nombre:e.target.value})} style={{width:"100%",padding:"8px 12px",borderRadius:"8px",border:"1px solid #E5E7EB",fontSize:"13px",boxSizing:"border-box"}} /></div>
+              <div><label style={{fontSize:"11px",fontWeight:"600",color:"#6B7280",display:"block",marginBottom:"4px"}}>Puesto *</label><input value={editEmp.puesto} onChange={e => setEditEmp({...editEmp, puesto:e.target.value})} style={{width:"100%",padding:"8px 12px",borderRadius:"8px",border:"1px solid #E5E7EB",fontSize:"13px",boxSizing:"border-box"}} /></div>
+              <div><label style={{fontSize:"11px",fontWeight:"600",color:"#6B7280",display:"block",marginBottom:"4px"}}>Salario Mensual *</label><input type="number" step="0.01" value={editEmp.salario_mensual} onChange={e => setEditEmp({...editEmp, salario_mensual:parseFloat(e.target.value)||0})} style={{width:"100%",padding:"8px 12px",borderRadius:"8px",border:"1px solid #E5E7EB",fontSize:"13px",boxSizing:"border-box"}} /></div>
+              <div><label style={{fontSize:"11px",fontWeight:"600",color:"#6B7280",display:"block",marginBottom:"4px"}}>Fecha Ingreso</label><input type="date" value={editEmp.fecha_ingreso} onChange={e => setEditEmp({...editEmp, fecha_ingreso:e.target.value})} style={{width:"100%",padding:"8px 12px",borderRadius:"8px",border:"1px solid #E5E7EB",fontSize:"13px",boxSizing:"border-box"}} /></div>
+              <div><label style={{fontSize:"11px",fontWeight:"600",color:"#6B7280",display:"block",marginBottom:"4px"}}>Fecha Nacimiento</label><input type="date" value={editEmp.fecha_nacimiento||""} onChange={e => setEditEmp({...editEmp, fecha_nacimiento:e.target.value})} style={{width:"100%",padding:"8px 12px",borderRadius:"8px",border:"1px solid #E5E7EB",fontSize:"13px",boxSizing:"border-box"}} /></div>
+              <div><label style={{fontSize:"11px",fontWeight:"600",color:"#6B7280",display:"block",marginBottom:"4px"}}>Tipo Contrato</label><select value={editEmp.tipo_contrato||"INDEFINIDO"} onChange={e => setEditEmp({...editEmp, tipo_contrato:e.target.value})} style={{width:"100%",padding:"8px 12px",borderRadius:"8px",border:"1px solid #E5E7EB",fontSize:"13px",boxSizing:"border-box"}}>{contratoOpts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
+              <div><label style={{fontSize:"11px",fontWeight:"600",color:"#6B7280",display:"block",marginBottom:"4px"}}>RFC</label><input value={editEmp.rfc||""} onChange={e => setEditEmp({...editEmp, rfc:e.target.value})} style={{width:"100%",padding:"8px 12px",borderRadius:"8px",border:"1px solid #E5E7EB",fontSize:"13px",boxSizing:"border-box"}} /></div>
+              <div><label style={{fontSize:"11px",fontWeight:"600",color:"#6B7280",display:"block",marginBottom:"4px"}}>CURP</label><input value={editEmp.curp||""} onChange={e => setEditEmp({...editEmp, curp:e.target.value})} style={{width:"100%",padding:"8px 12px",borderRadius:"8px",border:"1px solid #E5E7EB",fontSize:"13px",boxSizing:"border-box"}} /></div>
+              <div><label style={{fontSize:"11px",fontWeight:"600",color:"#6B7280",display:"block",marginBottom:"4px"}}>No. IMSS</label><input value={editEmp.numero_imss||""} onChange={e => setEditEmp({...editEmp, numero_imss:e.target.value})} style={{width:"100%",padding:"8px 12px",borderRadius:"8px",border:"1px solid #E5E7EB",fontSize:"13px",boxSizing:"border-box"}} /></div>
+              <div><label style={{fontSize:"11px",fontWeight:"600",color:"#6B7280",display:"block",marginBottom:"4px"}}>Cuenta Banco</label><input value={editEmp.cuenta_banco||""} onChange={e => setEditEmp({...editEmp, cuenta_banco:e.target.value})} style={{width:"100%",padding:"8px 12px",borderRadius:"8px",border:"1px solid #E5E7EB",fontSize:"13px",boxSizing:"border-box"}} /></div>
+              <div><label style={{fontSize:"11px",fontWeight:"600",color:"#6B7280",display:"block",marginBottom:"4px"}}>Fin Contrato</label><input type="date" value={editEmp.fecha_fin_contrato||""} onChange={e => setEditEmp({...editEmp, fecha_fin_contrato:e.target.value})} style={{width:"100%",padding:"8px 12px",borderRadius:"8px",border:"1px solid #E5E7EB",fontSize:"13px",boxSizing:"border-box"}} /></div>
             </div>
             <div style={{display:"flex",gap:"8px",marginTop:"16px",justifyContent:"flex-end"}}>
               <button onClick={() => {setEditEmpId(null);setEditEmp(null);}} style={{padding:"8px 16px",borderRadius:"8px",border:"1px solid #E5E7EB",background:"#FFF",fontSize:"12px",cursor:"pointer"}}>Cancelar</button>
@@ -343,7 +344,7 @@ export const Nomina = () => {
           <div style={{ background:"#FFF", borderRadius:"14px", overflow:"hidden", boxShadow:"0 1px 3px rgba(0,0,0,0.04),0 4px 12px rgba(0,0,0,0.02)" }}>
             <div style={{ padding:"16px 20px", borderBottom:"1px solid #F3F4F6", display:"flex", alignItems:"center", gap:"8px" }}><Calendar style={{ width:"16px", height:"16px", color:"#3D1C1E" }} /><span style={{ fontSize:"14px", fontWeight:"700", color:"#111827" }}>Próximos Pagos</span></div>
             <div style={{ padding:"8px 12px" }}>
-              {proxPagos.map((e, i) => {
+              {proxPagos.map((e) => {
                 const urg = e.dias <= 1; const pronto = e.dias <= 3;
                 return (<div key={e.id} className="nom-row" style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 12px", borderRadius:"10px", marginBottom:"4px", background:urg?"#FEF2F2":"transparent" }}>
                   <div style={{ display:"flex", alignItems:"center", gap:"10px" }}>
@@ -363,8 +364,8 @@ export const Nomina = () => {
           <div style={{ display:"grid", gridTemplateColumns:"50px 1fr 120px 120px 100px 120px", padding:"12px 24px", borderBottom:"1px solid #F3F4F6", background:"#FAFBFC" }}>
             {["","Empleado","Puesto","Contrato","IMSS","Salario"].map(h => <span key={h} style={{ fontSize:"11px", fontWeight:"700", color:"#9CA3AF", textTransform:"uppercase" as const, letterSpacing:"0.5px" }}>{h}</span>)}
           </div>
-          {emps.map((e, i) => {
-            const cs = CONTRATO_CFG[e.tipo_contrato]; const isExp = exp === e.id; const df = diasFin(e.fecha_fin_contrato);
+          {emps.map((e) => {
+            const cs = CONTRATO_CFG[e.tipo_contrato] || CONTRATO_CFG["SIN_CONTRATO"]; const isExp = exp === e.id; const df = diasFin(e.fecha_fin_contrato);
             return (<div key={e.id}>
               <div className="nom-row" onClick={() => setExp(isExp ? null : e.id)} style={{ display:"grid", gridTemplateColumns:"50px 1fr 120px 120px 100px 120px", padding:"14px 24px", borderBottom:"1px solid #F9FAFB", alignItems:"center", cursor:"pointer" }}>
                 <div style={{ width:"36px", height:"36px", borderRadius:"10px", background:"linear-gradient(135deg,#3D1C1E,#5C2D30)", display:"flex", alignItems:"center", justifyContent:"center", color:"#C8FF00", fontSize:"14px", fontWeight:"700" }}>{e.nombre.charAt(0)}</div>
@@ -373,10 +374,10 @@ export const Nomina = () => {
                 <span style={{ display:"inline-flex", padding:"3px 8px", borderRadius:"6px", fontSize:"11px", fontWeight:"600", background:cs.bg, color:cs.text, border:"1px solid "+cs.border, width:"fit-content" }}>{cs.label}</span>
                 <span>{e.imss_registrado?<CheckCircle style={{ width:"18px", height:"18px", color:"#059669" }} />:<AlertTriangle style={{ width:"18px", height:"18px", color:"#DC2626" }} />}</span>
                 <div style={{display:"flex",alignItems:"center",gap:"8px",justifyContent:"flex-end"}}>
-                <span style={{ fontSize:"14px", fontWeight:"700", color:"#111827"}}>{formatMXN(e.salario_mensual)}</span>
-                <button onClick={(ev) => {ev.stopPropagation(); iniciarEdicionEmp(e);}} style={{border:"none",background:"none",cursor:"pointer",padding:"2px"}}><Edit2 style={{width:"14px",height:"14px",color:"#6B7280"}} /></button>
-                <button onClick={(ev) => {ev.stopPropagation(); eliminarEmpleado(e.id);}} style={{border:"none",background:"none",cursor:"pointer",padding:"2px"}}><Trash2 style={{width:"14px",height:"14px",color:"#DC2626"}} /></button>
-              </div><div style={{ fontSize:"10px", color:"#9CA3AF" }}>Sem: {formatMXN(e.salario_mensual/4.33)} | Dia: {formatMXN(e.salario_mensual/30)}</div>
+                  <span style={{ fontSize:"14px", fontWeight:"700", color:"#111827"}}>{formatMXN(e.salario_mensual)}</span>
+                  <button onClick={(ev) => {ev.stopPropagation(); iniciarEdicionEmp(e);}} style={{border:"none",background:"none",cursor:"pointer",padding:"2px"}}><Edit2 style={{width:"14px",height:"14px",color:"#6B7280"}} /></button>
+                  <button onClick={(ev) => {ev.stopPropagation(); eliminarEmpleado(e.id);}} style={{border:"none",background:"none",cursor:"pointer",padding:"2px"}}><Trash2 style={{width:"14px",height:"14px",color:"#DC2626"}} /></button>
+                </div>
               </div>
               {isExp && (
                 <div style={{ padding:"16px 24px 20px 74px", background:"#FAFBFC", borderBottom:"1px solid #F3F4F6" }}>
@@ -386,51 +387,45 @@ export const Nomina = () => {
                       <div style={{ fontSize:"13px", color:"#374151", marginBottom:"4px" }}>Mensual: <strong>{formatMXN(e.salario_mensual)}</strong></div>
                       <div style={{ fontSize:"13px", color:"#374151", marginBottom:"4px" }}>Semanal: <strong>{formatMXN(e.salario_mensual/4.33)}</strong></div>
                       <div style={{ fontSize:"13px", color:"#374151", marginBottom:"4px" }}>Diario: <strong>{formatMXN(e.salario_mensual/30)}</strong></div>
-                      <div style={{ fontSize:"13px", color:"#374151", marginBottom:"4px" }}>Día de pago: <strong>{e.dia_pago}</strong></div>
                       <div style={{ fontSize:"13px", color:"#374151" }}>Cuenta: <strong>{e.cuenta_banco || "No registrada"}</strong></div>
                     </div>
                     <div>
-                      <div style={{ fontSize:"11px", fontWeight:"600", color:"#9CA3AF", marginBottom:"8px", textTransform:"uppercase" as const }}>Contrato</div>
-                      <div style={{ fontSize:"13px", color:"#374151", marginBottom:"4px" }}>Tipo: <strong>{cs.label}</strong></div>
-                      <div style={{ fontSize:"13px", color:"#374151", marginBottom:"4px" }}>Firmado: <strong style={{ color:e.contrato_firmado?"#059669":"#DC2626" }}>{e.contrato_firmado?"Sí":"NO"}</strong></div>
-                      {e.fecha_fin_contrato && <div style={{ fontSize:"13px", color:df!==null&&df<=30?"#DC2626":"#374151" }}>Vence: <strong>{e.fecha_fin_contrato}</strong>{df!==null&&<span style={{ marginLeft:"4px", fontSize:"11px" }}>({df} días)</span>}</div>}
+                      <div style={{ fontSize:"11px", fontWeight:"600", color:"#9CA3AF", marginBottom:"8px", textTransform:"uppercase" as const }}>Datos Personales</div>
+                      <div style={{ fontSize:"13px", color:"#374151", marginBottom:"4px" }}>Contrato: <strong>{cs.label}</strong></div>
+                      {e.fecha_nacimiento && <div style={{ fontSize:"13px", color:"#374151", marginBottom:"4px" }}>Nacimiento: <strong>{e.fecha_nacimiento}</strong></div>}
+                      {e.fecha_fin_contrato && <div style={{ fontSize:"13px", color:df!==null&&df<=30?"#DC2626":"#374151" }}>Vence: <strong>{e.fecha_fin_contrato}</strong>{df!==null&&<span style={{ marginLeft:"4px", fontSize:"11px" }}>({df}d)</span>}</div>}
                     </div>
                     <div>
-                      <div style={{ fontSize:"11px", fontWeight:"600", color:"#9CA3AF", marginBottom:"8px", textTransform:"uppercase" as const }}>Documentos</div>
+                      <div style={{ fontSize:"11px", fontWeight:"600", color:"#9CA3AF", marginBottom:"8px", textTransform:"uppercase" as const }}>Documentos Legales</div>
                       <div style={{ fontSize:"13px", color:"#374151", marginBottom:"4px" }}>IMSS: <strong style={{ color:e.imss_registrado?"#059669":"#DC2626" }}>{e.imss_registrado?e.numero_imss:"NO REGISTRADO"}</strong></div>
                       <div style={{ fontSize:"13px", color:"#374151", marginBottom:"4px" }}>RFC: <strong>{e.rfc||"No registrado"}</strong></div>
                       <div style={{ fontSize:"13px", color:"#374151" }}>CURP: <strong>{e.curp||"No registrado"}</strong></div>
-                      <div style={{ fontSize:"13px", color:"#374151" }}></div>
                     </div>
                   </div>
                   <div style={{ marginTop:"16px", paddingTop:"12px", borderTop:"1px solid #E5E7EB" }}>
                     <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:"8px" }}>
-                      <span style={{ fontSize:"12px", fontWeight:"700", color:"#374151" }}>Documentos guardados</span>
+                      <span style={{ fontSize:"12px", fontWeight:"700", color:"#374151" }}>Archivos guardados ({e.documentos.length})</span>
                       <label style={{ display:"flex", alignItems:"center", gap:"4px", padding:"4px 10px", borderRadius:"6px", border:"1px dashed #D1D5DB", background:"#F9FAFB", fontSize:"11px", color:"#6B7280", cursor:"pointer", fontWeight:"600" }}>
                         <Plus style={{width:"12px",height:"12px"}} /> Subir
                         <input type="file" accept=".pdf,.jpg,.jpeg,.png" multiple onChange={ev => handleFileUpload(ev.target.files, e.id)} style={{ display:"none" }} />
                       </label>
                     </div>
-                    {(e.archivos && e.archivos.length > 0) ? (
-                      <div style={{ display:"flex", flexWrap:"wrap" as const, gap:"6px", marginBottom:"12px" }}>
-                        {e.archivos.map((a, ai) => (
-                          <a key={ai} href={a.url} target="_blank" rel="noreferrer" style={{ display:"flex", alignItems:"center", gap:"5px", padding:"5px 10px", borderRadius:"6px", background:"#EFF6FF", border:"1px solid #BFDBFE", textDecoration:"none" }}>
-                            <FileText style={{width:"12px",height:"12px",color:"#1D4ED8"}} />
-                            <span style={{ fontSize:"11px", fontWeight:"600", color:"#1D4ED8" }}>{a.nombre}</span>
-                            <span style={{ fontSize:"9px", color:"#60A5FA" }}>{a.fecha}</span>
-                          </a>
+                    {e.documentos.length > 0 ? (
+                      <div style={{ display:"flex", flexWrap:"wrap" as const, gap:"6px" }}>
+                        {e.documentos.map((doc) => (
+                          <div key={doc.id} style={{ display:"flex", alignItems:"center", gap:"5px", padding:"5px 10px", borderRadius:"6px", background:"#EFF6FF", border:"1px solid #BFDBFE" }}>
+                            <a href={`${API_BASE}/api/empleados/documentos/${doc.id}/archivo`} target="_blank" rel="noreferrer" style={{ display:"flex", alignItems:"center", gap:"4px", textDecoration:"none" }}>
+                              <FileText style={{width:"12px",height:"12px",color:"#1D4ED8"}} />
+                              <span style={{ fontSize:"11px", fontWeight:"600", color:"#1D4ED8" }}>{doc.nombre}</span>
+                              <span style={{ fontSize:"9px", color:"#60A5FA" }}>{doc.tipo}</span>
+                            </a>
+                            <button onClick={() => eliminarDocumento(doc.id)} style={{ border:"none", background:"none", cursor:"pointer", padding:"0", marginLeft:"2px" }}><X style={{width:"11px",height:"11px",color:"#93C5FD"}} /></button>
+                          </div>
                         ))}
                       </div>
                     ) : (
-                      <div style={{ fontSize:"11px", color:"#9CA3AF", marginBottom:"12px" }}>Sin documentos adjuntos</div>
+                      <div style={{ fontSize:"11px", color:"#9CA3AF" }}>Sin archivos adjuntos</div>
                     )}
-                  </div>
-                  <div style={{ paddingTop:"12px", borderTop:"1px solid #E5E7EB", display:"flex", alignItems:"center", gap:"12px" }}>
-                    <span style={{ fontSize:"12px", color:"#6B7280" }}>Día de pago:</span>
-                    <select value={e.dia_pago} onChange={ev => upd(e.id,"dia_pago",parseInt(ev.target.value))} style={{ padding:"6px 10px", borderRadius:"8px", border:"1px solid #E5E7EB", fontSize:"13px", color:"#111827", background:"#FFF" }}>
-                      {Array.from({length:28},(_,i)=>i+1).map(d => <option key={d} value={d}>{d}</option>)}
-                    </select>
-                    <span style={{ fontSize:"12px", color:"#6B7280" }}>Pago: Semanal (fijo)</span>
                   </div>
                 </div>
               )}
@@ -446,13 +441,16 @@ export const Nomina = () => {
             <div style={{ padding:"8px 12px" }}>
               {emps.map(e => {
                 const df = diasFin(e.fecha_fin_contrato); const venc = df!==null&&df<0; const porV = df!==null&&df>=0&&df<=30;
-                return (<div key={e.id} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 12px", borderRadius:"10px", marginBottom:"4px", background:!e.contrato_firmado||venc?"#FEF2F2":porV?"#FFFBEB":"transparent" }}>
+                const noTiene = e.tipo_contrato === "SIN_CONTRATO";
+                return (<div key={e.id} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 12px", borderRadius:"10px", marginBottom:"4px", background:noTiene||venc?"#FEF2F2":porV?"#FFFBEB":"transparent" }}>
                   <div style={{ display:"flex", alignItems:"center", gap:"10px" }}>
-                    {e.contrato_firmado?<CheckCircle style={{ width:"18px", height:"18px", color:venc?"#DC2626":porV?"#D97706":"#059669" }} />:<X style={{ width:"18px", height:"18px", color:"#DC2626" }} />}
-                    <div><div style={{ fontSize:"13px", fontWeight:"600", color:"#111827" }}>{e.nombre}</div>
-                    <div style={{ fontSize:"11px", color:"#9CA3AF" }}>{CONTRATO_CFG[e.tipo_contrato].label}{e.fecha_fin_contrato&&(" - Vence: "+e.fecha_fin_contrato)}{venc&&<span style={{ color:"#DC2626", fontWeight:"700" }}> ¡VENCIDO!</span>}{porV&&<span style={{ color:"#D97706", fontWeight:"700" }}> ({df}d)</span>}</div></div>
+                    {(!noTiene&&!venc)?<CheckCircle style={{ width:"18px", height:"18px", color:porV?"#D97706":"#059669" }} />:<X style={{ width:"18px", height:"18px", color:"#DC2626" }} />}
+                    <div>
+                      <div style={{ fontSize:"13px", fontWeight:"600", color:"#111827" }}>{e.nombre}</div>
+                      <div style={{ fontSize:"11px", color:"#9CA3AF" }}>{(CONTRATO_CFG[e.tipo_contrato]||CONTRATO_CFG["SIN_CONTRATO"]).label}{e.fecha_fin_contrato&&(" - Vence: "+e.fecha_fin_contrato)}{venc&&<span style={{ color:"#DC2626", fontWeight:"700" }}> ¡VENCIDO!</span>}{porV&&<span style={{ color:"#D97706", fontWeight:"700" }}> ({df}d)</span>}</div>
+                    </div>
                   </div>
-                  <span style={{ padding:"3px 10px", borderRadius:"6px", fontSize:"11px", fontWeight:"600", background:e.contrato_firmado?"#ECFDF5":"#FEF2F2", color:e.contrato_firmado?"#065F46":"#991B1B" }}>{e.contrato_firmado?"Firmado":"Sin firmar"}</span>
+                  <span style={{ padding:"3px 10px", borderRadius:"6px", fontSize:"11px", fontWeight:"600", background:noTiene||venc?"#FEF2F2":"#ECFDF5", color:noTiene||venc?"#991B1B":"#065F46" }}>{noTiene?"Sin contrato":venc?"Vencido":"Activo"}</span>
                 </div>);
               })}
             </div>

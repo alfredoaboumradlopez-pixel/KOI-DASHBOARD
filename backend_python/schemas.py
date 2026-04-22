@@ -145,10 +145,20 @@ class EmpleadoCreate(BaseModel):
     puesto: str
     salario_base: float = Field(gt=0)
     fecha_ingreso: date
+    fecha_nacimiento: Optional[date] = None
+    tipo_contrato: Optional[str] = None
     rfc: Optional[str] = None
     curp: Optional[str] = None
     numero_imss: Optional[str] = None
     cuenta_banco: Optional[str] = None
+
+class DocumentoEmpleadoResponse(BaseModel):
+    id: int
+    empleado_id: int
+    nombre: str
+    tipo: str
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)
 
 class EmpleadoResponse(EmpleadoCreate):
     id: int
@@ -157,6 +167,7 @@ class EmpleadoResponse(EmpleadoCreate):
     curp: Optional[str] = None
     numero_imss: Optional[str] = None
     cuenta_banco: Optional[str] = None
+    documentos: List[DocumentoEmpleadoResponse] = []
     model_config = ConfigDict(from_attributes=True)
 
 class NominaPagoCreate(BaseModel):
