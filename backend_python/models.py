@@ -75,6 +75,7 @@ class FrecuenciaPago(str, enum.Enum):
     QUINCENAL = "QUINCENAL"
     MENSUAL = "MENSUAL"
     ANUAL = "ANUAL"
+    VARIABLE = "VARIABLE"
 
 
 class Categoria(Base):

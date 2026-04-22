@@ -4,7 +4,7 @@ import { api } from "../services/api";
 
 const formatMXN = (n: number) => n.toLocaleString("es-MX", { style: "currency", currency: "MXN" });
 
-const FRECUENCIAS = ["DIARIO","SEMANAL","QUINCENAL","MENSUAL","ANUAL"];
+const FRECUENCIAS = ["DIARIO","SEMANAL","QUINCENAL","MENSUAL","ANUAL","VARIABLE"];
 
 interface PagoRecurrente {
   id: number;
