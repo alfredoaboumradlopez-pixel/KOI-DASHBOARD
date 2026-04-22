@@ -321,7 +321,7 @@ def crear_gasto(gasto: schemas.GastoCreate, db: Session = Depends(get_db)):
 
 
 @app.get("/api/gastos", response_model=List[schemas.GastoResponse])
-def listar_gastos(fecha_inicio: Optional[date] = None, fecha_fin: Optional[date] = None, categoria: Optional[models.CategoriaGasto] = None, db: Session = Depends(get_db)):
+def listar_gastos(fecha_inicio: Optional[date] = None, fecha_fin: Optional[date] = None, categoria: Optional[str] = None, db: Session = Depends(get_db)):
     query = db.query(models.Gasto)
     if fecha_inicio:
         query = query.filter(models.Gasto.fecha >= fecha_inicio)
@@ -545,11 +545,10 @@ def calcular_pl(mes: int, anio: int, db: Session = Depends(get_db)):
     # Gastos desde tabla Gasto (gastos independientes)
     def sumar_gasto(cat_str):
         try:
-            cat = models.CategoriaGasto(cat_str)
             return db.query(func.sum(models.Gasto.monto)).filter(
                 extract("month", models.Gasto.fecha) == mes,
                 extract("year", models.Gasto.fecha) == anio,
-                models.Gasto.categoria == cat
+                models.Gasto.categoria == cat_str
             ).scalar() or 0.0
         except Exception:
             return 0.0

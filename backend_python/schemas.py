@@ -268,7 +268,7 @@ class PagoRecurrenteCreate(BaseModel):
 class PagoRecurrenteUpdate(BaseModel):
     concepto: Optional[str] = None
     proveedor: Optional[str] = None
-    categoria: Optional[CategoriaGasto] = None
+    categoria: Optional[str] = None
     frecuencia: Optional[FrecuenciaPago] = None
     deadline_texto: Optional[str] = None
     dia_limite: Optional[int] = None
