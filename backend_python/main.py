@@ -57,6 +57,28 @@ try:
 except Exception as e:
     print(f"Migracion error: {e}")
 
+# Migracion: convertir columnas categoria de ENUM a VARCHAR en PostgreSQL
+if _USE_PG:
+    try:
+        with engine.begin() as conn:
+            for table, col in [("gastos","categoria"),("gastos_diarios","categoria"),("proveedores","categoria_default"),("pagos_recurrentes","categoria")]:
+                conn.execute(_text(f"ALTER TABLE {table} ALTER COLUMN {col} TYPE VARCHAR(50) USING {col}::text"))
+                print(f"Migrado {table}.{col} a VARCHAR")
+    except Exception as e:
+        print(f"Migracion categoria (ya migrado o no existe): {e}")
+
+# Auto-seed categorias si tabla vacia
+try:
+    from sqlalchemy.orm import Session as _Session
+    with _Session(engine) as _s:
+        if _s.query(models.Categoria).count() == 0:
+            for nombre in models.CATEGORIAS_SEED:
+                _s.add(models.Categoria(nombre=nombre))
+            _s.commit()
+            print(f"Categorias seed: {len(models.CATEGORIAS_SEED)} categorias creadas")
+except Exception as e:
+    print(f"Seed categorias error: {e}")
+
 
 app = FastAPI(
     title="KOI Dashboard API",
@@ -1065,6 +1087,61 @@ async def importar_bitacora(file: UploadFile = File(...)):
         "cierre": cierre_data,
         "gastos_count": len(gastos_parsed),
     }
+
+@app.get("/api/categorias", response_model=List[schemas.CategoriaResponse])
+def get_categorias(solo_activas: bool = True, db: Session = Depends(get_db)):
+    q = db.query(models.Categoria)
+    if solo_activas:
+        q = q.filter(models.Categoria.activo == True)
+    return q.order_by(models.Categoria.nombre).all()
+
+
+@app.post("/api/categorias", response_model=schemas.CategoriaResponse, status_code=status.HTTP_201_CREATED)
+def create_categoria(data: schemas.CategoriaCreate, db: Session = Depends(get_db)):
+    nombre = data.nombre.strip().upper()
+    if not nombre:
+        raise HTTPException(status_code=400, detail="El nombre no puede estar vacio")
+    existing = db.query(models.Categoria).filter(func.upper(models.Categoria.nombre) == nombre).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="La categoria ya existe")
+    cat = models.Categoria(nombre=nombre)
+    db.add(cat)
+    db.commit()
+    db.refresh(cat)
+    return cat
+
+
+@app.put("/api/categorias/{cat_id}", response_model=schemas.CategoriaResponse)
+def update_categoria(cat_id: int, data: schemas.CategoriaCreate, db: Session = Depends(get_db)):
+    cat = db.query(models.Categoria).filter(models.Categoria.id == cat_id).first()
+    if not cat:
+        raise HTTPException(status_code=404, detail="Categoria no encontrada")
+    cat.nombre = data.nombre.strip().upper()
+    db.commit()
+    db.refresh(cat)
+    return cat
+
+
+@app.patch("/api/categorias/{cat_id}/toggle", response_model=schemas.CategoriaResponse)
+def toggle_categoria(cat_id: int, db: Session = Depends(get_db)):
+    cat = db.query(models.Categoria).filter(models.Categoria.id == cat_id).first()
+    if not cat:
+        raise HTTPException(status_code=404, detail="Categoria no encontrada")
+    cat.activo = not cat.activo
+    db.commit()
+    db.refresh(cat)
+    return cat
+
+
+@app.delete("/api/categorias/{cat_id}")
+def delete_categoria(cat_id: int, db: Session = Depends(get_db)):
+    cat = db.query(models.Categoria).filter(models.Categoria.id == cat_id).first()
+    if not cat:
+        raise HTTPException(status_code=404, detail="Categoria no encontrada")
+    db.delete(cat)
+    db.commit()
+    return {"ok": True}
+
 
 PAGOS_FIJOS_SEED = [
     {"concepto": "Renta", "proveedor": "PABELLON BOSQUES", "categoria": "RENTA", "frecuencia": "MENSUAL", "deadline_texto": "Día 1-10", "dia_limite": 10, "monto_estimado": 0},

@@ -4,7 +4,6 @@ import { api } from '../services/api';
 import { CuentasPorPagar } from "./CuentasPorPagar";
 
 const formatMXN = (n: number) => n.toLocaleString("es-MX", { style: "currency", currency: "MXN" });
-const CATEGORIAS = ["PROTEINA","VEGETALES_FRUTAS","ABARROTES","BEBIDAS","PRODUCTOS_ASIATICOS","DESECHABLES_EMPAQUES","LIMPIEZA_MANTTO","UTENSILIOS","PERSONAL","PROPINAS","SERVICIOS","EQUIPO","MARKETING","PAPELERIA","RENTA","LUZ","SOFTWARE","COMISIONES_BANCARIAS","IMPUESTOS","NOMINA","COMISIONES_PLATAFORMAS","OTROS"];
 
 interface ExpenseFormData {
   fecha: string;
@@ -17,6 +16,11 @@ interface ExpenseFormData {
 }
 
 export const CapturaGastos: React.FC = () => {
+  const [CATEGORIAS, setCATEGORIAS] = useState<string[]>([]);
+  useEffect(() => {
+    api.get("/api/categorias").then((data: any[]) => setCATEGORIAS(data.map(c => c.nombre))).catch(() => {});
+  }, []);
+
   const [dragActive, setDragActive] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [ocrState, setOcrState] = useState<'idle' | 'processing' | 'success' | 'error'>('idle');

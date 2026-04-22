@@ -4,12 +4,6 @@ import { api } from "../services/api";
 
 const formatMXN = (n: number) => n.toLocaleString("es-MX", { style: "currency", currency: "MXN" });
 
-const CATEGORIAS = [
-  "RENTA","SERVICIOS","IMPUESTOS","COMISIONES_BANCARIAS","COMISIONES_PLATAFORMAS",
-  "MARKETING","PERSONAL","NOMINA","PROTEINA","VEGETALES_FRUTAS","ABARROTES",
-  "BEBIDAS","PRODUCTOS_ASIATICOS","DESECHABLES_EMPAQUES","LIMPIEZA_MANTTO",
-  "UTENSILIOS","EQUIPO","PAPELERIA","LUZ","SOFTWARE","PROPINAS","OTROS",
-];
 const FRECUENCIAS = ["DIARIO","SEMANAL","QUINCENAL","MENSUAL","ANUAL"];
 
 interface PagoRecurrente {
@@ -75,6 +69,11 @@ const statusColors = {
 };
 
 export const Tesoreria = () => {
+  const [CATEGORIAS, setCATEGORIAS] = useState<string[]>([]);
+  useEffect(() => {
+    api.get("/api/categorias").then((data: any[]) => setCATEGORIAS(data.map(c => c.nombre))).catch(() => {});
+  }, []);
+
   const [pagos, setPagos] = useState<PagoRecurrente[]>([]);
   const [loading, setLoading] = useState(true);
   const [filtro, setFiltro] = useState<"todos" | "urgentes" | "proximos">("todos");

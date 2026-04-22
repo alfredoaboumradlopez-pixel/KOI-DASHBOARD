@@ -77,6 +77,21 @@ class FrecuenciaPago(str, enum.Enum):
     ANUAL = "ANUAL"
 
 
+class Categoria(Base):
+    __tablename__ = "categorias"
+    id = Column(Integer, primary_key=True, index=True)
+    nombre = Column(String(50), nullable=False, unique=True)
+    activo = Column(Boolean, default=True)
+
+
+CATEGORIAS_SEED = [
+    "PROTEINA","VEGETALES_FRUTAS","ABARROTES","BEBIDAS","PRODUCTOS_ASIATICOS",
+    "DESECHABLES_EMPAQUES","LIMPIEZA_MANTTO","UTENSILIOS","PERSONAL","PROPINAS",
+    "SERVICIOS","EQUIPO","MARKETING","PAPELERIA","RENTA","LUZ","SOFTWARE",
+    "COMISIONES_BANCARIAS","IMPUESTOS","NOMINA","COMISIONES_PLATAFORMAS","OTROS",
+]
+
+
 class VentaDiaria(Base):
     __tablename__ = "ventas_diarias"
     id = Column(Integer, primary_key=True, index=True)
@@ -134,7 +149,7 @@ class GastoDiario(Base):
     cierre_id = Column(Integer, ForeignKey("cierres_turno.id"), nullable=False)
     proveedor = Column(String(100), nullable=False)
     clase = Column(SQLEnum(ClaseGasto), nullable=False, default=ClaseGasto.NMP)
-    categoria = Column(SQLEnum(CategoriaGasto), nullable=False)
+    categoria = Column(String(50), nullable=False)
     comprobante = Column(SQLEnum(TipoComprobante), nullable=False)
     descripcion = Column(String(255), nullable=False)
     monto = Column(Float, nullable=False)
@@ -155,7 +170,7 @@ class Proveedor(Base):
     __tablename__ = "proveedores"
     id = Column(Integer, primary_key=True, index=True)
     nombre = Column(String(100), index=True, nullable=False)
-    categoria_default = Column(SQLEnum(CategoriaGasto), nullable=False)
+    categoria_default = Column(String(50), nullable=False)
     activo = Column(Boolean, default=True)
     cuentas = relationship("CuentaPorPagar", back_populates="proveedor")
 
@@ -177,7 +192,7 @@ class Gasto(Base):
     id = Column(Integer, primary_key=True, index=True)
     fecha = Column(Date, nullable=False, index=True)
     proveedor = Column(String(100), nullable=False)
-    categoria = Column(SQLEnum(CategoriaGasto), nullable=False)
+    categoria = Column(String(50), nullable=False)
     monto = Column(Float, nullable=False)
     metodo_pago = Column(SQLEnum(MetodoPago), nullable=False)
     comprobante_url = Column(String(500), nullable=True)
@@ -270,7 +285,7 @@ class PagoRecurrente(Base):
     id = Column(Integer, primary_key=True, index=True)
     concepto = Column(String(200), nullable=False)
     proveedor = Column(String(100), nullable=False)
-    categoria = Column(SQLEnum(CategoriaGasto), nullable=False)
+    categoria = Column(String(50), nullable=False)
     frecuencia = Column(SQLEnum(FrecuenciaPago), nullable=False)
     deadline_texto = Column(String(100), nullable=False)
     dia_limite = Column(Integer, nullable=True)

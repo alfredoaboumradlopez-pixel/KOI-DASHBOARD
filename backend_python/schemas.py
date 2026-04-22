@@ -5,14 +5,23 @@ from pydantic import BaseModel, ConfigDict, Field
 from datetime import date, datetime
 from typing import List, Optional
 from .models import (
-    ClaseGasto, CategoriaGasto, TipoComprobante, MetodoPago,
+    ClaseGasto, TipoComprobante, MetodoPago,
     TerminalOrigen, EstadoArqueo, EstadoPago, TipoMovimientoBanco, FrecuenciaPago
 )
+
+class CategoriaCreate(BaseModel):
+    nombre: str
+
+class CategoriaResponse(BaseModel):
+    id: int
+    nombre: str
+    activo: bool
+    model_config = ConfigDict(from_attributes=True)
 
 class GastoDiarioCreate(BaseModel):
     proveedor: str
     clase: ClaseGasto = ClaseGasto.NMP
-    categoria: CategoriaGasto
+    categoria: str
     comprobante: TipoComprobante
     descripcion: str
     monto: float = Field(gt=0)
@@ -88,7 +97,7 @@ class CierreArqueoUpdate(BaseModel):
 class GastoCreate(BaseModel):
     fecha: date
     proveedor: str
-    categoria: CategoriaGasto
+    categoria: str
     monto: float = Field(gt=0)
     metodo_pago: MetodoPago
     comprobante: Optional[str] = "SIN_COMPROBANTE"
@@ -112,7 +121,7 @@ class OCRResult(BaseModel):
 
 class ProveedorCreate(BaseModel):
     nombre: str
-    categoria_default: CategoriaGasto
+    categoria_default: str
 
 class ProveedorResponse(ProveedorCreate):
     id: int
@@ -249,7 +258,7 @@ class DistribucionResumen(BaseModel):
 class PagoRecurrenteCreate(BaseModel):
     concepto: str
     proveedor: str
-    categoria: CategoriaGasto
+    categoria: str
     frecuencia: FrecuenciaPago
     deadline_texto: str
     dia_limite: Optional[int] = None
