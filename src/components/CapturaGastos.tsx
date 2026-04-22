@@ -163,6 +163,31 @@ export const CapturaGastos: React.FC = () => {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editGasto, setEditGasto] = useState<any>(null);
 
+  const [editingDateGroup, setEditingDateGroup] = useState<string | null>(null);
+  const [newDateForGroup, setNewDateForGroup] = useState("");
+  const [savingDateGroup, setSavingDateGroup] = useState(false);
+
+  const cambiarFechaGrupo = async (items: any[]) => {
+    if (!newDateForGroup) return;
+    setSavingDateGroup(true);
+    try {
+      for (const g of items) {
+        await api.put("/api/gastos/" + g.id, {
+          fecha: newDateForGroup,
+          proveedor: g.proveedor,
+          categoria: g.categoria,
+          monto: g.total || g.monto || 0,
+          metodo_pago: g.metodo_pago || "EFECTIVO",
+          comprobante: g.comprobante || "SIN_COMPROBANTE",
+          descripcion: g.descripcion || "",
+        });
+      }
+      setEditingDateGroup(null);
+      await fetchGastos();
+    } catch (e) { alert("Error al cambiar fechas"); }
+    setSavingDateGroup(false);
+  };
+
   const iniciarEdicion = (g: any) => {
     setEditGasto({...g, total: g.total || g.monto || 0, descripcion: g.descripcion || '', comprobante: g.comprobante || 'SIN_COMPROBANTE'});
     setEditingId(g.id);
@@ -371,14 +396,31 @@ export const CapturaGastos: React.FC = () => {
               const isOpen = expandedDates.has(fecha);
               return (
                 <div key={fecha}>
-                  <button onClick={() => toggleDate(fecha)} style={{width:"100%",display:"flex",justifyContent:"space-between",padding:"12px 24px",borderBottom:"1px solid #F3F4F6",background:isOpen?"#F9FAFB":"#FFF",border:"none",cursor:"pointer",alignItems:"center"}}>
-                    <div style={{display:"flex",alignItems:"center",gap:"10px"}}>
+                  <div style={{width:"100%",display:"flex",justifyContent:"space-between",padding:"12px 24px",borderBottom:"1px solid #F3F4F6",background:isOpen?"#F9FAFB":"#FFF",alignItems:"center"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:"10px",flex:1,cursor:"pointer"}} onClick={() => toggleDate(fecha)}>
                       {isOpen ? <ChevronUp style={{width:"16px",height:"16px",color:"#3D1C1E"}} /> : <ChevronDown style={{width:"16px",height:"16px",color:"#9CA3AF"}} />}
                       <span style={{fontSize:"14px",fontWeight:"700",color:"#111827"}}>{new Date(fecha+"T12:00:00").toLocaleDateString("es-MX",{weekday:"short",day:"2-digit",month:"short",year:"numeric"})}</span>
                       <span style={{fontSize:"11px",padding:"2px 8px",borderRadius:"10px",background:"#F3F4F6",color:"#6B7280"}}>{items.length} gasto{items.length !== 1 ? "s" : ""}</span>
                     </div>
-                    <span style={{fontSize:"15px",fontWeight:"800",color:"#3D1C1E"}}>${totalFecha.toLocaleString("es-MX",{minimumFractionDigits:2})}</span>
-                  </button>
+                    <div style={{display:"flex",alignItems:"center",gap:"8px"}}>
+                      {editingDateGroup === fecha ? (
+                        <>
+                          <input type="date" value={newDateForGroup} onChange={e => setNewDateForGroup(e.target.value)} autoFocus style={{padding:"4px 8px",borderRadius:"6px",border:"1px solid #D97706",fontSize:"13px",fontWeight:"600"}} />
+                          <button onClick={() => cambiarFechaGrupo(items)} disabled={savingDateGroup || !newDateForGroup} style={{padding:"4px 12px",borderRadius:"6px",border:"none",background:"#D97706",color:"#FFF",fontSize:"12px",fontWeight:"700",cursor:"pointer",opacity:savingDateGroup?0.6:1}}>
+                            {savingDateGroup ? "..." : `Aplicar a ${items.length}`}
+                          </button>
+                          <button onClick={() => setEditingDateGroup(null)} style={{padding:"4px 8px",borderRadius:"6px",border:"1px solid #E5E7EB",background:"#FFF",fontSize:"12px",cursor:"pointer",color:"#6B7280"}}>Cancelar</button>
+                        </>
+                      ) : (
+                        <>
+                          <span style={{fontSize:"15px",fontWeight:"800",color:"#3D1C1E"}}>${totalFecha.toLocaleString("es-MX",{minimumFractionDigits:2})}</span>
+                          <button onClick={() => { setEditingDateGroup(fecha); setNewDateForGroup(fecha); }} style={{padding:"3px 10px",borderRadius:"6px",border:"1px solid #E5E7EB",background:"#FFF",fontSize:"11px",color:"#6B7280",cursor:"pointer",display:"flex",alignItems:"center",gap:"4px"}}>
+                            <Pencil style={{width:"11px",height:"11px"}} /> fecha
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
                   {isOpen && (
                     <div style={{background:"#FAFBFC"}}>
                       <div style={{display:"grid",gridTemplateColumns:"1fr 110px 110px 90px 90px 60px",padding:"6px 24px 6px 48px",borderBottom:"1px solid #F3F4F6"}}>
