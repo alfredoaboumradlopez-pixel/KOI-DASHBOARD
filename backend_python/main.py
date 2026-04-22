@@ -67,6 +67,15 @@ if _USE_PG:
     except Exception as e:
         print(f"Migracion categoria (ya migrado o no existe): {e}")
 
+# Migracion: agregar valores nuevos al enum frecuenciapago en PostgreSQL
+if _USE_PG:
+    try:
+        with engine.begin() as conn:
+            conn.execute(_text("ALTER TYPE frecuenciapago ADD VALUE IF NOT EXISTS 'VARIABLE'"))
+            print("Enum frecuenciapago: VARIABLE agregado")
+    except Exception as e:
+        print(f"Migracion frecuenciapago: {e}")
+
 # Auto-seed categorias si tabla vacia
 try:
     from sqlalchemy.orm import Session as _Session
