@@ -388,7 +388,8 @@ export const CapturaGastos: React.FC = () => {
                         <div key={g.id}>
                           {editingId === g.id ? (
                             <div style={{padding:"10px 24px 10px 48px",borderBottom:"1px solid #F3F4F6",background:"#FFFBEB"}}>
-                              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 100px",gap:"6px",marginBottom:"6px"}}>
+                              <div style={{display:"grid",gridTemplateColumns:"120px 1fr 1fr 100px",gap:"6px",marginBottom:"6px"}}>
+                                <div><label style={{fontSize:"10px",color:"#6B7280"}}>Fecha</label><input type="date" value={editGasto.fecha||""} onChange={e => setEditGasto({...editGasto, fecha: e.target.value})} style={{width:"100%",fontSize:"12px",padding:"4px 6px",borderRadius:"6px",border:"1px solid #E5E7EB"}} /></div>
                                 <div><label style={{fontSize:"10px",color:"#6B7280"}}>Proveedor</label><input value={editGasto.proveedor} onChange={e => setEditGasto({...editGasto, proveedor: e.target.value})} style={{width:"100%",fontSize:"12px",padding:"4px 6px",borderRadius:"6px",border:"1px solid #E5E7EB"}} /></div>
                                 <div><label style={{fontSize:"10px",color:"#6B7280"}}>Descripcion</label><input value={editGasto.descripcion||""} onChange={e => setEditGasto({...editGasto, descripcion: e.target.value})} style={{width:"100%",fontSize:"12px",padding:"4px 6px",borderRadius:"6px",border:"1px solid #E5E7EB"}} /></div>
                                 <div><label style={{fontSize:"10px",color:"#6B7280"}}>Monto</label><input type="number" step="0.01" value={editGasto.total} onChange={e => setEditGasto({...editGasto, total: e.target.value})} style={{width:"100%",fontSize:"12px",padding:"4px 6px",borderRadius:"6px",border:"1px solid #E5E7EB"}} /></div>
