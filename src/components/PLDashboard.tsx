@@ -109,19 +109,18 @@ interface PLDashboardProps {
 }
 
 export const PLDashboard = ({ restauranteIdOverride }: PLDashboardProps = {}) => {
-  const { authUser, setCurrentRoute } = useStore();
+  const { authUser } = useStore();
 
   // Determinar restaurante_id correcto:
-  // 1. Si viene override (SUPER_ADMIN viendo restaurante específico) → usar ese
+  // 1. Si viene override (App.tsx resolvió slug→id para SUPER_ADMIN) → usar ese
   // 2. Si el usuario tiene restaurante_id en el JWT → usar ese
-  // 3. Fallback: 1 (KOI default, solo si no hay otra opción)
+  // 3. Fallback: 1
   const restauranteId: number =
     restauranteIdOverride ??
     (authUser?.restaurante_id != null ? authUser.restaurante_id : 1);
 
-  const isSuperAdmin = authUser?.rol === "SUPER_ADMIN";
-
   const [mes, setMes] = useState(new Date().getMonth() + 1);
+  void authUser; // usado arriba para restauranteId
   const [anio] = useState(new Date().getFullYear());
   const [pl, setPl] = useState<PLResult | null>(null);
   const [semanas, setSemanas] = useState<any[]>([]);
@@ -144,13 +143,6 @@ export const PLDashboard = ({ restauranteIdOverride }: PLDashboardProps = {}) =>
     "Nov",
     "Dic",
   ];
-
-  // Si es SUPER_ADMIN sin override, redirigir al Panel RBO
-  useEffect(() => {
-    if (isSuperAdmin && !restauranteIdOverride) {
-      setCurrentRoute("/rbo");
-    }
-  }, [isSuperAdmin, restauranteIdOverride]);
 
   const cargar = async (m: number) => {
     setLoading(true);
@@ -218,15 +210,8 @@ export const PLDashboard = ({ restauranteIdOverride }: PLDashboardProps = {}) =>
   };
 
   useEffect(() => {
-    if (!isSuperAdmin || restauranteIdOverride) {
-      cargar(mes);
-    }
+    cargar(mes);
   }, [mes, restauranteId]);
-
-  // Si SUPER_ADMIN sin override → no mostrar nada (se redirige arriba)
-  if (isSuperAdmin && !restauranteIdOverride) {
-    return null;
-  }
 
   const plRows = pl
     ? [

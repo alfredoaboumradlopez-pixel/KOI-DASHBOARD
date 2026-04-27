@@ -31,6 +31,25 @@ const formatMXN = (amount: number) =>
   new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(amount);
 
 function Dashboard() {
+  const { authUser } = useStore();
+  const isSuperAdmin = authUser?.rol === "SUPER_ADMIN";
+
+  // Para SUPER_ADMIN: resolver restaurante_id de KOI via API (slug → id)
+  // Así no hay nada hardcodeado y funciona aunque el id cambie.
+  const [koiRestauranteId, setKoiRestauranteId] = useState<number | null>(null);
+  const [resolvingKoi, setResolvingKoi] = useState(isSuperAdmin);
+
+  useEffect(() => {
+    if (!isSuperAdmin) return;
+    api.get("/api/restaurantes")
+      .then((rests: any[]) => {
+        const koi = rests.find((r: any) => r.slug === "koi") ?? rests[0] ?? null;
+        setKoiRestauranteId(koi?.id ?? null);
+      })
+      .catch(() => setKoiRestauranteId(null))
+      .finally(() => setResolvingKoi(false));
+  }, [isSuperAdmin]);
+
   const [ventas, setVentas] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [mes, setMes] = useState(new Date().getMonth() + 1);
@@ -49,6 +68,14 @@ function Dashboard() {
     f();
   }, [mes, anio]);
 
+  // Mientras SUPER_ADMIN resuelve el id del restaurante, mostrar spinner
+  if (resolvingKoi) return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "200px", gap: "10px", color: "#9CA3AF" }}>
+      <Loader2 style={{ width: "20px", height: "20px", animation: "spin 1s linear infinite" }} />
+      <span style={{ fontSize: "13px" }}>Cargando dashboard KOI…</span>
+    </div>
+  );
+
   if (loading) return <div className="flex items-center justify-center h-64"><Loader2 className="w-8 h-8 animate-spin text-indigo-600" /></div>;
 
   const tv = ventas?.total_venta || 0;
@@ -59,8 +86,8 @@ function Dashboard() {
 
   return (
     <div style={{maxWidth:"1200px",margin:"0 auto"}}>
-      {/* P&L Dashboard at top */}
-      <PLDashboard />
+      {/* P&L Dashboard at top — para SUPER_ADMIN pasa el id resuelto de KOI */}
+      <PLDashboard restauranteIdOverride={isSuperAdmin && koiRestauranteId ? koiRestauranteId : undefined} />
 
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"24px",marginTop:"32px"}}>
         <div style={{display:"flex",alignItems:"center",gap:"12px"}}>
