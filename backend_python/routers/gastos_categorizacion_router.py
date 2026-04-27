@@ -127,19 +127,10 @@ def gastos_sin_categorizar(
 
     id_otros = next((c.id for c in cuentas if c.codigo == "6008"), None)
 
-    # ── Categorías operativas conocidas (para _es_en_revision) ───────────
-    cats_conocidas = {
-        c.nombre.strip().upper()
-        for c in db.query(models.Categoria).filter(
-            models.Categoria.restaurante_id == restaurante_id,
-            models.Categoria.activo == True,
-        ).all()
-    }
-
-    def _es_en_revision(cat_txt: Optional[str]) -> bool:
-        if not cat_txt:
-            return True
-        return cat_txt.strip().upper() not in cats_conocidas
+    # ── "En revisión" = catalogo_cuenta_id apunta a cuenta 6008 ─────────
+    # Definición simple y consistente entre contador y lista:
+    # cualquier gasto asignado a "Otros gastos" (código 6008) aparece
+    # en el tab "En revisión", independientemente de su categoría operativa.
 
     def _nombre_cuenta(cuenta_id: Optional[int]) -> Optional[str]:
         if not cuenta_id or cuenta_id not in cuentas_map:
@@ -224,7 +215,7 @@ def gastos_sin_categorizar(
                 "categoria_texto": g.categoria, "monto": round(g.monto or 0, 2),
                 "catalogo_cuenta_id": ccid,
                 "cuenta_nombre": _nombre_cuenta(ccid),
-                "es_otros": (ccid == id_otros) and _es_en_revision(g.categoria),
+                "es_otros": ccid == id_otros,
                 "sugerencia": None,   # omitir en modo todos para performance
             })
 
@@ -251,7 +242,7 @@ def gastos_sin_categorizar(
                     "categoria_texto": gd.categoria, "monto": round(gd.monto or 0, 2),
                     "catalogo_cuenta_id": ccid,
                     "cuenta_nombre": _nombre_cuenta(ccid),
-                    "es_otros": (ccid == id_otros) and _es_en_revision(gd.categoria),
+                    "es_otros": ccid == id_otros,
                     "sugerencia": None,
                 })
 
@@ -301,7 +292,7 @@ def gastos_sin_categorizar(
                 "descripcion": g.descripcion or "",
                 "categoria_texto": g.categoria, "monto": round(g.monto or 0, 2),
                 "catalogo_cuenta_id": id_otros, "cuenta_nombre": "Otros gastos",
-                "es_otros": _es_en_revision(g.categoria),
+                "es_otros": True,
                 "sugerencia": _sugerir(g.categoria, id_otros),
             })
 
@@ -338,7 +329,7 @@ def gastos_sin_categorizar(
                 "descripcion": gd.descripcion or "",
                 "categoria_texto": gd.categoria, "monto": round(gd.monto or 0, 2),
                 "catalogo_cuenta_id": id_otros, "cuenta_nombre": "Otros gastos",
-                "es_otros": _es_en_revision(gd.categoria),
+                "es_otros": True,
                 "sugerencia": _sugerir(gd.categoria, id_otros),
             })
 
