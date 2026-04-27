@@ -83,6 +83,7 @@ class Categoria(Base):
     id = Column(Integer, primary_key=True, index=True)
     nombre = Column(String(50), nullable=False, unique=True)
     activo = Column(Boolean, default=True)
+    restaurante_id = Column(Integer, ForeignKey("restaurantes.id"), nullable=True)
 
 
 CATEGORIAS_SEED = [
@@ -111,6 +112,7 @@ class VentaDiaria(Base):
     otros_ingresos = Column(Float, default=0.0)
     total_venta = Column(Float, default=0.0)
     total_propina = Column(Float, default=0.0)
+    restaurante_id = Column(Integer, ForeignKey("restaurantes.id"), nullable=True)
 
 
 class CierreTurno(Base):
@@ -140,6 +142,7 @@ class CierreTurno(Base):
     estado = Column(SQLEnum(EstadoArqueo), nullable=True)
     notas = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    restaurante_id = Column(Integer, ForeignKey("restaurantes.id"), nullable=True)
     gastos = relationship("GastoDiario", back_populates="cierre", cascade="all, delete-orphan")
     propinas = relationship("PropinaDiaria", back_populates="cierre", cascade="all, delete-orphan")
 
@@ -155,6 +158,7 @@ class GastoDiario(Base):
     descripcion = Column(String(255), nullable=False)
     monto = Column(Float, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+    restaurante_id = Column(Integer, ForeignKey("restaurantes.id"), nullable=True)
     cierre = relationship("CierreTurno", back_populates="gastos")
 
 
@@ -164,6 +168,7 @@ class PropinaDiaria(Base):
     cierre_id = Column(Integer, ForeignKey("cierres_turno.id"), nullable=False)
     terminal = Column(SQLEnum(TerminalOrigen), nullable=False)
     monto = Column(Float, nullable=False)
+    restaurante_id = Column(Integer, ForeignKey("restaurantes.id"), nullable=True)
     cierre = relationship("CierreTurno", back_populates="propinas")
 
 
@@ -173,6 +178,7 @@ class Proveedor(Base):
     nombre = Column(String(100), index=True, nullable=False)
     categoria_default = Column(String(50), nullable=False)
     activo = Column(Boolean, default=True)
+    restaurante_id = Column(Integer, ForeignKey("restaurantes.id"), nullable=True)
     cuentas = relationship("CuentaPorPagar", back_populates="proveedor")
 
 
@@ -185,6 +191,7 @@ class CuentaPorPagar(Base):
     estado_pago = Column(SQLEnum(EstadoPago), default=EstadoPago.PENDIENTE, nullable=False)
     descripcion = Column(String(255), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    restaurante_id = Column(Integer, ForeignKey("restaurantes.id"), nullable=True)
     proveedor = relationship("Proveedor", back_populates="cuentas")
 
 
@@ -201,6 +208,7 @@ class Gasto(Base):
     descripcion = Column(String(255), nullable=True)
     estado = Column(SQLEnum(EstadoPago), default=EstadoPago.PENDIENTE)
     created_at = Column(DateTime, default=datetime.utcnow)
+    restaurante_id = Column(Integer, ForeignKey("restaurantes.id"), nullable=True)
 
 
 class Empleado(Base):
@@ -217,6 +225,7 @@ class Empleado(Base):
     curp = Column(String(20), nullable=True)
     numero_imss = Column(String(20), nullable=True)
     cuenta_banco = Column(String(50), nullable=True)
+    restaurante_id = Column(Integer, ForeignKey("restaurantes.id"), nullable=True)
     pagos = relationship("NominaPago", back_populates="empleado")
     documentos = relationship("DocumentoEmpleado", back_populates="empleado", cascade="all, delete-orphan")
 
@@ -229,6 +238,7 @@ class DocumentoEmpleado(Base):
     tipo = Column(String(50), nullable=False)
     ruta = Column(String(500), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+    restaurante_id = Column(Integer, ForeignKey("restaurantes.id"), nullable=True)
     empleado = relationship("Empleado", back_populates="documentos")
 
 
@@ -243,6 +253,7 @@ class NominaPago(Base):
     deducciones = Column(Float, default=0.0)
     neto_pagado = Column(Float, nullable=False)
     fecha_pago = Column(Date, nullable=False)
+    restaurante_id = Column(Integer, ForeignKey("restaurantes.id"), nullable=True)
     empleado = relationship("Empleado", back_populates="pagos")
 
 
@@ -257,6 +268,7 @@ class Insumo(Base):
     proveedor = Column(String(100), nullable=True)
     ultima_compra = Column(Date, nullable=True)
     activo = Column(Boolean, default=True)
+    restaurante_id = Column(Integer, ForeignKey("restaurantes.id"), nullable=True)
 
 
 class MovimientoBanco(Base):
@@ -271,6 +283,7 @@ class MovimientoBanco(Base):
     reconciliado = Column(Boolean, default=False)
     gasto_id = Column(Integer, ForeignKey("gastos.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    restaurante_id = Column(Integer, ForeignKey("restaurantes.id"), nullable=True)
 
 
 class PLMensual(Base):
@@ -292,6 +305,7 @@ class PLMensual(Base):
     utilidad_operativa = Column(Float, default=0.0)
     utilidad_neta = Column(Float, default=0.0)
     created_at = Column(DateTime, default=datetime.utcnow)
+    restaurante_id = Column(Integer, ForeignKey("restaurantes.id"), nullable=True)
     distribuciones = relationship("DistribucionUtilidad", back_populates="pl")
 
 
@@ -307,6 +321,7 @@ class PagoRecurrente(Base):
     monto_estimado = Column(Float, default=0.0)
     activo = Column(Boolean, default=True)
     notas = Column(Text, nullable=True)
+    restaurante_id = Column(Integer, ForeignKey("restaurantes.id"), nullable=True)
 
 
 SOCIOS_CONFIG = [
@@ -328,4 +343,74 @@ class DistribucionUtilidad(Base):
     monto_pagado = Column(Float, default=0.0)
     fecha_pago = Column(Date, nullable=True)
     estado = Column(SQLEnum(EstadoPago), default=EstadoPago.PENDIENTE)
+    restaurante_id = Column(Integer, ForeignKey("restaurantes.id"), nullable=True)
     pl = relationship("PLMensual", back_populates="distribuciones")
+
+
+class Restaurante(Base):
+    __tablename__ = "restaurantes"
+    id = Column(Integer, primary_key=True, index=True)
+    nombre = Column(String(100), nullable=False)
+    slug = Column(String(50), nullable=False, unique=True)
+    activo = Column(Boolean, default=True)
+    plan = Column(String(20), default='basico')
+    created_at = Column(DateTime, default=datetime.utcnow)
+    timezone = Column(String(50), default='America/Mexico_City')
+    moneda = Column(String(3), default='MXN')
+
+class Usuario(Base):
+    __tablename__ = "usuarios"
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String(150), nullable=False, unique=True)
+    hashed_password = Column(String(255), nullable=False)
+    nombre = Column(String(100), nullable=False)
+    rol = Column(String(20), nullable=False)
+    restaurante_id = Column(Integer, ForeignKey("restaurantes.id"), nullable=True)
+    activo = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    ultimo_acceso = Column(DateTime, nullable=True)
+
+class CatalogoCuenta(Base):
+    __tablename__ = "catalogo_cuentas"
+    id = Column(Integer, primary_key=True, index=True)
+    restaurante_id = Column(Integer, ForeignKey("restaurantes.id"), nullable=False)
+    nombre = Column(String(100), nullable=False)
+    codigo = Column(String(20), nullable=False)
+    tipo = Column(String(20), nullable=False)
+    categoria_pl = Column(String(50), nullable=False)
+    iva_acreditable = Column(Boolean, default=False)
+    activo = Column(Boolean, default=True)
+    orden = Column(Integer, default=0)
+
+class AlertaConfig(Base):
+    __tablename__ = "alertas_config"
+    id = Column(Integer, primary_key=True, index=True)
+    restaurante_id = Column(Integer, ForeignKey("restaurantes.id"), nullable=False)
+    tipo = Column(String(50), nullable=False)
+    umbral = Column(Float, nullable=False)
+    activo = Column(Boolean, default=True)
+    notificar_email = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class AlertaLog(Base):
+    __tablename__ = "alertas_log"
+    id = Column(Integer, primary_key=True, index=True)
+    restaurante_id = Column(Integer, ForeignKey("restaurantes.id"), nullable=False)
+    tipo = Column(String(50), nullable=False)
+    mensaje = Column(Text, nullable=False)
+    valor_detectado = Column(Float, nullable=True)
+    umbral_config = Column(Float, nullable=True)
+    revisada = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class AuditLog(Base):
+    __tablename__ = "audit_log"
+    id = Column(Integer, primary_key=True, index=True)
+    restaurante_id = Column(Integer, ForeignKey("restaurantes.id"), nullable=True)
+    usuario_id = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
+    accion = Column(String(100), nullable=False)
+    tabla_afectada = Column(String(50), nullable=True)
+    registro_id = Column(Integer, nullable=True)
+    detalle = Column(Text, nullable=True)
+    ip_address = Column(String(45), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)

@@ -40,6 +40,9 @@ import re
 
 from . import models, schemas
 from .database import engine, get_db
+from .core.auth import get_optional_user, get_restaurante_id
+from .routers.auth_router import router as auth_router
+from .routers.restaurantes_router import router as restaurantes_router
 
 models.Base.metadata.create_all(bind=engine)
 
@@ -76,6 +79,27 @@ if _USE_PG:
     except Exception as e:
         print(f"Migracion frecuenciapago: {e}")
 
+# Migracion: agregar restaurante_id a todas las tablas existentes
+try:
+    _insp_t = _inspect(engine)
+    _tablas_tenant = [
+        'categorias','cierres_turno','cuentas_por_pagar','distribucion_utilidades',
+        'documentos_empleado','empleados','gastos','gastos_diarios','insumos',
+        'movimientos_banco','nomina_pagos','pagos_recurrentes','pl_mensual',
+        'propinas_diarias','proveedores','ventas_diarias',
+    ]
+    with engine.begin() as _conn_t:
+        for _tbl in _tablas_tenant:
+            try:
+                _cols_t = [c['name'] for c in _insp_t.get_columns(_tbl)]
+                if 'restaurante_id' not in _cols_t:
+                    _conn_t.execute(_text(f"ALTER TABLE {_tbl} ADD COLUMN restaurante_id INTEGER REFERENCES restaurantes(id)"))
+                    print(f"  restaurante_id agregado a {_tbl}")
+            except Exception as _e:
+                print(f"  (skip {_tbl}.restaurante_id: {_e})")
+except Exception as _e:
+    print(f"Migracion restaurante_id: {_e}")
+
 # Auto-seed categorias si tabla vacia
 try:
     from sqlalchemy.orm import Session as _Session
@@ -87,6 +111,70 @@ try:
             print(f"Categorias seed: {len(models.CATEGORIAS_SEED)} categorias creadas")
 except Exception as e:
     print(f"Seed categorias error: {e}")
+
+# Seed multi-tenant: crear KOI y backfill si necesario
+try:
+    from .core.auth import get_password_hash as _hash_pw
+    with _Session(engine) as _st:
+        # Crear restaurante KOI si no existe
+        _koi = _st.query(models.Restaurante).filter(models.Restaurante.slug == 'koi').first()
+        if not _koi:
+            _koi = models.Restaurante(nombre='KOI Hand Roll & Poke', slug='koi', activo=True, plan='profesional')
+            _st.add(_koi)
+            _st.flush()
+            print(f"Restaurante KOI creado (id={_koi.id})")
+        _KOI_ID = _koi.id
+        # Crear SUPER_ADMIN si no existe
+        if not _st.query(models.Usuario).filter(models.Usuario.email == 'admin@rbo.mx').first():
+            _st.add(models.Usuario(
+                email='admin@rbo.mx', hashed_password=_hash_pw('rbo2026admin'),
+                nombre='RBO Admin', rol='SUPER_ADMIN', restaurante_id=None, activo=True,
+            ))
+            print("Usuario SUPER_ADMIN creado: admin@rbo.mx / rbo2026admin")
+        # Backfill restaurante_id para datos existentes de KOI
+        _tenant_models = [
+            models.Categoria, models.CierreTurno, models.CuentaPorPagar,
+            models.DistribucionUtilidad, models.DocumentoEmpleado, models.Empleado,
+            models.Gasto, models.GastoDiario, models.Insumo, models.MovimientoBanco,
+            models.NominaPago, models.PagoRecurrente, models.PLMensual,
+            models.PropinaDiaria, models.Proveedor, models.VentaDiaria,
+        ]
+        for _m in _tenant_models:
+            try:
+                _n = _st.query(_m).filter(_m.restaurante_id == None).count()
+                if _n > 0:
+                    _st.query(_m).filter(_m.restaurante_id == None).update({"restaurante_id": _KOI_ID})
+            except Exception: pass
+        # Catálogo de cuentas para KOI
+        if _st.query(models.CatalogoCuenta).filter(models.CatalogoCuenta.restaurante_id == _KOI_ID).count() == 0:
+            _cuentas = [
+                ("4001","Ventas efectivo","INGRESO","ventas_netas",False,1),
+                ("4002","Ventas terminal","INGRESO","ventas_netas",False,2),
+                ("4003","Ventas Uber Eats","INGRESO","ventas_netas",False,3),
+                ("4004","Ventas Rappi","INGRESO","ventas_netas",False,4),
+                ("5001","Costo alimentos","COSTO_VENTA","costo_alimentos",True,10),
+                ("5002","Costo bebidas","COSTO_VENTA","costo_bebidas",True,11),
+                ("6001","Nómina","GASTO_NOMINA","nomina",False,20),
+                ("6002","Renta","GASTO_OPERATIVO","renta",True,21),
+                ("6003","Luz y gas","GASTO_OPERATIVO","servicios",True,22),
+                ("6004","Mantenimiento","GASTO_OPERATIVO","mantenimiento",True,23),
+                ("6005","Limpieza","GASTO_OPERATIVO","limpieza",True,24),
+                ("6006","Comida personal","GASTO_OPERATIVO","otros_gastos",False,25),
+                ("6007","Marketing","GASTO_ADMIN","marketing",True,26),
+                ("6008","Otros gastos","GASTO_OPERATIVO","otros_gastos",False,27),
+                ("7001","ISR","IMPUESTO","impuestos",False,30),
+                ("7002","IVA a pagar","IMPUESTO","impuestos",False,31),
+            ]
+            for _c in _cuentas:
+                _st.add(models.CatalogoCuenta(restaurante_id=_KOI_ID, codigo=_c[0], nombre=_c[1], tipo=_c[2], categoria_pl=_c[3], iva_acreditable=_c[4], orden=_c[5]))
+        # Alertas config para KOI
+        if _st.query(models.AlertaConfig).filter(models.AlertaConfig.restaurante_id == _KOI_ID).count() == 0:
+            for _tipo, _umbral in [("FOOD_COST_ALTO",32.0),("NOMINA_ALTA",35.0),("MARGEN_BAJO",15.0),("VENTAS_BAJAS",80.0),("CAPTURA_INCOMPLETA",1.0)]:
+                _st.add(models.AlertaConfig(restaurante_id=_KOI_ID, tipo=_tipo, umbral=_umbral))
+        _st.commit()
+        print(f"Multi-tenant seed OK — KOI restaurante_id={_KOI_ID}")
+except Exception as _e:
+    print(f"Seed multi-tenant error: {_e}")
 
 
 app = FastAPI(
@@ -102,6 +190,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(auth_router)
+app.include_router(restaurantes_router)
 
 UPLOADS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
 os.makedirs(os.path.join(UPLOADS_DIR, "documentos"), exist_ok=True)
