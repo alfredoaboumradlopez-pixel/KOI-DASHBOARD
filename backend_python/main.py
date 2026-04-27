@@ -1393,6 +1393,15 @@ def seed_pagos_recurrentes(db: Session = Depends(get_db)):
     return {"message": f"{len(PAGOS_FIJOS_SEED)} pagos creados"}
 
 
+@app.get("/api/catalogo-cuentas/{restaurante_id}")
+def listar_catalogo_cuentas(restaurante_id: int, db: Session = Depends(get_db)):
+    cuentas = db.query(models.CatalogoCuenta).filter(
+        models.CatalogoCuenta.restaurante_id == restaurante_id,
+        models.CatalogoCuenta.activo == True,
+    ).order_by(models.CatalogoCuenta.orden).all()
+    return [{"id": c.id, "codigo": c.codigo, "nombre": c.nombre, "tipo": c.tipo, "categoria_pl": c.categoria_pl} for c in cuentas]
+
+
 # Servir frontend en produccion
 frontend_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "dist")
 if os.path.exists(frontend_path):

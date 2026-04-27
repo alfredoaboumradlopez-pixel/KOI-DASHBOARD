@@ -16,7 +16,16 @@ import { Propinas } from './components/Propinas';
 import { DashboardGastos } from './components/DashboardGastos';
 import { InvoiceFinder } from "./components/InvoiceFinder";
 import { ReconciliacionBancaria } from "./components/ReconciliacionBancaria";
+import { LoginPage } from "./components/LoginPage";
+import { PLDashboard } from "./components/PLDashboard";
+import { RBODashboard } from "./components/RBODashboard";
+import { CategorizarGastos } from "./components/CategorizarGastos";
 import { api } from "./services/api";
+
+// Suppress unused import warnings for icon imports kept for potential future use
+void ArrowUpRight;
+void ArrowDownRight;
+void Activity;
 
 const formatMXN = (amount: number) =>
   new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(amount);
@@ -50,7 +59,10 @@ function Dashboard() {
 
   return (
     <div style={{maxWidth:"1200px",margin:"0 auto"}}>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"24px"}}>
+      {/* P&L Dashboard at top */}
+      <PLDashboard />
+
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"24px",marginTop:"32px"}}>
         <div style={{display:"flex",alignItems:"center",gap:"12px"}}>
           <div style={{width:"40px",height:"40px",borderRadius:"12px",background:"linear-gradient(135deg,#3D1C1E,#5C2D30)",display:"flex",alignItems:"center",justifyContent:"center"}}>
             <DollarSign style={{width:"20px",height:"20px",color:"#C8FF00"}} />
@@ -139,7 +151,13 @@ function Dashboard() {
 
 
 function App() {
-  const { currentRoute } = useStore();
+  const { currentRoute, authUser, token } = useStore();
+
+  // Show login if not authenticated
+  if (!token || !authUser) {
+    return <LoginPage />;
+  }
+
   return (
     <Layout>
       {currentRoute === "/" && <Dashboard />}
@@ -157,6 +175,10 @@ function App() {
       {currentRoute === "/dashboard-gastos" && <DashboardGastos />}
       {currentRoute === "/finder" && <InvoiceFinder />}
       {currentRoute === "/propinas" && <Propinas />}
+      {currentRoute === "/rbo" && <RBODashboard />}
+      {currentRoute === "/pl-dashboard" && <PLDashboard />}
+      {currentRoute === "/categorizar" && <CategorizarGastos />}
+      {currentRoute === "/login" && <LoginPage />}
     </Layout>
   );
 }
