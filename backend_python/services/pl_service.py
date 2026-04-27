@@ -77,29 +77,115 @@ class PLResult:
         return result
 
 
-# Mapeo fallback: texto de categoria → categoria_pl
+# Mapeo canónico: texto de categoria (normalizado) → categoria_pl
+# Fuente de verdad compartida con el endpoint /api/gastos/recategorizar
+# Regla: normalizar con _normalizar_categoria() antes de buscar
 _CATEGORIA_MAP: dict[str, str] = {
-    "proteina": "costo_alimentos", "carne": "costo_alimentos",
-    "pescado": "costo_alimentos", "mariscos": "costo_alimentos",
-    "salmon": "costo_alimentos", "atun": "costo_alimentos",
-    "vegetales": "costo_alimentos", "frutas": "costo_alimentos",
-    "vegetales_frutas": "costo_alimentos",
-    "abarrotes": "costo_alimentos", "productos_asiaticos": "costo_alimentos",
-    "bebidas": "costo_bebidas",
-    "nomina": "nomina", "personal": "nomina",
-    "renta": "renta",
-    "luz": "servicios", "gas": "servicios", "agua": "servicios",
-    "servicios": "servicios",
-    "mantenimiento": "mantenimiento", "limpieza_mantto": "mantenimiento",
-    "limpieza": "limpieza",
-    "marketing": "marketing",
-    "papeleria": "admin", "software": "admin", "comisiones_bancarias": "admin",
-    "utensilios": "admin", "equipo": "admin",
-    "impuestos": "impuestos", "isr": "impuestos", "iva": "impuestos",
+    # ── Costo alimentos ───────────────────────────────────────────────────
+    "proteina":             "costo_alimentos",
+    "carne":                "costo_alimentos",
+    "carnes":               "costo_alimentos",
+    "pescado":              "costo_alimentos",
+    "mariscos":             "costo_alimentos",
+    "salmon":               "costo_alimentos",
+    "atun":                 "costo_alimentos",
+    "vegetales":            "costo_alimentos",
+    "frutas":               "costo_alimentos",
+    "vegetales_frutas":     "costo_alimentos",
+    "abarrotes":            "costo_alimentos",
+    "productos_asiaticos":  "costo_alimentos",
+    "ingredientes":         "costo_alimentos",
+    "materia_prima":        "costo_alimentos",
+    "mercado":              "costo_alimentos",
+    "lacteos":              "costo_alimentos",
+    "panaderia":            "costo_alimentos",
+    "tortillas":            "costo_alimentos",
+    "cocina":               "costo_alimentos",
+
+    # ── Costo bebidas ─────────────────────────────────────────────────────
+    "bebidas":              "costo_bebidas",
+    "licores":              "costo_bebidas",
+    "vinos":                "costo_bebidas",
+    "cervezas":             "costo_bebidas",
+    "refrescos":            "costo_bebidas",
+    "aguas":                "costo_bebidas",
+
+    # ── Nómina ────────────────────────────────────────────────────────────
+    "nomina":               "nomina",
+    "personal":             "nomina",
+    "salarios":             "nomina",
+    "sueldos":              "nomina",
+    "empleados":            "nomina",
+
+    # ── Renta ─────────────────────────────────────────────────────────────
+    "renta":                "renta",
+    "arrendamiento":        "renta",
+
+    # ── Servicios (Luz y gas) ─────────────────────────────────────────────
+    "luz":                  "servicios",
+    "gas":                  "servicios",
+    "agua":                 "servicios",
+    "electricidad":         "servicios",
+    "servicios":            "servicios",
+    "telefono":             "servicios",
+    "internet":             "servicios",
+    "telmex":               "servicios",
+    "cfe":                  "servicios",
+
+    # ── Mantenimiento ─────────────────────────────────────────────────────
+    "mantenimiento":        "mantenimiento",
+    "reparacion":           "mantenimiento",
+    "plomero":              "mantenimiento",
+    "electricista":         "mantenimiento",
+    "herramientas":         "mantenimiento",
+    "equipo":               "mantenimiento",   # ← corregido (antes: admin)
+    "utensilios":           "mantenimiento",   # ← corregido (antes: admin)
+
+    # ── Limpieza ──────────────────────────────────────────────────────────
+    "limpieza":             "limpieza",
+    "limpieza_mantto":      "limpieza",        # ← corregido (antes: mantenimiento)
+    "desechables_empaques": "limpieza",        # ← corregido (antes: otros_gastos)
+    "desechables":          "limpieza",
+    "detergente":           "limpieza",
+    "desinfectante":        "limpieza",
+
+    # ── Marketing ─────────────────────────────────────────────────────────
+    "marketing":            "marketing",
+    "publicidad":           "marketing",
+    "redes_sociales":       "marketing",
+    "fotografia":           "marketing",
+
+    # ── Impuestos ─────────────────────────────────────────────────────────
+    "impuestos":            "impuestos",
+    "isr":                  "impuestos",
+    "iva":                  "impuestos",
+
+    # ── Otros gastos (default) ────────────────────────────────────────────
+    "papeleria":            "otros_gastos",    # ← corregido (antes: admin)
+    "software":             "otros_gastos",    # ← corregido (antes: admin)
+    "comisiones_bancarias": "otros_gastos",    # ← corregido (antes: admin)
     "comisiones_plataformas": "otros_gastos",
-    "desechables_empaques": "otros_gastos", "desechables": "otros_gastos",
-    "propinas": "otros_gastos",
-    "otros": "otros_gastos",
+    "propinas":             "otros_gastos",
+    "otros":                "otros_gastos",
+    "miscelaneos":          "otros_gastos",
+    "varios":               "otros_gastos",
+    "comida_personal":      "otros_gastos",
+}
+
+# Código de cuenta preferido por categoria_pl (para resolver ambigüedad en catalogo)
+# Usado por recategorizar endpoint para mapear categoria → catalogo_cuenta_id exacto
+_CODIGO_POR_CAT_PL: dict[str, str] = {
+    "costo_alimentos":  "5001",
+    "costo_bebidas":    "5002",
+    "nomina":           "6001",
+    "renta":            "6002",
+    "servicios":        "6003",
+    "mantenimiento":    "6004",
+    "limpieza":         "6005",
+    "marketing":        "6007",
+    "impuestos":        "7001",
+    "otros_gastos":     "6008",
+    "admin":            "6008",   # fallback: admin → 6008
 }
 
 
@@ -109,12 +195,28 @@ def _safe_pct(numerator: float, denominator: float) -> float:
     return (numerator / denominator) * 100
 
 
+def _normalizar_categoria(categoria: Optional[str]) -> str:
+    """Normaliza texto de categoría: minúsculas, sin acentos, espacios→guion_bajo."""
+    if not categoria:
+        return ""
+    import unicodedata
+    nfkd = unicodedata.normalize("NFKD", categoria)
+    sin_ac = "".join(c for c in nfkd if not unicodedata.combining(c))
+    return sin_ac.lower().strip().replace(" ", "_").replace("-", "_")
+
+
 def _map_categoria_texto(categoria: Optional[str]) -> str:
-    """Intenta mapear categoria texto libre a categoria_pl. Default: otros_gastos."""
+    """Mapea texto de categoría operativa → categoria_pl. Default: otros_gastos."""
     if not categoria:
         return "otros_gastos"
-    key = categoria.lower().strip().replace(" ", "_").replace("-", "_")
-    return _CATEGORIA_MAP.get(key, "otros_gastos")
+    key = _normalizar_categoria(categoria)
+    if key in _CATEGORIA_MAP:
+        return _CATEGORIA_MAP[key]
+    # Substring fallback: si alguna key está contenida en el texto
+    for map_key, cat_pl in _CATEGORIA_MAP.items():
+        if map_key in key or key in map_key:
+            return cat_pl
+    return "otros_gastos"
 
 
 def _get_catalogo_map(db: Session, restaurante_id: int) -> dict[int, str]:

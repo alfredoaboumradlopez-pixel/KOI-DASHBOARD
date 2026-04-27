@@ -1,5 +1,12 @@
 """
-Endpoints para categorizar gastos y gestionar la cola de revisión
+Endpoints para categorizar gastos y gestionar la cola de revisión.
+
+Dos conceptos separados:
+- Categorías operativas: texto libre que usa el equipo (ABARROTES, BEBIDAS…)
+  → guardadas en gastos.categoria (texto)
+- Cuentas contables: códigos del catalogo_cuentas (5001, 6002…)
+  → guardadas en gastos.catalogo_cuenta_id (int FK)
+  → mapeadas automáticamente por el PLService / endpoint recategorizar
 """
 from datetime import datetime
 from typing import List, Optional
@@ -108,6 +115,24 @@ def gastos_sin_categorizar(
     # ID de la cuenta "Otros gastos" (código 6008) para este restaurante
     id_otros = next((c.id for c in cuentas if c.codigo == "6008"), None)
 
+    # Categorías operativas CONOCIDAS del restaurante
+    # Si una categoría está en esta lista, aunque mapee a 6008 NO es "en revisión"
+    # (está correctamente categorizada — papelería, otros, propinas, etc. van a 6008)
+    cats_conocidas = {
+        c.nombre.strip().upper()
+        for c in db.query(models.Categoria).filter(
+            models.Categoria.restaurante_id == restaurante_id,
+            models.Categoria.activo == True,
+        ).all()
+    }
+
+    def _es_en_revision(categoria_texto: Optional[str]) -> bool:
+        """True si la categoría está en 6008 PERO no está en la lista de ops conocidas.
+        Gastos como PAPELERÍA u OTROS que legitimamente van a 6008 NO son 'en revisión'."""
+        if not categoria_texto:
+            return True  # Sin categoría → sí revisar
+        return categoria_texto.strip().upper() not in cats_conocidas
+
     def _sugerir(categoria_texto: Optional[str], cuenta_actual_id: Optional[int]):
         if not categoria_texto:
             return None
@@ -167,7 +192,7 @@ def gastos_sin_categorizar(
                 "fecha": str(g.fecha), "proveedor": g.proveedor,
                 "categoria_texto": g.categoria, "monto": round(g.monto or 0, 2),
                 "catalogo_cuenta_id": id_otros, "cuenta_nombre": "Otros gastos",
-                "es_otros": True,
+                "es_otros": _es_en_revision(g.categoria),
                 "sugerencia": _sugerir(g.categoria, id_otros),
             })
 
@@ -202,7 +227,7 @@ def gastos_sin_categorizar(
                 "fecha": str(fecha), "proveedor": gd.proveedor,
                 "categoria_texto": gd.categoria, "monto": round(gd.monto or 0, 2),
                 "catalogo_cuenta_id": id_otros, "cuenta_nombre": "Otros gastos",
-                "es_otros": True,
+                "es_otros": _es_en_revision(gd.categoria),
                 "sugerencia": _sugerir(gd.categoria, id_otros),
             })
 
@@ -259,3 +284,229 @@ def categorizar_batch(
             errores.append({"id": item.id, "tabla": item.tabla, "error": str(e)})
     db.commit()
     return {"categorizados": ok, "errores": errores, "total_procesados": len(items)}
+
+
+# ── Helpers internos para recategorización ───────────────────────────────────
+
+def _resolver_cuenta_id(db: Session, restaurante_id: int, categoria: Optional[str]) -> Optional[int]:
+    """
+    Dada una categoría operativa (texto libre), devuelve el catalogo_cuenta_id
+    correcto para el restaurante usando el mapa canónico de PLService.
+    """
+    from ..services.pl_service import _map_categoria_texto, _CODIGO_POR_CAT_PL
+    cat_pl = _map_categoria_texto(categoria)
+    codigo = _CODIGO_POR_CAT_PL.get(cat_pl, "6008")
+    cuenta = db.query(models.CatalogoCuenta).filter(
+        models.CatalogoCuenta.restaurante_id == restaurante_id,
+        models.CatalogoCuenta.codigo == codigo,
+        models.CatalogoCuenta.activo == True,
+    ).first()
+    return cuenta.id if cuenta else None
+
+
+# ── GET /api/categorias/{restaurante_id} ─────────────────────────────────────
+
+@router.get("/api/categorias/{restaurante_id}")
+def get_categorias_por_restaurante(
+    restaurante_id: int,
+    solo_activas: bool = True,
+    db: Session = Depends(get_db),
+):
+    """Retorna las categorías operativas activas de un restaurante."""
+    q = db.query(models.Categoria).filter(
+        models.Categoria.restaurante_id == restaurante_id
+    )
+    if solo_activas:
+        q = q.filter(models.Categoria.activo == True)
+    cats = q.order_by(models.Categoria.nombre).all()
+    return [{"id": c.id, "nombre": c.nombre, "activo": c.activo} for c in cats]
+
+
+# ── PUT /api/gastos/{id}/cambiar-categoria ────────────────────────────────────
+
+class CambiarCategoriaBody(BaseModel):
+    categoria: str  # texto operativo (ej: "ABARROTES")
+
+
+@router.put("/api/gastos/{gasto_id}/cambiar-categoria")
+def cambiar_categoria_gasto(
+    gasto_id: int,
+    body: CambiarCategoriaBody,
+    db: Session = Depends(get_db),
+    current_user: Optional[models.Usuario] = Depends(get_optional_user),
+):
+    """
+    Actualiza la categoría operativa (texto) de un gasto y
+    automáticamente re-mapea catalogo_cuenta_id usando el mapa canónico.
+    """
+    _check_rol(current_user)
+    g = db.query(models.Gasto).filter(models.Gasto.id == gasto_id).first()
+    if not g:
+        raise HTTPException(status_code=404, detail={"detail": "Gasto no encontrado", "code": "NOT_FOUND"})
+
+    old_cat = g.categoria
+    restaurante_id = g.restaurante_id or get_restaurante_id(current_user)
+
+    g.categoria = body.categoria.strip().upper()
+    g.catalogo_cuenta_id = _resolver_cuenta_id(db, restaurante_id, g.categoria)
+
+    _audit(db, current_user, restaurante_id, "gastos", gasto_id,
+           f"categoria: {old_cat} → {g.categoria}; cuenta_id → {g.catalogo_cuenta_id}")
+    db.commit()
+    return {
+        "ok": True, "id": gasto_id,
+        "categoria": g.categoria,
+        "catalogo_cuenta_id": g.catalogo_cuenta_id,
+    }
+
+
+@router.put("/api/gastos-diarios/{gasto_id}/cambiar-categoria")
+def cambiar_categoria_gasto_diario(
+    gasto_id: int,
+    body: CambiarCategoriaBody,
+    db: Session = Depends(get_db),
+    current_user: Optional[models.Usuario] = Depends(get_optional_user),
+):
+    _check_rol(current_user)
+    g = db.query(models.GastoDiario).filter(models.GastoDiario.id == gasto_id).first()
+    if not g:
+        raise HTTPException(status_code=404, detail={"detail": "Gasto diario no encontrado", "code": "NOT_FOUND"})
+
+    old_cat = g.categoria
+    cierre = db.query(models.CierreTurno).filter(models.CierreTurno.id == g.cierre_id).first()
+    restaurante_id = cierre.restaurante_id if cierre else get_restaurante_id(current_user)
+
+    g.categoria = body.categoria.strip().upper()
+    g.catalogo_cuenta_id = _resolver_cuenta_id(db, restaurante_id, g.categoria)
+
+    _audit(db, current_user, restaurante_id, "gastos_diarios", gasto_id,
+           f"categoria: {old_cat} → {g.categoria}; cuenta_id → {g.catalogo_cuenta_id}")
+    db.commit()
+    return {
+        "ok": True, "id": gasto_id,
+        "categoria": g.categoria,
+        "catalogo_cuenta_id": g.catalogo_cuenta_id,
+    }
+
+
+# ── POST /api/gastos/recategorizar/{restaurante_id} ───────────────────────────
+
+@router.post("/api/gastos/recategorizar/{restaurante_id}")
+def recategorizar_gastos(
+    restaurante_id: int,
+    db: Session = Depends(get_db),
+    current_user: Optional[models.Usuario] = Depends(get_optional_user),
+):
+    """
+    Recorre TODOS los gastos del restaurante y actualiza catalogo_cuenta_id
+    basándose en la categoría operativa (texto) actual de cada gasto.
+    Idempotente — se puede llamar múltiples veces sin efectos secundarios.
+    Solo SUPER_ADMIN o ADMIN.
+    """
+    if current_user and current_user.rol not in ("SUPER_ADMIN", "ADMIN"):
+        raise HTTPException(status_code=403, detail={"detail": "Solo ADMIN/SUPER_ADMIN", "code": "FORBIDDEN"})
+
+    actualizados_g = 0
+    actualizados_gd = 0
+    por_cuenta: dict[str, int] = {}
+
+    # ── Tabla gastos ──────────────────────────────────────────────────────
+    gastos = db.query(models.Gasto).filter(
+        models.Gasto.restaurante_id == restaurante_id
+    ).all()
+    for g in gastos:
+        nuevo_id = _resolver_cuenta_id(db, restaurante_id, g.categoria)
+        if nuevo_id != g.catalogo_cuenta_id:
+            g.catalogo_cuenta_id = nuevo_id
+            actualizados_g += 1
+        key = g.categoria or "SIN_CATEGORIA"
+        por_cuenta[key] = por_cuenta.get(key, 0) + 1
+
+    # ── Tabla gastos_diarios ──────────────────────────────────────────────
+    gd_list = db.query(models.GastoDiario).join(
+        models.CierreTurno, models.GastoDiario.cierre_id == models.CierreTurno.id
+    ).filter(
+        models.CierreTurno.restaurante_id == restaurante_id
+    ).all()
+    for gd in gd_list:
+        nuevo_id = _resolver_cuenta_id(db, restaurante_id, gd.categoria)
+        if nuevo_id != gd.catalogo_cuenta_id:
+            gd.catalogo_cuenta_id = nuevo_id
+            actualizados_gd += 1
+
+    db.commit()
+
+    return {
+        "ok": True,
+        "restaurante_id": restaurante_id,
+        "gastos_actualizados": actualizados_g,
+        "gastos_diarios_actualizados": actualizados_gd,
+        "total_gastos_procesados": len(gastos),
+        "total_gd_procesados": len(gd_list),
+        "desglose_por_categoria": por_cuenta,
+    }
+
+
+# ── Actualizar endpoint sin-categorizar para usar categorías operativas ───────
+
+@router.get("/api/gastos/sin-categorizar-v2/{restaurante_id}")
+def gastos_sin_categorizar_v2(
+    restaurante_id: int,
+    db: Session = Depends(get_db),
+    current_user: Optional[models.Usuario] = Depends(get_optional_user),
+):
+    """
+    Versión 2: 'sin categorizar' significa gastos cuya categoría operativa
+    (texto) no está en la lista oficial de categorías del restaurante.
+    Esto incluye gastos con categoria=NULL o con texto desconocido.
+    """
+    # Categorías operativas conocidas para este restaurante
+    cats_activas = {
+        c.nombre.upper() for c in
+        db.query(models.Categoria).filter(
+            models.Categoria.restaurante_id == restaurante_id,
+            models.Categoria.activo == True,
+        ).all()
+    }
+
+    items = []
+
+    # gastos con categoria NULL o desconocida
+    gs = db.query(models.Gasto).filter(
+        models.Gasto.restaurante_id == restaurante_id,
+    ).order_by(models.Gasto.fecha.desc()).limit(500).all()
+
+    for g in gs:
+        cat = (g.categoria or "").strip().upper()
+        if cat not in cats_activas:
+            items.append({
+                "id": g.id, "tabla": "gastos",
+                "fecha": str(g.fecha), "proveedor": g.proveedor,
+                "categoria_texto": g.categoria, "monto": round(g.monto or 0, 2),
+                "catalogo_cuenta_id": g.catalogo_cuenta_id,
+                "es_desconocida": True,
+            })
+
+    # gastos_diarios con categoria desconocida
+    gd_q = db.query(models.GastoDiario, models.CierreTurno.fecha).join(
+        models.CierreTurno, models.GastoDiario.cierre_id == models.CierreTurno.id
+    ).filter(
+        models.CierreTurno.restaurante_id == restaurante_id,
+    ).order_by(models.CierreTurno.fecha.desc()).limit(500)
+
+    for gd, fecha in gd_q.all():
+        cat = (gd.categoria or "").strip().upper()
+        if cat not in cats_activas:
+            items.append({
+                "id": gd.id, "tabla": "gastos_diarios",
+                "fecha": str(fecha), "proveedor": gd.proveedor,
+                "categoria_texto": gd.categoria, "monto": round(gd.monto or 0, 2),
+                "catalogo_cuenta_id": gd.catalogo_cuenta_id,
+                "es_desconocida": True,
+            })
+
+    return {
+        "total": len(items),
+        "items": items,
+        "categorias_conocidas": sorted(cats_activas),
+    }

@@ -1319,10 +1319,12 @@ async def importar_bitacora(file: UploadFile = File(...)):
     }
 
 @app.get("/api/categorias", response_model=List[schemas.CategoriaResponse])
-def get_categorias(solo_activas: bool = True, db: Session = Depends(get_db)):
+def get_categorias(solo_activas: bool = True, restaurante_id: Optional[int] = None, db: Session = Depends(get_db)):
     q = db.query(models.Categoria)
     if solo_activas:
         q = q.filter(models.Categoria.activo == True)
+    if restaurante_id is not None:
+        q = q.filter(models.Categoria.restaurante_id == restaurante_id)
     return q.order_by(models.Categoria.nombre).all()
 
 

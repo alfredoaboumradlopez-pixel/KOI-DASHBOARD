@@ -33,104 +33,113 @@ if not DATABASE_URL:
 # Se aplica substring match (no exact): si el KEY está CONTENIDO en la categoría → match
 # Orden importa: más específicos primero para evitar falsos positivos
 MAPEO_CATEGORIAS: dict[str, str] = {
-    # Costo alimentos (5001)
-    "materia prima":    "5001",
-    "insumos":          "5001",
-    "alimentos":        "5001",
-    "ingredientes":     "5001",
-    "cocina":           "5001",
-    "mercado":          "5001",
-    "carnes":           "5001",
-    "verduras":         "5001",
-    "frutas":           "5001",
-    "mariscos":         "5001",
-    "pescado":          "5001",
-    "lacteos":          "5001",
-    "panaderia":        "5001",
-    "tortillas":        "5001",
-    "abarrotes":        "5001",
-    "proteina":         "5001",
-    "salmon":           "5001",
-    "atun":             "5001",
-    "vegetales":        "5001",
-    "productos asiaticos": "5001",
-    "productos_asiaticos": "5001",
-    "vegetales_frutas": "5001",
-    "comida":           "5001",
+    # ── Costo alimentos (5001) ─────────────────────────────────────────────
+    "proteina":             "5001",
+    "abarrotes":            "5001",
+    "vegetales_frutas":     "5001",
+    "vegetales frutas":     "5001",
+    "productos_asiaticos":  "5001",
+    "productos asiaticos":  "5001",
+    "materia prima":        "5001",
+    "materia_prima":        "5001",
+    "insumos":              "5001",
+    "alimentos":            "5001",
+    "ingredientes":         "5001",
+    "cocina":               "5001",
+    "mercado":              "5001",
+    "carnes":               "5001",
+    "carne":                "5001",
+    "verduras":             "5001",
+    "frutas":               "5001",
+    "mariscos":             "5001",
+    "pescado":              "5001",
+    "salmon":               "5001",
+    "atun":                 "5001",
+    "lacteos":              "5001",
+    "panaderia":            "5001",
+    "tortillas":            "5001",
+    "comida":               "5001",
 
-    # Costo bebidas (5002)
-    "bebidas":          "5002",
-    "licores":          "5002",
-    "vinos":            "5002",
-    "cervezas":         "5002",
-    "refrescos":        "5002",
-    "aguas":            "5002",
+    # ── Costo bebidas (5002) ───────────────────────────────────────────────
+    "bebidas":              "5002",
+    "licores":              "5002",
+    "vinos":                "5002",
+    "cervezas":             "5002",
+    "refrescos":            "5002",
+    "aguas":                "5002",
 
-    # Nómina (6001)
-    "nomina":           "6001",
-    "nomina":           "6001",
-    "salarios":         "6001",
-    "sueldos":          "6001",
-    "personal":         "6001",
-    "empleados":        "6001",
+    # ── Nómina (6001) ──────────────────────────────────────────────────────
+    "nomina":               "6001",
+    "nómina":               "6001",
+    "personal":             "6001",
+    "salarios":             "6001",
+    "sueldos":              "6001",
+    "empleados":            "6001",
 
-    # Renta (6002)
-    "arrendamiento":    "6002",
-    "renta":            "6002",
+    # ── Renta (6002) ───────────────────────────────────────────────────────
+    "renta":                "6002",
+    "arrendamiento":        "6002",
 
-    # Servicios (6003)
-    "electricidad":     "6003",
-    "telmex":           "6003",
-    "internet":         "6003",
-    "telefono":         "6003",
-    "servicios":        "6003",
-    "cfe":              "6003",
-    "luz":              "6003",
-    "gas":              "6003",
-    "agua":             "6003",
+    # ── Servicios / Luz y gas (6003) ───────────────────────────────────────
+    "luz":                  "6003",
+    "gas":                  "6003",
+    "agua":                 "6003",
+    "electricidad":         "6003",
+    "servicios":            "6003",
+    "telefono":             "6003",
+    "internet":             "6003",
+    "telmex":               "6003",
+    "cfe":                  "6003",
 
-    # Mantenimiento (6004)
-    "reparacion":       "6004",
-    "reparacion":       "6004",
-    "plomero":          "6004",
-    "electricista":     "6004",
-    "herramientas":     "6004",
-    "mantenimiento":    "6004",
+    # ── Mantenimiento (6004) ───────────────────────────────────────────────
+    "mantenimiento":        "6004",
+    "equipo":               "6004",   # ← corregido (antes: 6008)
+    "utensilios":           "6004",   # ← corregido (antes: 6008)
+    "reparacion":           "6004",
+    "reparación":           "6004",
+    "plomero":              "6004",
+    "electricista":         "6004",
+    "herramientas":         "6004",
 
-    # Limpieza (6005)
-    "limpieza_mantto":  "6005",
-    "detergente":       "6005",
-    "desinfectante":    "6005",
-    "escobas":          "6005",
-    "trapeadores":      "6005",
-    "limpieza":         "6005",
+    # ── Limpieza (6005) ────────────────────────────────────────────────────
+    "limpieza":             "6005",
+    "limpieza_mantto":      "6005",   # ← corregido (antes: dentro de limpieza)
+    "limpieza mantto":      "6005",
+    "desechables_empaques": "6005",   # ← corregido (antes: 6008)
+    "desechables empaques": "6005",
+    "desechables":          "6005",
+    "detergente":           "6005",
+    "desinfectante":        "6005",
+    "escobas":              "6005",
+    "trapeadores":          "6005",
 
-    # Comida personal (6006)
-    "comida personal":  "6006",
-    "personal food":    "6006",
+    # ── Marketing (6007) ───────────────────────────────────────────────────
+    "marketing":            "6007",
+    "publicidad":           "6007",
+    "redes sociales":       "6007",
+    "redes_sociales":       "6007",
+    "fotografia":           "6007",
 
-    # Marketing (6007)
-    "publicidad":       "6007",
-    "redes sociales":   "6007",
-    "fotografia":       "6007",
-    "marketing":        "6007",
+    # ── Impuestos (7001) ───────────────────────────────────────────────────
+    "impuestos":            "7001",
+    "isr":                  "7001",
+    "iva":                  "7001",
 
-    # Otros gastos — default (6008)
-    "desechables_empaques": "6008",
-    "desechables empaques": "6008",
-    "desechables":      "6008",
-    "empaques":         "6008",
-    "propinas":         "6008",
-    "papeleria":        "6008",
-    "papeleria":        "6008",
-    "software":         "6008",
+    # ── Otros gastos (6008) — para categorías sin mapeo específico ─────────
+    "papeleria":            "6008",
+    "papelería":            "6008",
+    "software":             "6008",
+    "comisiones_bancarias": "6008",
     "comisiones bancarias": "6008",
-    "utensilios":       "6008",
-    "equipo":           "6008",
-    "miscelaneos":      "6008",
-    "miscelaneos":      "6008",
-    "varios":           "6008",
-    "otros":            "6008",
+    "comisiones_plataformas": "6008",
+    "comisiones plataformas": "6008",
+    "propinas":             "6008",
+    "otros":                "6008",
+    "miscelaneos":          "6008",
+    "misceláneos":          "6008",
+    "varios":               "6008",
+    "comida personal":      "6008",
+    "comida_personal":      "6008",
 }
 
 

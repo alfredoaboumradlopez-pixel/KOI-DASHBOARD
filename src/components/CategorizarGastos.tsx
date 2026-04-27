@@ -1,3 +1,16 @@
+/**
+ * CategorizarGastos
+ *
+ * El equipo operativo de KOI ve categorías operativas (ABARROTES, BEBIDAS…),
+ * NO códigos contables. El mapeo operativa→cuenta contable ocurre automáticamente
+ * en el backend cada vez que se guarda una categoría.
+ *
+ * Flujo:
+ *   1. Dropdown muestra categorías de la tabla `categorias` del restaurante
+ *   2. Al seleccionar → PUT /api/gastos/{id}/cambiar-categoria con { categoria: "ABARROTES" }
+ *   3. Backend actualiza categoria (texto) + catalogo_cuenta_id (auto-mapeado)
+ *   4. PLService usa ambos campos; la cuenta contable es invisible al equipo
+ */
 import { useState, useEffect, useMemo } from "react";
 import { api } from "../services/api";
 import { useStore } from "../store/useStore";
@@ -10,175 +23,121 @@ interface CategorizarGastosProps {
   restauranteIdOverride?: number;
 }
 
-type TabFiltro = "pendientes" | "en_otros" | "todos";
-
-// Color por confianza de sugerencia
-const CONFIANZA_COLOR: Record<string, { bg: string; text: string; label: string }> = {
-  alta:  { bg: "#ECFDF5", text: "#059669", label: "alta" },
-  media: { bg: "#FFFBEB", text: "#D97706", label: "media" },
-  baja:  { bg: "#F3F4F6", text: "#9CA3AF", label: "baja" },
-};
+type TabFiltro = "pendientes" | "en_revision" | "todos";
 
 export const CategorizarGastos = ({ restauranteIdOverride }: CategorizarGastosProps = {}) => {
   const { authUser } = useStore();
   const restauranteId = restauranteIdOverride ?? authUser?.restaurante_id ?? 1;
 
-  // ── Estado principal ───────────────────────────────────────────────────
+  // ── Estado ─────────────────────────────────────────────────────────────
   const [items, setItems] = useState<any[]>([]);
-  const [cuentas, setCuentas] = useState<any[]>([]);
+  const [categorias, setCategorias] = useState<string[]>([]);  // categorías operativas
   const [loading, setLoading] = useState(true);
   const [tabFiltro, setTabFiltro] = useState<TabFiltro>("pendientes");
   const [busqueda, setBusqueda] = useState("");
   const [checked, setChecked] = useState<Set<string>>(new Set());
-  const [selecciones, setSelecciones] = useState<Record<string, number>>({});
   const [saving, setSaving] = useState<Set<string>>(new Set());
-  const [saved, setSaved] = useState(0);
-  const [bulkCuenta, setBulkCuenta] = useState<string>("");
+  const [savedCount, setSavedCount] = useState(0);
+  const [bulkCat, setBulkCat] = useState<string>("");
   const [applyingBulk, setApplyingBulk] = useState(false);
 
-  // Metadata
   const [totalSinCat, setTotalSinCat] = useState(0);
   const [totalEnOtros, setTotalEnOtros] = useState(0);
   const [montoTotal, setMontoTotal] = useState(0);
 
+  // ── Carga de datos ────────────────────────────────────────────────────
   const cargar = async () => {
     setLoading(true);
     try {
-      const [data, catData] = await Promise.all([
+      const [sinCatData, catData] = await Promise.all([
+        // incluir_otros=true → también muestra gastos en cuenta "Otros gastos" para revisión
         api.get(`/api/gastos/sin-categorizar/${restauranteId}?incluir_otros=true`),
-        api.get(`/api/catalogo-cuentas/${restauranteId}`).catch(() => ({ items: [] })),
+        // Categorías OPERATIVAS del restaurante (no contables)
+        api.get(`/api/categorias/${restauranteId}`),
       ]);
-      setItems(data.items || []);
-      setTotalSinCat(data.total_sin_catalogo || 0);
-      setTotalEnOtros(data.total_en_otros || 0);
-      setMontoTotal(data.monto_total || 0);
 
-      // Pre-seleccionar sugerencias de alta confianza para pendientes
-      const presel: Record<string, number> = {};
-      const preChecked = new Set<string>();
-      (data.items || []).forEach((item: any) => {
-        const key = `${item.tabla}-${item.id}`;
-        if (!item.es_otros && item.sugerencia?.confianza === "alta") {
-          presel[key] = item.sugerencia.catalogo_cuenta_id;
-          preChecked.add(key);
-        }
-      });
-      setSelecciones(presel);
-      setChecked(preChecked);
-      setCuentas(catData.items || catData || []);
+      setItems(sinCatData.items || []);
+      setTotalSinCat(sinCatData.total_sin_catalogo || 0);
+      setTotalEnOtros(sinCatData.total_en_otros || 0);
+      setMontoTotal(sinCatData.monto_total || 0);
+
+      // Extraer nombres de categorías operativas
+      const cats: string[] = Array.isArray(catData)
+        ? catData.map((c: any) => c.nombre).sort()
+        : [];
+      setCategorias(cats);
     } catch { }
     setLoading(false);
   };
 
   useEffect(() => { cargar(); }, [restauranteId]);
 
-  // ── Filtrado en memoria ────────────────────────────────────────────────
+  // ── Filtrado en memoria ───────────────────────────────────────────────
   const itemsFiltrados = useMemo(() => {
     let lista = items;
     if (tabFiltro === "pendientes") lista = lista.filter(i => !i.es_otros && !i.catalogo_cuenta_id);
-    if (tabFiltro === "en_otros")   lista = lista.filter(i => i.es_otros);
-    // "todos" = todo
+    if (tabFiltro === "en_revision") lista = lista.filter(i => i.es_otros);
 
     if (busqueda.trim()) {
       const q = busqueda.toLowerCase();
       lista = lista.filter(i =>
         (i.proveedor || "").toLowerCase().includes(q) ||
-        (i.categoria_texto || "").toLowerCase().includes(q) ||
-        (i.cuenta_nombre || "").toLowerCase().includes(q)
+        (i.categoria_texto || "").toLowerCase().includes(q)
       );
     }
     return lista;
   }, [items, tabFiltro, busqueda]);
 
-  // ── Auto-save inmediato por fila ───────────────────────────────────────
-  const autoSave = async (item: any, cuentaId: number) => {
+  // ── Auto-save inmediato al cambiar categoría de una fila ─────────────
+  const cambiarCategoria = async (item: any, nuevaCategoria: string) => {
     const key = `${item.tabla}-${item.id}`;
     setSaving(prev => new Set(prev).add(key));
     try {
       const endpoint = item.tabla === "gastos"
-        ? `/api/gastos/${item.id}/categorizar`
-        : `/api/gastos-diarios/${item.id}/categorizar`;
-      await api.put(endpoint, { catalogo_cuenta_id: cuentaId });
-      setSaved(s => s + 1);
-      // Actualizar el item en memoria
+        ? `/api/gastos/${item.id}/cambiar-categoria`
+        : `/api/gastos-diarios/${item.id}/cambiar-categoria`;
+      await api.put(endpoint, { categoria: nuevaCategoria });
+      setSavedCount(s => s + 1);
+      // Actualizar item en memoria — ya no es "sin categorizar" ni "en revisión"
       setItems(prev => prev.map(i =>
         i.id === item.id && i.tabla === item.tabla
-          ? { ...i, catalogo_cuenta_id: cuentaId, cuenta_nombre: cuentas.find(c => c.id === cuentaId)?.nombre || "", es_otros: cuentas.find(c => c.id === cuentaId)?.codigo === "6008" }
+          ? { ...i, categoria_texto: nuevaCategoria, catalogo_cuenta_id: -1, es_otros: false }
           : i
       ));
     } catch { }
     setSaving(prev => { const n = new Set(prev); n.delete(key); return n; });
   };
 
-  // ── Batch save (para selección múltiple sin auto-save) ─────────────────
-  const guardarSeleccionados = async () => {
-    const batch = Array.from(checked)
-      .filter((key): key is string => typeof key === "string" && !!selecciones[key])
-      .map((key: string) => {
-        const [tabla, ...idParts] = key.split("-");
-        return { id: parseInt(idParts.join("-")), tabla, catalogo_cuenta_id: selecciones[key] };
-      });
-    if (batch.length === 0) return;
-    setSaving(new Set(batch.map(b => `${b.tabla}-${b.id}`)));
-    try {
-      const res = await api.post("/api/gastos/categorizar-batch", batch);
-      setSaved(res.categorizados || 0);
-      await cargar();
-    } catch { }
-    setSaving(new Set());
-  };
-
-  // ── Aplicar categoría a todos los seleccionados ────────────────────────
+  // ── Bulk — aplicar misma categoría a todos los seleccionados ─────────
   const aplicarBulk = async () => {
-    if (!bulkCuenta || checked.size === 0) return;
-    const cuentaId = parseInt(bulkCuenta);
-    const batch = Array.from(checked).map((key: unknown) => {
-      const [tabla, ...idParts] = (key as string).split("-");
-      return { id: parseInt(idParts.join("-")), tabla, catalogo_cuenta_id: cuentaId };
-    });
+    if (!bulkCat || checked.size === 0) return;
     setApplyingBulk(true);
-    try {
-      await api.post("/api/gastos/categorizar-batch", batch);
-      setSaved(batch.length);
-      await cargar();
-      setChecked(new Set());
-      setBulkCuenta("");
-    } catch { }
+    const todo = Array.from(checked) as string[];
+    for (const key of todo) {
+      const [tabla, ...idParts] = key.split("-");
+      const id = parseInt(idParts.join("-"));
+      const item = items.find(i => i.tabla === tabla && i.id === id);
+      if (item) await cambiarCategoria(item, bulkCat);
+    }
+    setChecked(new Set());
+    setBulkCat("");
     setApplyingBulk(false);
   };
 
-  const toggleCheck = (key: string) => {
-    setChecked(prev => {
-      const n = new Set(prev);
-      if (n.has(key)) n.delete(key); else n.add(key);
-      return n;
-    });
-  };
+  const toggleCheck = (key: string) =>
+    setChecked(prev => { const n = new Set(prev); if (n.has(key)) n.delete(key); else n.add(key); return n; });
 
-  const selectTodosEnOtros = () => {
-    const keys = itemsFiltrados.filter(i => i.es_otros).map(i => `${i.tabla}-${i.id}`);
-    setChecked(new Set(keys));
-  };
-
-  // ── Cálculo de impacto P&L estimado ───────────────────────────────────
-  const impactoBadge = useMemo(() => {
-    if (totalEnOtros === 0) return null;
-    // Cuánto hay actualmente en "otros" que podría ser food cost
-    const enOtros = items.filter(i => i.es_otros);
-    const totalOtros = enOtros.reduce((s, i) => s + (i.monto || 0), 0);
-    return { totalOtros, count: enOtros.length };
-  }, [items, totalEnOtros]);
-
-  // ── Loading skeleton ───────────────────────────────────────────────────
+  // ── Loading skeleton ─────────────────────────────────────────────────
   if (loading) return (
     <div style={{ maxWidth: "1000px", margin: "0 auto" }}>
       {Array.from({ length: 5 }).map((_, i) => (
-        <div key={i} style={{ background: "#FFF", borderRadius: "10px", padding: "16px", marginBottom: "8px", height: "60px", animation: "pulse 1.5s ease-in-out infinite", opacity: 0.7 }} />
+        <div key={i} style={{ background: "#FFF", borderRadius: "10px", padding: "16px", marginBottom: "8px", height: "60px", opacity: 0.6 }} />
       ))}
     </div>
   );
 
-  // ── Render ─────────────────────────────────────────────────────────────
+  const totalEnRevision = items.filter(i => i.es_otros).length;
+
   return (
     <div style={{ maxWidth: "1000px", margin: "0 auto" }}>
 
@@ -196,9 +155,9 @@ export const CategorizarGastos = ({ restauranteIdOverride }: CategorizarGastosPr
         <button onClick={cargar} style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "6px", padding: "8px 14px", borderRadius: "8px", border: "1px solid #E5E7EB", background: "#FFF", color: "#6B7280", fontSize: "12px", cursor: "pointer" }}>
           <RefreshCw style={{ width: "13px", height: "13px" }} /> Recargar
         </button>
-        {saved > 0 && (
+        {savedCount > 0 && (
           <div style={{ display: "flex", alignItems: "center", gap: "6px", padding: "8px 14px", borderRadius: "8px", background: "#ECFDF5", color: "#059669", fontSize: "13px", fontWeight: "600" }}>
-            <Check style={{ width: "14px", height: "14px" }} /> {saved} guardados
+            <Check style={{ width: "14px", height: "14px" }} /> {savedCount} guardados
           </div>
         )}
       </div>
@@ -206,135 +165,102 @@ export const CategorizarGastos = ({ restauranteIdOverride }: CategorizarGastosPr
       {/* ── Summary cards ──────────────────────────────────────────────── */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "12px", marginBottom: "20px" }}>
         {[
-          { label: "Sin categoría",  value: totalSinCat,   color: "#DC2626", bg: "#FEF2F2", icon: AlertTriangle },
-          { label: "En 'Otros'",     value: totalEnOtros,  color: "#D97706", bg: "#FFFBEB", icon: Tag },
-          { label: "Monto total",    value: fmt(montoTotal), color: "#374151", bg: "#F9FAFB", icon: BarChart3, isText: true },
-        ].map((card, i) => {
-          const Icon = card.icon;
-          return (
-            <div key={i} style={{ background: card.bg, borderRadius: "12px", padding: "14px 18px", display: "flex", alignItems: "center", gap: "12px" }}>
-              <Icon style={{ width: "18px", height: "18px", color: card.color, flexShrink: 0 }} />
-              <div>
-                <div style={{ fontSize: "10px", color: card.color, fontWeight: "700", textTransform: "uppercase" as const, letterSpacing: "0.5px" }}>{card.label}</div>
-                <div style={{ fontSize: "22px", fontWeight: "900", color: card.color }}>{(card as any).isText ? card.value : card.value}</div>
-              </div>
+          { label: "Sin categoría",     val: totalSinCat,           color: "#DC2626", bg: "#FEF2F2", Icon: AlertTriangle },
+          { label: "En revisión",       val: totalEnRevision,       color: "#D97706", bg: "#FFFBEB", Icon: Tag },
+          { label: "Monto pendiente",   val: fmt(montoTotal),       color: "#374151", bg: "#F9FAFB", Icon: BarChart3 },
+        ].map(({ label, val, color, bg, Icon }, i) => (
+          <div key={i} style={{ background: bg, borderRadius: "12px", padding: "14px 18px", display: "flex", alignItems: "center", gap: "12px" }}>
+            <Icon style={{ width: "18px", height: "18px", color, flexShrink: 0 }} />
+            <div>
+              <div style={{ fontSize: "10px", color, fontWeight: "700", textTransform: "uppercase" as const, letterSpacing: "0.5px" }}>{label}</div>
+              <div style={{ fontSize: "22px", fontWeight: "900", color }}>{val}</div>
             </div>
-          );
-        })}
+          </div>
+        ))}
       </div>
 
       {/* ── Tabs + Búsqueda ────────────────────────────────────────────── */}
       <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "14px", flexWrap: "wrap" as const }}>
-        {/* Tabs */}
         <div style={{ display: "flex", background: "#FFF", borderRadius: "10px", padding: "3px", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
           {([
-            { key: "pendientes", label: `Sin cat. (${totalSinCat})` },
-            { key: "en_otros",   label: `En Otros (${totalEnOtros})` },
-            { key: "todos",      label: `Todos (${items.length})` },
+            { key: "pendientes",  label: `Sin categoría (${totalSinCat})` },
+            { key: "en_revision", label: `En revisión (${totalEnRevision})` },
+            { key: "todos",       label: `Todos (${items.length})` },
           ] as { key: TabFiltro; label: string }[]).map(t => (
-            <button
-              key={t.key}
-              onClick={() => { setTabFiltro(t.key); setChecked(new Set()); }}
-              style={{ padding: "6px 12px", borderRadius: "8px", border: "none", cursor: "pointer", fontSize: "12px", fontWeight: "600", background: tabFiltro === t.key ? "#3D1C1E" : "transparent", color: tabFiltro === t.key ? "#C8FF00" : "#9CA3AF" }}
-            >{t.label}</button>
+            <button key={t.key} onClick={() => { setTabFiltro(t.key); setChecked(new Set()); }}
+              style={{ padding: "6px 12px", borderRadius: "8px", border: "none", cursor: "pointer", fontSize: "12px", fontWeight: "600", background: tabFiltro === t.key ? "#3D1C1E" : "transparent", color: tabFiltro === t.key ? "#C8FF00" : "#9CA3AF" }}>
+              {t.label}
+            </button>
           ))}
         </div>
 
-        {/* Búsqueda */}
         <div style={{ flex: 1, minWidth: "160px", display: "flex", alignItems: "center", gap: "8px", background: "#FFF", borderRadius: "10px", padding: "8px 12px", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
           <Search style={{ width: "14px", height: "14px", color: "#9CA3AF", flexShrink: 0 }} />
-          <input
-            type="text"
-            placeholder="Buscar proveedor, categoría..."
-            value={busqueda}
-            onChange={e => setBusqueda(e.target.value)}
-            style={{ border: "none", outline: "none", fontSize: "13px", color: "#374151", flex: 1, background: "transparent" }}
-          />
+          <input type="text" placeholder="Buscar proveedor…" value={busqueda} onChange={e => setBusqueda(e.target.value)}
+            style={{ border: "none", outline: "none", fontSize: "13px", color: "#374151", flex: 1, background: "transparent" }} />
         </div>
       </div>
 
       {/* ── Acciones bulk ──────────────────────────────────────────────── */}
       {itemsFiltrados.length > 0 && (
         <div style={{ display: "flex", gap: "8px", marginBottom: "12px", flexWrap: "wrap" as const, alignItems: "center" }}>
-          <button
-            onClick={() => setChecked(new Set(itemsFiltrados.map(i => `${i.tabla}-${i.id}`)))}
-            style={{ padding: "6px 12px", borderRadius: "8px", border: "1px solid #E5E7EB", background: "#FFF", fontSize: "12px", cursor: "pointer", color: "#374151" }}
-          >
+          <button onClick={() => setChecked(new Set(itemsFiltrados.map(i => `${i.tabla}-${i.id}`)))}
+            style={{ padding: "6px 12px", borderRadius: "8px", border: "1px solid #E5E7EB", background: "#FFF", fontSize: "12px", cursor: "pointer", color: "#374151" }}>
             Seleccionar todos ({itemsFiltrados.length})
           </button>
-          {tabFiltro === "en_otros" && (
-            <button
-              onClick={selectTodosEnOtros}
-              style={{ padding: "6px 12px", borderRadius: "8px", border: "1px solid #FDE68A", background: "#FFFBEB", fontSize: "12px", cursor: "pointer", color: "#D97706", fontWeight: "600" }}
-            >
-              ☑ Todos los de 'Otros'
+
+          {tabFiltro === "en_revision" && (
+            <button onClick={() => setChecked(new Set(itemsFiltrados.filter(i => i.es_otros).map(i => `${i.tabla}-${i.id}`)))}
+              style={{ padding: "6px 12px", borderRadius: "8px", border: "1px solid #FDE68A", background: "#FFFBEB", fontSize: "12px", cursor: "pointer", color: "#D97706", fontWeight: "600" }}>
+              ☑ Todos los de "Otros"
             </button>
           )}
+
           {checked.size > 0 && (
             <>
-              <button
-                onClick={() => setChecked(new Set())}
-                style={{ padding: "6px 12px", borderRadius: "8px", border: "1px solid #E5E7EB", background: "#FFF", fontSize: "12px", cursor: "pointer", color: "#9CA3AF" }}
-              >
+              <button onClick={() => setChecked(new Set())}
+                style={{ padding: "6px 12px", borderRadius: "8px", border: "1px solid #E5E7EB", background: "#FFF", fontSize: "12px", cursor: "pointer", color: "#9CA3AF" }}>
                 Deseleccionar ({checked.size})
               </button>
 
-              {/* Dropdown + aplicar */}
-              <div style={{ display: "flex", gap: "6px", alignItems: "center", background: "#FFF", borderRadius: "10px", padding: "4px 8px 4px 4px", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
-                <ChevronDown style={{ width: "14px", height: "14px", color: "#9CA3AF", flexShrink: 0 }} />
-                <select
-                  value={bulkCuenta}
-                  onChange={e => setBulkCuenta(e.target.value)}
-                  style={{ border: "none", outline: "none", fontSize: "12px", color: "#374151", background: "transparent", cursor: "pointer" }}
-                >
-                  <option value="">Categorizar como...</option>
-                  {cuentas.filter(c => !c.codigo?.startsWith("4") && !c.codigo?.startsWith("7")).map((c: any) => (
-                    <option key={c.id} value={c.id}>{c.codigo} — {c.nombre}</option>
-                  ))}
+              {/* Dropdown de categoría operativa + aplicar */}
+              <div style={{ display: "flex", gap: "4px", alignItems: "center", background: "#FFF", borderRadius: "10px", padding: "4px 8px 4px 12px", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
+                <ChevronDown style={{ width: "13px", height: "13px", color: "#9CA3AF", flexShrink: 0 }} />
+                <select value={bulkCat} onChange={e => setBulkCat(e.target.value)}
+                  style={{ border: "none", outline: "none", fontSize: "12px", color: "#374151", background: "transparent", cursor: "pointer" }}>
+                  <option value="">Categorizar como…</option>
+                  {categorias.map(cat => <option key={cat} value={cat}>{cat}</option>)}
                 </select>
               </div>
 
-              <button
-                onClick={aplicarBulk}
-                disabled={!bulkCuenta || applyingBulk}
-                style={{ padding: "6px 14px", borderRadius: "8px", border: "none", background: bulkCuenta ? "#3D1C1E" : "#D1D5DB", color: bulkCuenta ? "#C8FF00" : "#9CA3AF", fontSize: "12px", fontWeight: "700", cursor: bulkCuenta ? "pointer" : "not-allowed" }}
-              >
+              <button onClick={aplicarBulk} disabled={!bulkCat || applyingBulk}
+                style={{ padding: "6px 14px", borderRadius: "8px", border: "none", background: bulkCat ? "#3D1C1E" : "#D1D5DB", color: bulkCat ? "#C8FF00" : "#9CA3AF", fontSize: "12px", fontWeight: "700", cursor: bulkCat ? "pointer" : "not-allowed" }}>
                 {applyingBulk ? "Aplicando…" : `Aplicar a ${checked.size}`}
               </button>
-
-              {/* Guardar seleccionados con dropdowns individuales */}
-              {Object.keys(selecciones).some(k => checked.has(k)) && (
-                <button
-                  onClick={guardarSeleccionados}
-                  style={{ padding: "6px 14px", borderRadius: "8px", border: "none", background: "#059669", color: "#FFF", fontSize: "12px", fontWeight: "700", cursor: "pointer" }}
-                >
-                  Guardar con selección individual
-                </button>
-              )}
             </>
           )}
         </div>
       )}
 
-      {/* ── Lista de gastos ────────────────────────────────────────────── */}
+      {/* ── Lista ──────────────────────────────────────────────────────── */}
       {itemsFiltrados.length === 0 ? (
         <div style={{ background: "#FFF", borderRadius: "14px", padding: "48px", textAlign: "center" as const, boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
           <Check style={{ width: "32px", height: "32px", color: "#059669", margin: "0 auto 8px" }} />
           <p style={{ fontSize: "14px", color: "#6B7280" }}>
             {tabFiltro === "pendientes"
-              ? "¡Todos los gastos tienen categoría contable! ✓"
-              : tabFiltro === "en_otros"
-              ? "No hay gastos en 'Otros gastos'"
-              : "Sin gastos que coincidan con la búsqueda"}
+              ? "¡Todos los gastos tienen categoría! ✓"
+              : tabFiltro === "en_revision"
+              ? "No hay gastos pendientes de revisión ✓"
+              : "Sin resultados para esta búsqueda"}
           </p>
         </div>
       ) : (
         <div style={{ background: "#FFF", borderRadius: "14px", overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
-          {/* Header de tabla */}
-          <div style={{ display: "grid", gridTemplateColumns: "40px 1fr 1fr 110px", alignItems: "center", padding: "10px 20px", borderBottom: "2px solid #F3F4F6", background: "#F9FAFB" }}>
+          {/* Cabecera */}
+          <div style={{ display: "grid", gridTemplateColumns: "40px 1fr 220px 110px", alignItems: "center", padding: "10px 20px", background: "#F9FAFB", borderBottom: "2px solid #F3F4F6" }}>
             <div />
             <span style={{ fontSize: "11px", fontWeight: "700", color: "#9CA3AF", textTransform: "uppercase" as const }}>Gasto</span>
-            <span style={{ fontSize: "11px", fontWeight: "700", color: "#9CA3AF", textTransform: "uppercase" as const }}>Cuenta contable</span>
+            <span style={{ fontSize: "11px", fontWeight: "700", color: "#9CA3AF", textTransform: "uppercase" as const }}>Categoría operativa</span>
             <span style={{ fontSize: "11px", fontWeight: "700", color: "#9CA3AF", textTransform: "uppercase" as const, textAlign: "right" as const }}>Monto</span>
           </div>
 
@@ -342,77 +268,56 @@ export const CategorizarGastos = ({ restauranteIdOverride }: CategorizarGastosPr
             const key = `${item.tabla}-${item.id}`;
             const isChecked = checked.has(key);
             const isSaving = saving.has(key);
-            const conf = item.sugerencia?.confianza;
-            const confStyle = conf ? CONFIANZA_COLOR[conf] : null;
 
             return (
-              <div
-                key={key}
-                style={{ display: "grid", gridTemplateColumns: "40px 1fr 1fr 110px", alignItems: "center", padding: "12px 20px", borderBottom: "1px solid #F9FAFB", background: isChecked ? "#FAFFFE" : item.es_otros ? "#FFFCF0" : "transparent", transition: "background 0.1s" }}
-              >
+              <div key={key}
+                style={{ display: "grid", gridTemplateColumns: "40px 1fr 220px 110px", alignItems: "center", padding: "11px 20px", borderBottom: "1px solid #F9FAFB", background: isChecked ? "#FAFFFE" : item.es_otros ? "#FFFDF0" : "transparent", transition: "background 0.1s" }}>
+
                 {/* Checkbox */}
-                <input
-                  type="checkbox"
-                  checked={isChecked}
-                  onChange={() => toggleCheck(key)}
-                  style={{ width: "16px", height: "16px", cursor: "pointer", accentColor: "#3D1C1E" }}
-                />
+                <input type="checkbox" checked={isChecked} onChange={() => toggleCheck(key)}
+                  style={{ width: "16px", height: "16px", cursor: "pointer", accentColor: "#3D1C1E" }} />
 
                 {/* Info del gasto */}
                 <div>
                   <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                    <span style={{ fontSize: "13px", fontWeight: "600", color: "#111827" }}>{item.proveedor || "Sin proveedor"}</span>
+                    <span style={{ fontSize: "13px", fontWeight: "600", color: "#111827" }}>{item.proveedor || "—"}</span>
                     {item.es_otros && (
-                      <span style={{ fontSize: "9px", padding: "1px 5px", borderRadius: "4px", background: "#FDE68A", color: "#B45309", fontWeight: "700" }}>EN REVISIÓN</span>
+                      <span style={{ fontSize: "9px", padding: "1px 5px", borderRadius: "4px", background: "#FDE68A", color: "#B45309", fontWeight: "700" }}>REVISAR</span>
+                    )}
+                    {!item.catalogo_cuenta_id && !item.es_otros && (
+                      <span style={{ fontSize: "9px", padding: "1px 5px", borderRadius: "4px", background: "#FEE2E2", color: "#B91C1C", fontWeight: "700" }}>SIN CATEGORÍA</span>
                     )}
                   </div>
                   <div style={{ fontSize: "11px", color: "#9CA3AF", marginTop: "2px" }}>
                     {item.fecha}
-                    {item.categoria_texto && (
-                      <span style={{ marginLeft: "6px", padding: "1px 5px", borderRadius: "4px", background: "#F3F4F6", color: "#6B7280" }}>{item.categoria_texto}</span>
+                    {item.tabla === "gastos_diarios" && (
+                      <span style={{ marginLeft: "4px", fontSize: "10px", color: "#C4B5FD" }}>· cierre</span>
                     )}
                   </div>
                 </div>
 
-                {/* Selector de cuenta */}
-                <div>
-                  {/* Sugerencia */}
-                  {item.sugerencia && confStyle && (
-                    <div style={{ display: "flex", alignItems: "center", gap: "5px", marginBottom: "4px" }}>
-                      <span style={{ fontSize: "10px", padding: "1px 5px", borderRadius: "4px", background: confStyle.bg, color: confStyle.text, fontWeight: "700" }}>
-                        {confStyle.label}
-                      </span>
-                      <span style={{ fontSize: "11px", color: "#374151" }}>→ {item.sugerencia.nombre}</span>
+                {/* Dropdown de categoría OPERATIVA — auto-save al cambiar */}
+                <div style={{ position: "relative" as const }}>
+                  <select
+                    value={item.categoria_texto || ""}
+                    onChange={async e => {
+                      const val = e.target.value;
+                      if (!val) return;
+                      await cambiarCategoria(item, val);
+                    }}
+                    disabled={isSaving}
+                    style={{ width: "100%", padding: "5px 8px", borderRadius: "6px", border: `1px solid ${item.es_otros ? "#FDE68A" : "#E5E7EB"}`, fontSize: "12px", background: isSaving ? "#F9FAFB" : "#FFF", color: item.categoria_texto ? "#111827" : "#9CA3AF", cursor: isSaving ? "wait" : "pointer" }}
+                  >
+                    <option value="">{item.categoria_texto || "Seleccionar categoría…"}</option>
+                    {categorias.map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                  {isSaving && (
+                    <div style={{ position: "absolute" as const, right: "8px", top: "50%", transform: "translateY(-50%)" }}>
+                      <RefreshCw style={{ width: "12px", height: "12px", color: "#9CA3AF", animation: "spin 1s linear infinite" }} />
                     </div>
                   )}
-
-                  {/* Dropdown — auto-save al cambiar */}
-                  <div style={{ position: "relative" as const }}>
-                    <select
-                      value={selecciones[key] || item.catalogo_cuenta_id || ""}
-                      onChange={async e => {
-                        const val = parseInt(e.target.value);
-                        if (!val) return;
-                        setSelecciones(prev => ({ ...prev, [key]: val }));
-                        // Auto-save inmediato
-                        await autoSave(item, val);
-                      }}
-                      disabled={isSaving}
-                      style={{ width: "100%", padding: "5px 8px", borderRadius: "6px", border: "1px solid #E5E7EB", fontSize: "12px", background: isSaving ? "#F9FAFB" : "#FFF", color: "#374151", cursor: isSaving ? "wait" : "pointer" }}
-                    >
-                      <option value="">{item.cuenta_nombre || "Seleccionar cuenta..."}</option>
-                      {cuentas
-                        .filter((c: any) => !c.codigo?.startsWith("4") && !c.codigo?.startsWith("7"))
-                        .map((c: any) => (
-                          <option key={c.id} value={c.id}>{c.codigo} — {c.nombre}</option>
-                        ))}
-                    </select>
-                    {isSaving && (
-                      <div style={{ position: "absolute" as const, right: "8px", top: "50%", transform: "translateY(-50%)" }}>
-                        <RefreshCw style={{ width: "12px", height: "12px", color: "#9CA3AF", animation: "spin 1s linear infinite" }} />
-                      </div>
-                    )}
-                  </div>
                 </div>
 
                 {/* Monto */}
@@ -425,39 +330,31 @@ export const CategorizarGastos = ({ restauranteIdOverride }: CategorizarGastosPr
         </div>
       )}
 
-      {/* ── Badge impacto P&L ──────────────────────────────────────────── */}
-      {impactoBadge && impactoBadge.count > 0 && (
-        <div style={{ marginTop: "20px", background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: "12px", padding: "16px 20px", display: "flex", alignItems: "center", gap: "12px" }}>
-          <AlertTriangle style={{ width: "18px", height: "18px", color: "#D97706", flexShrink: 0 }} />
-          <div>
-            <div style={{ fontSize: "13px", fontWeight: "700", color: "#92400E" }}>
-              {impactoBadge.count} gastos en "Otros gastos" — {fmt(impactoBadge.totalOtros)}
-            </div>
-            <div style={{ fontSize: "12px", color: "#B45309", marginTop: "2px" }}>
-              Recategorizarlos correctamente mejorará la precisión del P&L. Usa la tab "En Otros" para revisarlos.
-            </div>
+      {/* ── Nota: categorías legítimamente en "Otros" ─────────────────── */}
+      {totalEnRevision > 0 && tabFiltro !== "en_revision" && (
+        <div style={{ marginTop: "16px", background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: "12px", padding: "14px 18px", display: "flex", alignItems: "center", gap: "12px" }}>
+          <AlertTriangle style={{ width: "16px", height: "16px", color: "#D97706", flexShrink: 0 }} />
+          <div style={{ flex: 1, fontSize: "13px", color: "#92400E" }}>
+            {totalEnRevision} gastos en "Otros gastos" — podrían necesitar una categoría más específica
           </div>
-          <button
-            onClick={() => setTabFiltro("en_otros")}
-            style={{ marginLeft: "auto", padding: "6px 14px", borderRadius: "8px", border: "1px solid #F59E0B", background: "#FFF", color: "#D97706", fontSize: "12px", fontWeight: "700", cursor: "pointer", flexShrink: 0 }}
-          >
+          <button onClick={() => setTabFiltro("en_revision")}
+            style={{ padding: "5px 12px", borderRadius: "7px", border: "1px solid #F59E0B", background: "#FFF", color: "#D97706", fontSize: "12px", fontWeight: "700", cursor: "pointer", flexShrink: 0 }}>
             Revisar →
           </button>
         </div>
       )}
 
-      {/* ── Nota P&L datos incompletos ────────────────────────────────── */}
-      {totalSinCat === 0 && totalEnOtros === 0 && items.length > 0 && (
-        <div style={{ marginTop: "16px", background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: "12px", padding: "14px 18px" }}>
-          <div style={{ fontSize: "13px", fontWeight: "700", color: "#1E40AF" }}>✓ Todos los gastos categorizados</div>
-          <div style={{ fontSize: "12px", color: "#3B82F6", marginTop: "4px" }}>
-            Si el P&amp;L muestra márgenes muy altos (&gt;80%), probablemente faltan registrar gastos:
-            nómina completa, renta mensual, servicios (luz, gas), y compras de alimentos.
+      {/* ── Todo ok ───────────────────────────────────────────────────── */}
+      {totalSinCat === 0 && totalEnRevision === 0 && (
+        <div style={{ marginTop: "16px", background: "#F0FDF4", border: "1px solid #BBF7D0", borderRadius: "12px", padding: "14px 18px" }}>
+          <div style={{ fontSize: "13px", fontWeight: "700", color: "#15803D" }}>✓ Todos los gastos están categorizados correctamente</div>
+          <div style={{ fontSize: "12px", color: "#16A34A", marginTop: "4px" }}>
+            El P&amp;L refleja los datos actuales. Si el margen parece alto, verifica que todos los gastos estén registrados (nómina, renta, servicios).
           </div>
         </div>
       )}
 
-      <style>{`@keyframes spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}} @keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}`}</style>
+      <style>{`@keyframes spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}`}</style>
     </div>
   );
 };
