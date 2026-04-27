@@ -278,11 +278,11 @@ export const CategorizarGastos = ({ restauranteIdOverride }: CategorizarGastosPr
 
             return (
               <div key={key}
-                style={{ display: "grid", gridTemplateColumns: "40px 1fr 220px 110px", alignItems: "center", padding: "11px 20px", borderBottom: "1px solid #F9FAFB", background: isChecked ? "#FAFFFE" : item.es_otros ? "#FFFDF0" : "transparent", transition: "background 0.1s" }}>
+                style={{ display: "grid", gridTemplateColumns: "40px 1fr 220px 110px", alignItems: "start", padding: "11px 20px", borderBottom: "1px solid #F9FAFB", background: isChecked ? "#FAFFFE" : item.es_otros ? "#FFFDF0" : "transparent", transition: "background 0.1s" }}>
 
                 {/* Checkbox */}
                 <input type="checkbox" checked={isChecked} onChange={() => toggleCheck(key)}
-                  style={{ width: "16px", height: "16px", cursor: "pointer", accentColor: "#3D1C1E" }} />
+                  style={{ width: "16px", height: "16px", cursor: "pointer", accentColor: "#3D1C1E", marginTop: "2px" }} />
 
                 {/* Info del gasto */}
                 <div>
@@ -303,7 +303,7 @@ export const CategorizarGastos = ({ restauranteIdOverride }: CategorizarGastosPr
                   </div>
                   {/* Descripción — campo clave para categorizar correctamente */}
                   {(item.descripcion || item.categoria_texto) && (
-                    <div style={{ fontSize: "11px", color: "#6B7280", marginTop: "2px", fontStyle: "italic", maxWidth: "340px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const }}>
+                    <div style={{ fontSize: "12px", color: "#6B7280", marginTop: "2px", fontStyle: "italic", whiteSpace: "normal" as const }}>
                       {item.descripcion || item.categoria_texto}
                     </div>
                   )}
@@ -334,7 +334,7 @@ export const CategorizarGastos = ({ restauranteIdOverride }: CategorizarGastosPr
                 </div>
 
                 {/* Monto */}
-                <div style={{ textAlign: "right" as const, fontSize: "14px", fontWeight: "700", color: "#111827" }}>
+                <div style={{ textAlign: "right" as const, fontSize: "14px", fontWeight: "700", color: "#111827", marginTop: "2px" }}>
                   {fmt(item.monto)}
                 </div>
               </div>
