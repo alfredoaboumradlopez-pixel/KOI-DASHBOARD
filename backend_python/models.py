@@ -158,6 +158,7 @@ class GastoDiario(Base):
     descripcion = Column(String(255), nullable=False)
     monto = Column(Float, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+    catalogo_cuenta_id = Column(Integer, ForeignKey("catalogo_cuentas.id"), nullable=True)
     restaurante_id = Column(Integer, ForeignKey("restaurantes.id"), nullable=True)
     cierre = relationship("CierreTurno", back_populates="gastos")
 
@@ -208,6 +209,7 @@ class Gasto(Base):
     descripcion = Column(String(255), nullable=True)
     estado = Column(SQLEnum(EstadoPago), default=EstadoPago.PENDIENTE)
     created_at = Column(DateTime, default=datetime.utcnow)
+    catalogo_cuenta_id = Column(Integer, ForeignKey("catalogo_cuentas.id"), nullable=True)
     restaurante_id = Column(Integer, ForeignKey("restaurantes.id"), nullable=True)
 
 
@@ -305,6 +307,8 @@ class PLMensual(Base):
     utilidad_operativa = Column(Float, default=0.0)
     utilidad_neta = Column(Float, default=0.0)
     created_at = Column(DateTime, default=datetime.utcnow)
+    calculado_automaticamente = Column(Boolean, default=False)
+    fecha_calculo = Column(DateTime, nullable=True)
     restaurante_id = Column(Integer, ForeignKey("restaurantes.id"), nullable=True)
     distribuciones = relationship("DistribucionUtilidad", back_populates="pl")
 

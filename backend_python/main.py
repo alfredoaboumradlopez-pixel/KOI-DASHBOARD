@@ -43,6 +43,8 @@ from .database import engine, get_db
 from .core.auth import get_optional_user, get_restaurante_id
 from .routers.auth_router import router as auth_router
 from .routers.restaurantes_router import router as restaurantes_router
+from .routers.pl_router import router as pl_router
+from .routers.gastos_categorizacion_router import router as gastos_cat_router
 
 models.Base.metadata.create_all(bind=engine)
 
@@ -176,6 +178,30 @@ try:
 except Exception as _e:
     print(f"Seed multi-tenant error: {_e}")
 
+# Migracion: agregar catalogo_cuenta_id a gastos y gastos_diarios
+try:
+    _insp_cc = _inspect(engine)
+    with engine.begin() as _conn_cc:
+        for _tbl_cc, _fk_clause in [('gastos', ''), ('gastos_diarios', '')]:
+            try:
+                _cols_cc = [c['name'] for c in _insp_cc.get_columns(_tbl_cc)]
+                if 'catalogo_cuenta_id' not in _cols_cc:
+                    _conn_cc.execute(_text(f"ALTER TABLE {_tbl_cc} ADD COLUMN catalogo_cuenta_id INTEGER REFERENCES catalogo_cuentas(id)"))
+                    print(f"  catalogo_cuenta_id agregado a {_tbl_cc}")
+            except Exception as _e2:
+                print(f"  (skip {_tbl_cc}.catalogo_cuenta_id: {_e2})")
+        # pl_mensual new columns
+        try:
+            _cols_pl = [c['name'] for c in _insp_cc.get_columns('pl_mensual')]
+            if 'calculado_automaticamente' not in _cols_pl:
+                _conn_cc.execute(_text("ALTER TABLE pl_mensual ADD COLUMN calculado_automaticamente BOOLEAN DEFAULT false"))
+            if 'fecha_calculo' not in _cols_pl:
+                _conn_cc.execute(_text("ALTER TABLE pl_mensual ADD COLUMN fecha_calculo TIMESTAMP"))
+        except Exception as _e3:
+            print(f"  (skip pl_mensual cols: {_e3})")
+except Exception as _e:
+    print(f"Migracion catalogo_cuenta_id: {_e}")
+
 
 app = FastAPI(
     title="KOI Dashboard API",
@@ -193,6 +219,8 @@ app.add_middleware(
 
 app.include_router(auth_router)
 app.include_router(restaurantes_router)
+app.include_router(pl_router)
+app.include_router(gastos_cat_router)
 
 UPLOADS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
 os.makedirs(os.path.join(UPLOADS_DIR, "documentos"), exist_ok=True)
