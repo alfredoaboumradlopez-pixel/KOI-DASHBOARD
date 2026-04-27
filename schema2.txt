@@ -1,0 +1,202 @@
+                                                                   Table "public.insumos"
+     Column      |          Type          | Collation | Nullable |               Default               | Storage  | Compression | Stats target | Description 
+-----------------+------------------------+-----------+----------+-------------------------------------+----------+-------------+--------------+-------------
+ id              | integer                |           | not null | nextval('insumos_id_seq'::regclass) | plain    |             |              | 
+ nombre          | character varying(100) |           | not null |                                     | extended |             |              | 
+ unidad          | character varying(20)  |           | not null |                                     | extended |             |              | 
+ stock_actual    | double precision       |           | not null |                                     | plain    |             |              | 
+ stock_minimo    | double precision       |           | not null |                                     | plain    |             |              | 
+ precio_unitario | double precision       |           | not null |                                     | plain    |             |              | 
+ proveedor       | character varying(100) |           |          |                                     | extended |             |              | 
+ ultima_compra   | date                   |           |          |                                     | plain    |             |              | 
+ activo          | boolean                |           |          |                                     | plain    |             |              | 
+Indexes:
+    "insumos_pkey" PRIMARY KEY, btree (id)
+    "ix_insumos_id" btree (id)
+Not-null constraints:
+    "insumos_id_not_null" NOT NULL "id"
+    "insumos_nombre_not_null" NOT NULL "nombre"
+    "insumos_unidad_not_null" NOT NULL "unidad"
+    "insumos_stock_actual_not_null" NOT NULL "stock_actual"
+    "insumos_stock_minimo_not_null" NOT NULL "stock_minimo"
+    "insumos_precio_unitario_not_null" NOT NULL "precio_unitario"
+Access method: heap
+
+                                                                    Table "public.movimientos_banco"
+    Column    |            Type             | Collation | Nullable |                    Default                    | Storage  | Compression | Stats target | Description 
+--------------+-----------------------------+-----------+----------+-----------------------------------------------+----------+-------------+--------------+-------------
+ id           | integer                     |           | not null | nextval('movimientos_banco_id_seq'::regclass) | plain    |             |              | 
+ fecha        | date                        |           | not null |                                               | plain    |             |              | 
+ referencia   | character varying(100)      |           |          |                                               | extended |             |              | 
+ concepto     | character varying(255)      |           | not null |                                               | extended |             |              | 
+ monto        | double precision            |           | not null |                                               | plain    |             |              | 
+ tipo         | tipomovimientobanco         |           | not null |                                               | plain    |             |              | 
+ saldo        | double precision            |           |          |                                               | plain    |             |              | 
+ reconciliado | boolean                     |           |          |                                               | plain    |             |              | 
+ gasto_id     | integer                     |           |          |                                               | plain    |             |              | 
+ created_at   | timestamp without time zone |           |          |                                               | plain    |             |              | 
+Indexes:
+    "movimientos_banco_pkey" PRIMARY KEY, btree (id)
+    "ix_movimientos_banco_fecha" btree (fecha)
+    "ix_movimientos_banco_id" btree (id)
+Foreign-key constraints:
+    "movimientos_banco_gasto_id_fkey" FOREIGN KEY (gasto_id) REFERENCES gastos(id)
+Not-null constraints:
+    "movimientos_banco_id_not_null" NOT NULL "id"
+    "movimientos_banco_fecha_not_null" NOT NULL "fecha"
+    "movimientos_banco_concepto_not_null" NOT NULL "concepto"
+    "movimientos_banco_monto_not_null" NOT NULL "monto"
+    "movimientos_banco_tipo_not_null" NOT NULL "tipo"
+Access method: heap
+
+                                                               Table "public.nomina_pagos"
+     Column     |       Type       | Collation | Nullable |                 Default                  | Storage | Compression | Stats target | Description 
+----------------+------------------+-----------+----------+------------------------------------------+---------+-------------+--------------+-------------
+ id             | integer          |           | not null | nextval('nomina_pagos_id_seq'::regclass) | plain   |             |              | 
+ empleado_id    | integer          |           | not null |                                          | plain   |             |              | 
+ periodo_inicio | date             |           | not null |                                          | plain   |             |              | 
+ periodo_fin    | date             |           | not null |                                          | plain   |             |              | 
+ salario_base   | double precision |           | not null |                                          | plain   |             |              | 
+ horas_extra    | double precision |           |          |                                          | plain   |             |              | 
+ deducciones    | double precision |           |          |                                          | plain   |             |              | 
+ neto_pagado    | double precision |           | not null |                                          | plain   |             |              | 
+ fecha_pago     | date             |           | not null |                                          | plain   |             |              | 
+Indexes:
+    "nomina_pagos_pkey" PRIMARY KEY, btree (id)
+    "ix_nomina_pagos_id" btree (id)
+Foreign-key constraints:
+    "nomina_pagos_empleado_id_fkey" FOREIGN KEY (empleado_id) REFERENCES empleados(id)
+Not-null constraints:
+    "nomina_pagos_id_not_null" NOT NULL "id"
+    "nomina_pagos_empleado_id_not_null" NOT NULL "empleado_id"
+    "nomina_pagos_periodo_inicio_not_null" NOT NULL "periodo_inicio"
+    "nomina_pagos_periodo_fin_not_null" NOT NULL "periodo_fin"
+    "nomina_pagos_salario_base_not_null" NOT NULL "salario_base"
+    "nomina_pagos_neto_pagado_not_null" NOT NULL "neto_pagado"
+    "nomina_pagos_fecha_pago_not_null" NOT NULL "fecha_pago"
+Access method: heap
+
+                                                                   Table "public.pagos_recurrentes"
+     Column     |          Type          | Collation | Nullable |                    Default                    | Storage  | Compression | Stats target | Description 
+----------------+------------------------+-----------+----------+-----------------------------------------------+----------+-------------+--------------+-------------
+ id             | integer                |           | not null | nextval('pagos_recurrentes_id_seq'::regclass) | plain    |             |              | 
+ concepto       | character varying(200) |           | not null |                                               | extended |             |              | 
+ proveedor      | character varying(100) |           | not null |                                               | extended |             |              | 
+ categoria      | character varying(50)  |           | not null |                                               | extended |             |              | 
+ frecuencia     | frecuenciapago         |           | not null |                                               | plain    |             |              | 
+ deadline_texto | character varying(100) |           | not null |                                               | extended |             |              | 
+ dia_limite     | integer                |           |          |                                               | plain    |             |              | 
+ monto_estimado | double precision       |           |          |                                               | plain    |             |              | 
+ activo         | boolean                |           |          |                                               | plain    |             |              | 
+ notas          | text                   |           |          |                                               | extended |             |              | 
+Indexes:
+    "pagos_recurrentes_pkey" PRIMARY KEY, btree (id)
+    "ix_pagos_recurrentes_id" btree (id)
+Not-null constraints:
+    "pagos_recurrentes_id_not_null" NOT NULL "id"
+    "pagos_recurrentes_concepto_not_null" NOT NULL "concepto"
+    "pagos_recurrentes_proveedor_not_null" NOT NULL "proveedor"
+    "pagos_recurrentes_categoria_not_null" NOT NULL "categoria"
+    "pagos_recurrentes_frecuencia_not_null" NOT NULL "frecuencia"
+    "pagos_recurrentes_deadline_texto_not_null" NOT NULL "deadline_texto"
+Access method: heap
+
+                                                                         Table "public.pl_mensual"
+         Column         |            Type             | Collation | Nullable |                Default                 | Storage | Compression | Stats target | Description 
+------------------------+-----------------------------+-----------+----------+----------------------------------------+---------+-------------+--------------+-------------
+ id                     | integer                     |           | not null | nextval('pl_mensual_id_seq'::regclass) | plain   |             |              | 
+ mes                    | integer                     |           | not null |                                        | plain   |             |              | 
+ anio                   | integer                     |           | not null |                                        | plain   |             |              | 
+ ventas_totales         | double precision            |           |          |                                        | plain   |             |              | 
+ costo_insumos          | double precision            |           |          |                                        | plain   |             |              | 
+ gastos_servicios       | double precision            |           |          |                                        | plain   |             |              | 
+ gastos_renta           | double precision            |           |          |                                        | plain   |             |              | 
+ gastos_mantenimiento   | double precision            |           |          |                                        | plain   |             |              | 
+ gastos_limpieza        | double precision            |           |          |                                        | plain   |             |              | 
+ gastos_comida_personal | double precision            |           |          |                                        | plain   |             |              | 
+ gastos_otros           | double precision            |           |          |                                        | plain   |             |              | 
+ gastos_nomina          | double precision            |           |          |                                        | plain   |             |              | 
+ impuestos              | double precision            |           |          |                                        | plain   |             |              | 
+ utilidad_bruta         | double precision            |           |          |                                        | plain   |             |              | 
+ utilidad_operativa     | double precision            |           |          |                                        | plain   |             |              | 
+ utilidad_neta          | double precision            |           |          |                                        | plain   |             |              | 
+ created_at             | timestamp without time zone |           |          |                                        | plain   |             |              | 
+Indexes:
+    "pl_mensual_pkey" PRIMARY KEY, btree (id)
+    "ix_pl_mensual_id" btree (id)
+Referenced by:
+    TABLE "distribucion_utilidades" CONSTRAINT "distribucion_utilidades_pl_id_fkey" FOREIGN KEY (pl_id) REFERENCES pl_mensual(id)
+Not-null constraints:
+    "pl_mensual_id_not_null" NOT NULL "id"
+    "pl_mensual_mes_not_null" NOT NULL "mes"
+    "pl_mensual_anio_not_null" NOT NULL "anio"
+Access method: heap
+
+                                                             Table "public.propinas_diarias"
+  Column   |       Type       | Collation | Nullable |                   Default                    | Storage | Compression | Stats target | Description 
+-----------+------------------+-----------+----------+----------------------------------------------+---------+-------------+--------------+-------------
+ id        | integer          |           | not null | nextval('propinas_diarias_id_seq'::regclass) | plain   |             |              | 
+ cierre_id | integer          |           | not null |                                              | plain   |             |              | 
+ terminal  | terminalorigen   |           | not null |                                              | plain   |             |              | 
+ monto     | double precision |           | not null |                                              | plain   |             |              | 
+Indexes:
+    "propinas_diarias_pkey" PRIMARY KEY, btree (id)
+    "ix_propinas_diarias_id" btree (id)
+Foreign-key constraints:
+    "propinas_diarias_cierre_id_fkey" FOREIGN KEY (cierre_id) REFERENCES cierres_turno(id)
+Not-null constraints:
+    "propinas_diarias_id_not_null" NOT NULL "id"
+    "propinas_diarias_cierre_id_not_null" NOT NULL "cierre_id"
+    "propinas_diarias_terminal_not_null" NOT NULL "terminal"
+    "propinas_diarias_monto_not_null" NOT NULL "monto"
+Access method: heap
+
+                                                                    Table "public.proveedores"
+      Column       |          Type          | Collation | Nullable |                 Default                 | Storage  | Compression | Stats target | Description 
+-------------------+------------------------+-----------+----------+-----------------------------------------+----------+-------------+--------------+-------------
+ id                | integer                |           | not null | nextval('proveedores_id_seq'::regclass) | plain    |             |              | 
+ nombre            | character varying(100) |           | not null |                                         | extended |             |              | 
+ categoria_default | character varying(50)  |           | not null |                                         | extended |             |              | 
+ activo            | boolean                |           |          |                                         | plain    |             |              | 
+Indexes:
+    "proveedores_pkey" PRIMARY KEY, btree (id)
+    "ix_proveedores_id" btree (id)
+    "ix_proveedores_nombre" btree (nombre)
+Referenced by:
+    TABLE "cuentas_por_pagar" CONSTRAINT "cuentas_por_pagar_proveedor_id_fkey" FOREIGN KEY (proveedor_id) REFERENCES proveedores(id)
+Not-null constraints:
+    "proveedores_id_not_null" NOT NULL "id"
+    "proveedores_nombre_not_null" NOT NULL "nombre"
+    "proveedores_categoria_default_not_null" NOT NULL "categoria_default"
+Access method: heap
+
+                                                                  Table "public.ventas_diarias"
+     Column     |         Type         | Collation | Nullable |                  Default                   | Storage  | Compression | Stats target | Description 
+----------------+----------------------+-----------+----------+--------------------------------------------+----------+-------------+--------------+-------------
+ id             | integer              |           | not null | nextval('ventas_diarias_id_seq'::regclass) | plain    |             |              | 
+ fecha          | date                 |           | not null |                                            | plain    |             |              | 
+ mes            | character varying(3) |           | not null |                                            | extended |             |              | 
+ semana         | integer              |           | not null |                                            | plain    |             |              | 
+ efectivo       | double precision     |           |          |                                            | plain    |             |              | 
+ prop_ef        | double precision     |           |          |                                            | plain    |             |              | 
+ pay            | double precision     |           |          |                                            | plain    |             |              | 
+ prop_pa        | double precision     |           |          |                                            | plain    |             |              | 
+ terminales     | double precision     |           |          |                                            | plain    |             |              | 
+ prop_te        | double precision     |           |          |                                            | plain    |             |              | 
+ uber_eats      | double precision     |           |          |                                            | plain    |             |              | 
+ rappi          | double precision     |           |          |                                            | plain    |             |              | 
+ cortesias      | double precision     |           |          |                                            | plain    |             |              | 
+ otros_ingresos | double precision     |           |          |                                            | plain    |             |              | 
+ total_venta    | double precision     |           |          |                                            | plain    |             |              | 
+ total_propina  | double precision     |           |          |                                            | plain    |             |              | 
+Indexes:
+    "ventas_diarias_pkey" PRIMARY KEY, btree (id)
+    "ix_ventas_diarias_fecha" btree (fecha)
+    "ix_ventas_diarias_id" btree (id)
+Not-null constraints:
+    "ventas_diarias_id_not_null" NOT NULL "id"
+    "ventas_diarias_fecha_not_null" NOT NULL "fecha"
+    "ventas_diarias_mes_not_null" NOT NULL "mes"
+    "ventas_diarias_semana_not_null" NOT NULL "semana"
+Access method: heap
+
