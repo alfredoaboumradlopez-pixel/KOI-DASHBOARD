@@ -46,11 +46,11 @@ export const CategorizarGastos = ({ restauranteIdOverride }: CategorizarGastosPr
   const [toasts, setToasts] = useState<Toast[]>([]);
 
   // ── Contadores derivados — misma lógica que los filtros de tab ────────
-  // useMemo: se actualizan automáticamente al guardar (setItems) sin recargar.
-  const totalSinCat  = useMemo(() => items.filter(i => !i.catalogo_cuenta_id).length, [items]);
-  const totalEnOtros = useMemo(() => items.filter(i => i.es_otros).length, [items]);
+  // _guardado=true → ya procesado en esta sesión, no cuenta como pendiente
+  const totalSinCat  = useMemo(() => items.filter(i => !i.catalogo_cuenta_id && !i._guardado).length, [items]);
+  const totalEnOtros = useMemo(() => items.filter(i => i.es_otros && !i._guardado).length, [items]);
   const montoTotal   = useMemo(
-    () => items.filter(i => !i.catalogo_cuenta_id || i.es_otros).reduce((s, i) => s + (i.monto || 0), 0),
+    () => items.filter(i => (!i.catalogo_cuenta_id || i.es_otros) && !i._guardado).reduce((s, i) => s + (i.monto || 0), 0),
     [items],
   );
 
@@ -85,9 +85,11 @@ export const CategorizarGastos = ({ restauranteIdOverride }: CategorizarGastosPr
   // ── Filtrado en memoria ───────────────────────────────────────────────
   const itemsFiltrados = useMemo(() => {
     let lista = items;
-    // "Sin categoría" = catalogo_cuenta_id IS NULL (idéntico al contador)
-    if (tabFiltro === "pendientes")  lista = lista.filter(i => !i.catalogo_cuenta_id);
-    if (tabFiltro === "en_revision") lista = lista.filter(i => i.es_otros);
+    // "Sin categoría" = catalogo_cuenta_id IS NULL y aún no guardado en esta sesión
+    if (tabFiltro === "pendientes")  lista = lista.filter(i => !i.catalogo_cuenta_id && !i._guardado);
+    // "En revisión" = va a 6008 y no es categoría operativa conocida
+    if (tabFiltro === "en_revision") lista = lista.filter(i => i.es_otros && !i._guardado);
+    // "Todos" muestra todo, incluyendo los ya guardados en esta sesión
     if (busqueda.trim()) {
       const q = busqueda.toLowerCase();
       lista = lista.filter(i =>
@@ -108,21 +110,30 @@ export const CategorizarGastos = ({ restauranteIdOverride }: CategorizarGastosPr
         ? `/api/gastos/${item.id}/cambiar-categoria`
         : `/api/gastos-diarios/${item.id}/cambiar-categoria`;
 
-      console.log(`[save] PUT ${endpoint}`, { categoria: nuevaCategoria });
+      console.log(`[CategorizarGastos] PUT ${endpoint}`, { categoria: nuevaCategoria });
       const res = await api.put(endpoint, { categoria: nuevaCategoria });
-      console.log(`[save] respuesta:`, res);
+      console.log(`[CategorizarGastos] Respuesta backend:`, res);
+      // res = { ok: true, id, categoria, catalogo_cuenta_id }
 
-      // Actualizar local: ya no es "sin categorizar" ni "en revisión"
-      // catalogo_cuenta_id: -1 es truthy → desaparece del filtro pendientes
+      // Actualizar local con los valores REALES confirmados por el backend:
+      // - categoria_texto: lo que guardó (puede diferir si el backend normaliza)
+      // - catalogo_cuenta_id: el ID real asignado (no -1 ni placeholder)
+      // - _guardado: marca visual de "guardado en esta sesión"
       setItems(prev => prev.map(i =>
         i.id === item.id && i.tabla === item.tabla
-          ? { ...i, categoria_texto: nuevaCategoria, catalogo_cuenta_id: -1, es_otros: false }
+          ? {
+              ...i,
+              categoria_texto:   res.categoria         ?? nuevaCategoria,
+              catalogo_cuenta_id: res.catalogo_cuenta_id ?? i.catalogo_cuenta_id,
+              es_otros:          false,
+              _guardado:         true,
+            }
           : i
       ));
-      addToast(`✓ ${item.proveedor || "Gasto"} → ${nuevaCategoria}`);
+      addToast(`✓ ${item.proveedor || "Gasto"} → ${res.categoria ?? nuevaCategoria}`);
     } catch (err: any) {
-      console.error(`[save] ERROR en ${item.tabla} id=${item.id}:`, err);
-      addToast(`✗ Error al guardar ${item.proveedor || "gasto"}`, "error");
+      console.error(`[CategorizarGastos] ERROR al guardar ${item.tabla} id=${item.id}:`, err);
+      addToast(`✗ Error al guardar "${item.proveedor || item.id}"`, "error");
     }
     setSaving(prev => { const n = new Set(prev); n.delete(key); return n; });
   };
@@ -301,7 +312,7 @@ export const CategorizarGastos = ({ restauranteIdOverride }: CategorizarGastosPr
                 display: "grid", gridTemplateColumns: "40px 1fr 220px 110px",
                 alignItems: "start",
                 padding: "12px 20px", borderBottom: "1px solid #F9FAFB",
-                background: isChecked ? "#FAFFFE" : item.es_otros ? "#FFFDF0" : "transparent",
+                background: item._guardado ? "#F0FDF4" : isChecked ? "#FAFFFE" : item.es_otros ? "#FFFDF0" : "transparent",
                 transition: "background 0.1s",
               }}>
 
@@ -312,11 +323,14 @@ export const CategorizarGastos = ({ restauranteIdOverride }: CategorizarGastosPr
                 {/* Info del gasto */}
                 <div style={{ paddingRight: "12px" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" as const }}>
-                    <span style={{ fontSize: "13px", fontWeight: "600", color: "#111827" }}>{item.proveedor || "—"}</span>
-                    {item.es_otros && (
+                    <span style={{ fontSize: "13px", fontWeight: "600", color: item._guardado ? "#059669" : "#111827" }}>{item.proveedor || "—"}</span>
+                    {item._guardado && (
+                      <span style={{ fontSize: "9px", padding: "1px 5px", borderRadius: "4px", background: "#D1FAE5", color: "#065F46", fontWeight: "700" }}>✓ GUARDADO</span>
+                    )}
+                    {!item._guardado && item.es_otros && (
                       <span style={{ fontSize: "9px", padding: "1px 5px", borderRadius: "4px", background: "#FDE68A", color: "#B45309", fontWeight: "700" }}>REVISAR</span>
                     )}
-                    {!item.catalogo_cuenta_id && (
+                    {!item._guardado && !item.catalogo_cuenta_id && (
                       <span style={{ fontSize: "9px", padding: "1px 5px", borderRadius: "4px", background: "#FEE2E2", color: "#B91C1C", fontWeight: "700" }}>SIN CATEGORÍA</span>
                     )}
                   </div>
