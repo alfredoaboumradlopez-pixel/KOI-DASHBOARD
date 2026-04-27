@@ -342,6 +342,9 @@ def cambiar_categoria_gasto(
     """
     Actualiza la categoría operativa (texto) de un gasto y
     automáticamente re-mapea catalogo_cuenta_id usando el mapa canónico.
+
+    IMPORTANTE: db.commit() se llama ANTES del audit log para garantizar
+    que el save principal nunca falle por problemas con la tabla audit_log.
     """
     _check_rol(current_user)
     g = db.query(models.Gasto).filter(models.Gasto.id == gasto_id).first()
@@ -354,9 +357,20 @@ def cambiar_categoria_gasto(
     g.categoria = body.categoria.strip().upper()
     g.catalogo_cuenta_id = _resolver_cuenta_id(db, restaurante_id, g.categoria)
 
-    _audit(db, current_user, restaurante_id, "gastos", gasto_id,
-           f"categoria: {old_cat} → {g.categoria}; cuenta_id → {g.catalogo_cuenta_id}")
+    # ── Commit principal — PRIMERO, antes del audit ──────────────────────
     db.commit()
+    db.refresh(g)
+
+    # ── Audit log (best-effort: no bloquea si falla) ─────────────────────
+    try:
+        _audit(db, current_user, restaurante_id, "gastos", gasto_id,
+               f"categoria: {old_cat} → {g.categoria}; cuenta_id → {g.catalogo_cuenta_id}")
+        db.commit()
+    except Exception as audit_err:
+        db.rollback()
+        print(f"[WARN] audit_log failed (non-blocking) gasto {gasto_id}: {audit_err}")
+
+    print(f"[OK] cambiar_categoria gasto {gasto_id}: {old_cat!r} → {g.categoria!r} cuenta_id={g.catalogo_cuenta_id}")
     return {
         "ok": True, "id": gasto_id,
         "categoria": g.categoria,
@@ -383,9 +397,20 @@ def cambiar_categoria_gasto_diario(
     g.categoria = body.categoria.strip().upper()
     g.catalogo_cuenta_id = _resolver_cuenta_id(db, restaurante_id, g.categoria)
 
-    _audit(db, current_user, restaurante_id, "gastos_diarios", gasto_id,
-           f"categoria: {old_cat} → {g.categoria}; cuenta_id → {g.catalogo_cuenta_id}")
+    # ── Commit principal — PRIMERO, antes del audit ──────────────────────
     db.commit()
+    db.refresh(g)
+
+    # ── Audit log (best-effort: no bloquea si falla) ─────────────────────
+    try:
+        _audit(db, current_user, restaurante_id, "gastos_diarios", gasto_id,
+               f"categoria: {old_cat} → {g.categoria}; cuenta_id → {g.catalogo_cuenta_id}")
+        db.commit()
+    except Exception as audit_err:
+        db.rollback()
+        print(f"[WARN] audit_log failed (non-blocking) gasto_diario {gasto_id}: {audit_err}")
+
+    print(f"[OK] cambiar_categoria gasto_diario {gasto_id}: {old_cat!r} → {g.categoria!r} cuenta_id={g.catalogo_cuenta_id}")
     return {
         "ok": True, "id": gasto_id,
         "categoria": g.categoria,
