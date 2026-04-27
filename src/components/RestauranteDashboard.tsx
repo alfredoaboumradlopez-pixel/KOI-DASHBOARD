@@ -34,6 +34,7 @@ import { CierreTurno } from "./CierreTurno";
 import { CapturaGastos } from "./CapturaGastos";
 import { Nomina } from "./Nomina";
 import { Tesoreria } from "./Tesoreria";
+import { RestauranteProvider } from "../context/RestauranteContext";
 
 type SubModule =
   | "dashboard"
@@ -160,6 +161,7 @@ export const RestauranteDashboard = () => {
 
   // ── Render principal ─────────────────────────────────────────────────────
   return (
+    <RestauranteProvider value={{ restauranteId, nombre: restaurante.nombre, slug }}>
     <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
       {/* ── Breadcrumb ──────────────────────────────────────────────── */}
       <div
@@ -324,5 +326,6 @@ export const RestauranteDashboard = () => {
 
       {subModule === "tesoreria" && <Tesoreria />}
     </div>
+    </RestauranteProvider>
   );
 };

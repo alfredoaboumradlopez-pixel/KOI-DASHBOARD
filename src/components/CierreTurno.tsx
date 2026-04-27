@@ -3,11 +3,13 @@ import { ArqueoCaja } from "./ArqueoCaja";
 import React, { useState } from "react";
 import { api } from "../services/api";
 import { Save, Loader2, CheckCircle, AlertTriangle } from "lucide-react";
+import { useRestaurante } from "../context/RestauranteContext";
 
 const formatMXN = (amount: number) =>
   new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(amount);
 
 export const CierreTurno: React.FC = () => {
+  const { restauranteId } = useRestaurante();
   const [tabCierre, setTabCierre] = useState<"ventas"|"propinas"|"historial">("ventas");
   const [fecha, setFecha] = useState(new Date().toISOString().split("T")[0]);
   const [responsable, setResponsable] = useState("");
@@ -54,6 +56,7 @@ export const CierreTurno: React.FC = () => {
         cortesias: n(cortesias), otros_ingresos: n(otrosIngresos),
         semana_numero: parseInt(semana) || 0, gastos: [], propinas: [],
         efectivo_fisico: n(efectivoFisico) || null, notas: notas || null,
+        restaurante_id: restauranteId,
       });
       setSuccess("Ventas registradas!"); setTimeout(() => setSuccess(null), 3000);
       setVentasEfectivo(""); setVentasParrot(""); setVentasTerminales("");
@@ -69,7 +72,7 @@ export const CierreTurno: React.FC = () => {
     try {
       const m = parseInt(propinaFecha.split("-")[1]);
       const a = parseInt(propinaFecha.split("-")[0]);
-      const cierres = await api.get("/api/cierre-turno?mes=" + m + "&anio=" + a);
+      const cierres = await api.get(`/api/cierre-turno?mes=${m}&anio=${a}&restaurante_id=${restauranteId}`);
       const cierre = Array.isArray(cierres) ? cierres.find((c: any) => c.fecha === propinaFecha) : null;
       if (!cierre) {
         await api.post("/api/cierre-turno", {
@@ -79,6 +82,7 @@ export const CierreTurno: React.FC = () => {
           ventas_parrot: 0, ventas_terminales: 0, ventas_uber: 0, ventas_rappi: 0,
           cortesias: 0, otros_ingresos: 0, semana_numero: 0,
           gastos: [], propinas: [], efectivo_fisico: null, notas: "Propinas - " + propinaResponsable,
+          restaurante_id: restauranteId,
         });
       } else {
         await api.put("/api/cierre-turno/" + cierre.id + "/propinas", {

@@ -439,10 +439,12 @@ def crear_cierre_turno(
 
 
 @app.get("/api/cierre-turno", response_model=List[schemas.CierreTurnoResponse])
-def listar_cierres(mes: Optional[int] = None, anio: Optional[int] = None, limit: int = 30, db: Session = Depends(get_db)):
+def listar_cierres(mes: Optional[int] = None, anio: Optional[int] = None, limit: int = 30, restaurante_id: Optional[int] = None, db: Session = Depends(get_db)):
     query = db.query(models.CierreTurno)
     if mes and anio:
         query = query.filter(extract("month", models.CierreTurno.fecha) == mes, extract("year", models.CierreTurno.fecha) == anio)
+    if restaurante_id is not None:
+        query = query.filter(models.CierreTurno.restaurante_id == restaurante_id)
     return query.order_by(models.CierreTurno.fecha.desc()).limit(limit).all()
 
 
@@ -499,7 +501,7 @@ def crear_gasto(gasto: schemas.GastoCreate, db: Session = Depends(get_db)):
 
 
 @app.get("/api/gastos", response_model=List[schemas.GastoResponse])
-def listar_gastos(fecha_inicio: Optional[date] = None, fecha_fin: Optional[date] = None, categoria: Optional[str] = None, db: Session = Depends(get_db)):
+def listar_gastos(fecha_inicio: Optional[date] = None, fecha_fin: Optional[date] = None, categoria: Optional[str] = None, restaurante_id: Optional[int] = None, db: Session = Depends(get_db)):
     query = db.query(models.Gasto)
     if fecha_inicio:
         query = query.filter(models.Gasto.fecha >= fecha_inicio)
@@ -507,6 +509,8 @@ def listar_gastos(fecha_inicio: Optional[date] = None, fecha_fin: Optional[date]
         query = query.filter(models.Gasto.fecha <= fecha_fin)
     if categoria:
         query = query.filter(models.Gasto.categoria == categoria)
+    if restaurante_id is not None:
+        query = query.filter(models.Gasto.restaurante_id == restaurante_id)
     return query.order_by(models.Gasto.fecha.desc()).all()
 
 
@@ -993,8 +997,11 @@ def crear_proveedor(prov: schemas.ProveedorCreate, db: Session = Depends(get_db)
     return db_prov
 
 @app.get("/api/proveedores", response_model=List[schemas.ProveedorResponse])
-def listar_proveedores(db: Session = Depends(get_db)):
-    return db.query(models.Proveedor).filter(models.Proveedor.activo == True).all()
+def listar_proveedores(restaurante_id: Optional[int] = None, db: Session = Depends(get_db)):
+    query = db.query(models.Proveedor).filter(models.Proveedor.activo == True)
+    if restaurante_id is not None:
+        query = query.filter(models.Proveedor.restaurante_id == restaurante_id)
+    return query.all()
 
 @app.post("/api/empleados", response_model=schemas.EmpleadoResponse, status_code=201)
 def crear_empleado(emp: schemas.EmpleadoCreate, db: Session = Depends(get_db)):
@@ -1005,8 +1012,11 @@ def crear_empleado(emp: schemas.EmpleadoCreate, db: Session = Depends(get_db)):
     return db_emp
 
 @app.get("/api/empleados", response_model=List[schemas.EmpleadoResponse])
-def listar_empleados(db: Session = Depends(get_db)):
-    return db.query(models.Empleado).filter(models.Empleado.activo == True).options(selectinload(models.Empleado.documentos)).all()
+def listar_empleados(restaurante_id: Optional[int] = None, db: Session = Depends(get_db)):
+    query = db.query(models.Empleado).filter(models.Empleado.activo == True).options(selectinload(models.Empleado.documentos))
+    if restaurante_id is not None:
+        query = query.filter(models.Empleado.restaurante_id == restaurante_id)
+    return query.all()
 
 @app.post("/api/nomina", response_model=schemas.NominaPagoResponse, status_code=201)
 def registrar_pago_nomina(pago: schemas.NominaPagoCreate, db: Session = Depends(get_db)):
@@ -1386,8 +1396,10 @@ PAGOS_FIJOS_SEED = [
 
 
 @app.get("/api/pagos-recurrentes", response_model=List[schemas.PagoRecurrenteResponse])
-def get_pagos_recurrentes(filtro: Optional[str] = None, db: Session = Depends(get_db)):
+def get_pagos_recurrentes(filtro: Optional[str] = None, restaurante_id: Optional[int] = None, db: Session = Depends(get_db)):
     q = db.query(models.PagoRecurrente).filter(models.PagoRecurrente.activo == True)
+    if restaurante_id is not None:
+        q = q.filter(models.PagoRecurrente.restaurante_id == restaurante_id)
     if filtro == "urgentes":
         dia = date.today().day
         q = q.filter(models.PagoRecurrente.dia_limite != None, models.PagoRecurrente.dia_limite >= dia, models.PagoRecurrente.dia_limite <= dia + 3)

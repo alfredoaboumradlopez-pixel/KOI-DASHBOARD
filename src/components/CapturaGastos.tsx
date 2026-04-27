@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { UploadCloud, ChevronDown, ChevronUp, Trash2, Edit2, Pencil, FileText as FileTextIcon, FileText, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
 import { api } from '../services/api';
 import { CuentasPorPagar } from "./CuentasPorPagar";
+import { useRestaurante } from "../context/RestauranteContext";
 
 const formatMXN = (n: number) => n.toLocaleString("es-MX", { style: "currency", currency: "MXN" });
 
@@ -16,6 +17,7 @@ interface ExpenseFormData {
 }
 
 export const CapturaGastos: React.FC = () => {
+  const { restauranteId } = useRestaurante();
   const [CATEGORIAS, setCATEGORIAS] = useState<string[]>([]);
   useEffect(() => {
     api.get("/api/categorias").then((data: any[]) => setCATEGORIAS(data.map(c => c.nombre))).catch(() => {});
@@ -86,6 +88,7 @@ export const CapturaGastos: React.FC = () => {
           metodo_pago: g.metodo_pago,
           comprobante: g.comprobante,
           descripcion: g.descripcion,
+          restaurante_id: restauranteId,
         });
         ok++;
       } catch(e) {}
@@ -134,6 +137,7 @@ export const CapturaGastos: React.FC = () => {
             metodo_pago: rapidoMetodo,
             comprobante: rapidoComprobante,
             descripcion: linea.descripcion || null,
+            restaurante_id: restauranteId,
           });
         }
       } else {
@@ -145,6 +149,7 @@ export const CapturaGastos: React.FC = () => {
           metodo_pago: rapidoMetodo,
           comprobante: rapidoComprobante,
           descripcion: rapidoDesc || null,
+          restaurante_id: restauranteId,
         });
       }
       setRapidoSuccess(true);
@@ -218,7 +223,7 @@ export const CapturaGastos: React.FC = () => {
   const cancelarEdicion = () => { setEditingId(null); setEditGasto(null); };
 
   const fetchGastos = async () => {
-    try { const g = await api.get("/api/gastos"); setGastosLista(Array.isArray(g) ? g : []); } catch(e) {}
+    try { const g = await api.get(`/api/gastos?restaurante_id=${restauranteId}`); setGastosLista(Array.isArray(g) ? g : []); } catch(e) {}
   };
   useEffect(() => { fetchGastos(); }, []);
 
@@ -233,7 +238,7 @@ export const CapturaGastos: React.FC = () => {
   useEffect(() => {
     const fetchProv = async () => {
       try {
-        const data = await api.get("/api/proveedores");
+        const data = await api.get(`/api/proveedores?restaurante_id=${restauranteId}`);
         setProveedores(data);
       } catch(e) {}
     };
@@ -335,6 +340,7 @@ export const CapturaGastos: React.FC = () => {
         metodo_pago: formData.metodoPago,
         comprobante: formData.comprobante || 'SIN_COMPROBANTE',
         descripcion: formData.descripcion || null,
+        restaurante_id: restauranteId,
       });
       setSuccessMsg('Gasto registrado exitosamente.');
       setTimeout(() => {

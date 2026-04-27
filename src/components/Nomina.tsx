@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { api, API_BASE } from "../services/api";
 import { Users, Trash2, AlertTriangle, CheckCircle, Clock, FileText, Bell, Calendar, Shield, Plus, X, Edit2, Banknote } from "lucide-react";
+import { useRestaurante } from "../context/RestauranteContext";
 
 interface DocEmpleado {
   id: number;
@@ -64,11 +65,12 @@ function diasFin(f?: string): number | null {
 const emptyNuevo = { nombre:'', puesto:'', salario_mensual:9000, fecha_ingreso:new Date().toISOString().slice(0,10), fecha_nacimiento:'', dia_pago:10, frecuencia_pago:'SEMANAL' as const, tipo_contrato:'INDEFINIDO' as const, contrato_firmado:false, imss_registrado:false, numero_imss:'', rfc:'', curp:'', cuenta_banco:'', fecha_fin_contrato:'' };
 
 export const Nomina = () => {
+  const { restauranteId } = useRestaurante();
   const [emps, setEmps] = useState<Empleado[]>([]);
 
   const fetchEmpleados = async () => {
     try {
-      const data = await api.get("/api/empleados");
+      const data = await api.get(`/api/empleados?restaurante_id=${restauranteId}`);
       if (Array.isArray(data)) {
         setEmps(data.map((e: any) => ({
           id: e.id,
@@ -165,6 +167,7 @@ export const Nomina = () => {
         curp: nuevoEmp.curp || null,
         numero_imss: nuevoEmp.numero_imss || null,
         cuenta_banco: nuevoEmp.cuenta_banco || null,
+        restaurante_id: restauranteId,
       });
       if (pendingFiles.length > 0 && created?.id) {
         for (const file of pendingFiles) {

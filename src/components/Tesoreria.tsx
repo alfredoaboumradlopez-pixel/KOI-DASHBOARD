@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Calendar, AlertTriangle, CheckCircle, Bell, Plus, Edit2, Trash2, X } from "lucide-react";
 import { api } from "../services/api";
+import { useRestaurante } from "../context/RestauranteContext";
 
 const formatMXN = (n: number) => n.toLocaleString("es-MX", { style: "currency", currency: "MXN" });
 
@@ -69,6 +70,7 @@ const statusColors = {
 };
 
 export const Tesoreria = () => {
+  const { restauranteId } = useRestaurante();
   const [CATEGORIAS, setCATEGORIAS] = useState<string[]>([]);
   useEffect(() => {
     api.get("/api/categorias").then((data: any[]) => setCATEGORIAS(data.map(c => c.nombre))).catch(() => {});
@@ -84,7 +86,7 @@ export const Tesoreria = () => {
 
   const fetchPagos = async () => {
     try {
-      const data = await api.get("/api/pagos-recurrentes");
+      const data = await api.get(`/api/pagos-recurrentes?restaurante_id=${restauranteId}`);
       setPagos(data);
     } catch (e) {
       console.error("Error cargando pagos:", e);
@@ -135,7 +137,7 @@ export const Tesoreria = () => {
       if (editId) {
         await api.put(`/api/pagos-recurrentes/${editId}`, body);
       } else {
-        await api.post("/api/pagos-recurrentes", body);
+        await api.post("/api/pagos-recurrentes", { ...body, restaurante_id: restauranteId });
       }
       setShowForm(false);
       await fetchPagos();
