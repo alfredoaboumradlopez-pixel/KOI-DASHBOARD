@@ -8,6 +8,7 @@ const menuItems = [
   { name: 'Dashboard Gastos', icon: BarChart3, path: '/dashboard-gastos' },
   { name: 'Reportes', icon: BarChart3, path: '/reportes' },
   { name: 'Calendario Pagos', icon: BarChart3, path: '/tesoreria' },
+  { name: 'Nómina', icon: Users, path: '/nomina' },
 ];
 
 export const Sidebar = () => {
