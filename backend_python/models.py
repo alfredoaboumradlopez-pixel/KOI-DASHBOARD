@@ -405,6 +405,7 @@ class AlertaLog(Base):
     valor_detectado = Column(Float, nullable=True)
     umbral_config = Column(Float, nullable=True)
     revisada = Column(Boolean, default=False)
+    severidad = Column(String(10), default='WARNING')  # 'INFO' | 'WARNING' | 'CRITICAL'
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class AuditLog(Base):

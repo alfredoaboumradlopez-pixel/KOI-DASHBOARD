@@ -1,7 +1,7 @@
 """
 KOI Dashboard - API Principal
 """
-from fastapi import FastAPI, Request, Depends, HTTPException, UploadFile, File, Query, status
+from fastapi import FastAPI, Request, Depends, HTTPException, UploadFile, File, Query, status, BackgroundTasks
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 import os
@@ -45,6 +45,7 @@ from .routers.auth_router import router as auth_router
 from .routers.restaurantes_router import router as restaurantes_router
 from .routers.pl_router import router as pl_router
 from .routers.gastos_categorizacion_router import router as gastos_cat_router
+from .routers.alertas_router import router as alertas_router
 
 models.Base.metadata.create_all(bind=engine)
 
@@ -178,6 +179,34 @@ try:
 except Exception as _e:
     print(f"Seed multi-tenant error: {_e}")
 
+# Migracion: severidad en alertas_log + GASTO_SIN_CATEGORIA config
+try:
+    _insp_al = _inspect(engine)
+    _cols_al = [c['name'] for c in _insp_al.get_columns('alertas_log')]
+    with engine.begin() as _conn_al:
+        if 'severidad' not in _cols_al:
+            _conn_al.execute(_text("ALTER TABLE alertas_log ADD COLUMN severidad VARCHAR(10) DEFAULT 'WARNING'"))
+            print("  severidad agregado a alertas_log")
+except Exception as _e_al:
+    print(f"Migracion alertas_log.severidad: {_e_al}")
+
+# Seed GASTO_SIN_CATEGORIA si no existe (retrocompatible)
+try:
+    from sqlalchemy.orm import Session as _Session2
+    with _Session2(engine) as _s2:
+        _koi2 = _s2.query(models.Restaurante).filter(models.Restaurante.slug == 'koi').first()
+        if _koi2:
+            _gsc = _s2.query(models.AlertaConfig).filter(
+                models.AlertaConfig.restaurante_id == _koi2.id,
+                models.AlertaConfig.tipo == 'GASTO_SIN_CATEGORIA',
+            ).first()
+            if not _gsc:
+                _s2.add(models.AlertaConfig(restaurante_id=_koi2.id, tipo='GASTO_SIN_CATEGORIA', umbral=0.0, activo=True))
+                _s2.commit()
+                print("AlertaConfig GASTO_SIN_CATEGORIA agregada a KOI")
+except Exception as _e_gsc:
+    print(f"Seed GASTO_SIN_CATEGORIA: {_e_gsc}")
+
 # Migracion: agregar catalogo_cuenta_id a gastos y gastos_diarios
 try:
     _insp_cc = _inspect(engine)
@@ -221,6 +250,7 @@ app.include_router(auth_router)
 app.include_router(restaurantes_router)
 app.include_router(pl_router)
 app.include_router(gastos_cat_router)
+app.include_router(alertas_router)
 
 UPLOADS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
 os.makedirs(os.path.join(UPLOADS_DIR, "documentos"), exist_ok=True)
@@ -305,7 +335,12 @@ def get_ventas(mes: Optional[str] = None, fecha_inicio: Optional[date] = None, f
 
 
 @app.post("/api/cierre-turno", response_model=schemas.CierreTurnoResponse, status_code=status.HTTP_201_CREATED)
-def crear_cierre_turno(cierre: schemas.CierreTurnoCreate, db: Session = Depends(get_db)):
+def crear_cierre_turno(
+    cierre: schemas.CierreTurnoCreate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: Optional[models.Usuario] = Depends(get_optional_user),
+):
     existing = db.query(models.CierreTurno).filter(models.CierreTurno.fecha == cierre.fecha).first()
     if existing:
         # Actualizar el cierre existente
@@ -340,6 +375,12 @@ def crear_cierre_turno(cierre: schemas.CierreTurnoCreate, db: Session = Depends(
             existing.notas = cierre.notas
         db.commit()
         db.refresh(existing)
+        # Trigger alertas en background
+        try:
+            from .jobs.alertas_job import alertas_job as _aj
+            _rid = (current_user.restaurante_id if current_user and current_user.restaurante_id else None) or existing.restaurante_id or 1
+            background_tasks.add_task(_aj.evaluar_restaurante, db, _rid)
+        except Exception: pass
         return existing
     total_venta = cierre.ventas_efectivo + cierre.ventas_parrot + cierre.ventas_terminales + cierre.ventas_uber + cierre.ventas_rappi + cierre.cortesias + cierre.otros_ingresos
     total_propinas_canales = cierre.propinas_efectivo + cierre.propinas_parrot + cierre.propinas_terminales
@@ -385,6 +426,12 @@ def crear_cierre_turno(cierre: schemas.CierreTurnoCreate, db: Session = Depends(
     try:
         db.commit()
         db.refresh(db_cierre)
+        # Trigger alertas en background
+        try:
+            from .jobs.alertas_job import alertas_job as _aj2
+            _rid2 = (current_user.restaurante_id if current_user and current_user.restaurante_id else None) or db_cierre.restaurante_id or 1
+            background_tasks.add_task(_aj2.evaluar_restaurante, db, _rid2)
+        except Exception: pass
         return db_cierre
     except Exception as e:
         db.rollback()

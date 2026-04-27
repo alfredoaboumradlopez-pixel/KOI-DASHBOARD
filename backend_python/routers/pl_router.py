@@ -5,7 +5,7 @@ from datetime import date, datetime, timedelta
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, extract
 from ..database import get_db
 from .. import models
 from ..core.auth import get_optional_user, get_restaurante_id
@@ -143,6 +143,111 @@ def pl_resumen_semanas(
         })
     resultado.reverse()
     return {"generado_en": datetime.utcnow().isoformat(), "semanas": resultado}
+
+
+@router.get("/{restaurante_id}/debug")
+def pl_debug(
+    restaurante_id: int,
+    mes: int = 0,
+    anio: int = 0,
+    db: Session = Depends(get_db),
+    current_user: Optional[models.Usuario] = Depends(get_optional_user),
+):
+    """
+    Endpoint de diagnóstico — solo SUPER_ADMIN.
+    Muestra conteos y sumas crudas sin pasar por el PLService,
+    para verificar qué datos existen en la BD para el restaurante.
+    """
+    if current_user is None or current_user.rol != "SUPER_ADMIN":
+        raise HTTPException(status_code=403, detail={"detail": "Solo SUPER_ADMIN", "code": "FORBIDDEN"})
+
+    hoy = date.today()
+    if not mes:
+        mes = hoy.month
+    if not anio:
+        anio = hoy.year
+
+    from calendar import monthrange
+    _, last_day = monthrange(anio, mes)
+    fecha_inicio = date(anio, mes, 1)
+    fecha_fin = date(anio, mes, last_day)
+
+    # Cierres
+    cierres = db.query(models.CierreTurno).filter(
+        models.CierreTurno.restaurante_id == restaurante_id,
+        models.CierreTurno.fecha >= fecha_inicio,
+        models.CierreTurno.fecha <= fecha_fin,
+    ).all()
+    ventas_raw = sum(
+        (c.ventas_efectivo or 0) + (c.ventas_parrot or 0) + (c.ventas_terminales or 0) +
+        (c.ventas_uber or 0) + (c.ventas_rappi or 0) + (c.otros_ingresos or 0)
+        for c in cierres
+    )
+    cierre_ids = [c.id for c in cierres]
+
+    # Gastos diarios (ligados a esos cierres)
+    gd_count = 0
+    gd_sum = 0.0
+    gd_con_cat = 0
+    gd_sin_cat = 0
+    if cierre_ids:
+        gds = db.query(models.GastoDiario).filter(
+            models.GastoDiario.cierre_id.in_(cierre_ids)
+        ).all()
+        gd_count = len(gds)
+        gd_sum = sum(g.monto or 0 for g in gds)
+        gd_con_cat = sum(1 for g in gds if g.catalogo_cuenta_id is not None)
+        gd_sin_cat = sum(1 for g in gds if g.catalogo_cuenta_id is None)
+
+    # Gastos (tabla gastos) por restaurante_id y fecha
+    gs = db.query(models.Gasto).filter(
+        models.Gasto.restaurante_id == restaurante_id,
+        models.Gasto.fecha >= fecha_inicio,
+        models.Gasto.fecha <= fecha_fin,
+    ).all()
+    g_count = len(gs)
+    g_sum = sum(g.monto or 0 for g in gs)
+    g_con_cat = sum(1 for g in gs if g.catalogo_cuenta_id is not None)
+    g_sin_cat = sum(1 for g in gs if g.catalogo_cuenta_id is None)
+
+    # Nómina
+    nomina_sum = db.query(func.sum(models.NominaPago.neto_pagado)).filter(
+        models.NominaPago.restaurante_id == restaurante_id,
+        models.NominaPago.fecha_pago >= fecha_inicio,
+        models.NominaPago.fecha_pago <= fecha_fin,
+    ).scalar() or 0.0
+
+    # Todos los restaurantes para verificar cuál tiene los datos
+    restaurantes_con_cierres = db.query(
+        models.CierreTurno.restaurante_id,
+        func.count(models.CierreTurno.id).label("cnt"),
+        func.sum(models.CierreTurno.total_venta).label("total"),
+    ).filter(
+        models.CierreTurno.fecha >= fecha_inicio,
+        models.CierreTurno.fecha <= fecha_fin,
+        models.CierreTurno.restaurante_id != None,
+    ).group_by(models.CierreTurno.restaurante_id).all()
+
+    return {
+        "restaurante_id_usado": restaurante_id,
+        "periodo": {"inicio": str(fecha_inicio), "fin": str(fecha_fin)},
+        "ventas_raw": round(ventas_raw, 2),
+        "cierres_encontrados": len(cierres),
+        "gastos_diarios_count": gd_count,
+        "gastos_diarios_sum": round(gd_sum, 2),
+        "gastos_diarios_con_catalogo": gd_con_cat,
+        "gastos_diarios_sin_catalogo": gd_sin_cat,
+        "gastos_count": g_count,
+        "gastos_sum": round(g_sum, 2),
+        "gastos_con_catalogo": g_con_cat,
+        "gastos_sin_catalogo": g_sin_cat,
+        "nomina_sum": round(float(nomina_sum), 2),
+        "cierres_por_restaurante_id": [
+            {"restaurante_id": r.restaurante_id, "cierres": r.cnt, "ventas_total": round(float(r.total or 0), 2)}
+            for r in restaurantes_con_cierres
+        ],
+        "hint": "Si ventas_raw==0 pero cierres_por_restaurante_id tiene datos, el restaurante_id no coincide con los datos históricos.",
+    }
 
 
 @router.get("/{restaurante_id}/kpis-hoy")
