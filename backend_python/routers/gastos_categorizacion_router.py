@@ -174,6 +174,7 @@ def gastos_sin_categorizar(
         items.append({
             "id": g.id, "tabla": "gastos",
             "fecha": str(g.fecha), "proveedor": g.proveedor,
+            "descripcion": g.descripcion or "",
             "categoria_texto": g.categoria, "monto": round(g.monto or 0, 2),
             "catalogo_cuenta_id": None, "cuenta_nombre": None,
             "es_otros": False,
@@ -190,6 +191,7 @@ def gastos_sin_categorizar(
             items.append({
                 "id": g.id, "tabla": "gastos",
                 "fecha": str(g.fecha), "proveedor": g.proveedor,
+                "descripcion": g.descripcion or "",
                 "categoria_texto": g.categoria, "monto": round(g.monto or 0, 2),
                 "catalogo_cuenta_id": id_otros, "cuenta_nombre": "Otros gastos",
                 "es_otros": _es_en_revision(g.categoria),
@@ -207,6 +209,7 @@ def gastos_sin_categorizar(
         items.append({
             "id": gd.id, "tabla": "gastos_diarios",
             "fecha": str(fecha), "proveedor": gd.proveedor,
+            "descripcion": gd.descripcion or "",
             "categoria_texto": gd.categoria, "monto": round(gd.monto or 0, 2),
             "catalogo_cuenta_id": None, "cuenta_nombre": None,
             "es_otros": False,
@@ -225,6 +228,7 @@ def gastos_sin_categorizar(
             items.append({
                 "id": gd.id, "tabla": "gastos_diarios",
                 "fecha": str(fecha), "proveedor": gd.proveedor,
+                "descripcion": gd.descripcion or "",
                 "categoria_texto": gd.categoria, "monto": round(gd.monto or 0, 2),
                 "catalogo_cuenta_id": id_otros, "cuenta_nombre": "Otros gastos",
                 "es_otros": _es_en_revision(gd.categoria),

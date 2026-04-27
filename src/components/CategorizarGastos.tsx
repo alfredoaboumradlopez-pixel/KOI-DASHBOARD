@@ -41,9 +41,15 @@ export const CategorizarGastos = ({ restauranteIdOverride }: CategorizarGastosPr
   const [bulkCat, setBulkCat] = useState<string>("");
   const [applyingBulk, setApplyingBulk] = useState(false);
 
-  const [totalSinCat, setTotalSinCat] = useState(0);
-  const [totalEnOtros, setTotalEnOtros] = useState(0);
-  const [montoTotal, setMontoTotal] = useState(0);
+  // ── Contadores derivados — misma lógica que los filtros de tab ────────
+  // Al derivar de `items` con useMemo, se actualizan automáticamente cada
+  // vez que se guarda un gasto (setItems), sin necesidad de recargar.
+  const totalSinCat    = useMemo(() => items.filter(i => !i.catalogo_cuenta_id).length, [items]);
+  const totalEnOtros   = useMemo(() => items.filter(i => i.es_otros).length, [items]);
+  const montoTotal     = useMemo(
+    () => items.filter(i => !i.catalogo_cuenta_id || i.es_otros).reduce((s, i) => s + (i.monto || 0), 0),
+    [items]
+  );
 
   // ── Carga de datos ────────────────────────────────────────────────────
   const cargar = async () => {
@@ -57,9 +63,7 @@ export const CategorizarGastos = ({ restauranteIdOverride }: CategorizarGastosPr
       ]);
 
       setItems(sinCatData.items || []);
-      setTotalSinCat(sinCatData.total_sin_catalogo || 0);
-      setTotalEnOtros(sinCatData.total_en_otros || 0);
-      setMontoTotal(sinCatData.monto_total || 0);
+      // totalSinCat / totalEnOtros / montoTotal se derivan de items via useMemo
 
       // Extraer nombres de categorías operativas
       const cats: string[] = Array.isArray(catData)
@@ -75,14 +79,16 @@ export const CategorizarGastos = ({ restauranteIdOverride }: CategorizarGastosPr
   // ── Filtrado en memoria ───────────────────────────────────────────────
   const itemsFiltrados = useMemo(() => {
     let lista = items;
-    if (tabFiltro === "pendientes") lista = lista.filter(i => !i.es_otros && !i.catalogo_cuenta_id);
+    // "Sin categoría" = catalogo_cuenta_id IS NULL (mismo criterio que el contador)
+    if (tabFiltro === "pendientes") lista = lista.filter(i => !i.catalogo_cuenta_id);
     if (tabFiltro === "en_revision") lista = lista.filter(i => i.es_otros);
 
     if (busqueda.trim()) {
       const q = busqueda.toLowerCase();
       lista = lista.filter(i =>
         (i.proveedor || "").toLowerCase().includes(q) ||
-        (i.categoria_texto || "").toLowerCase().includes(q)
+        (i.categoria_texto || "").toLowerCase().includes(q) ||
+        (i.descripcion || "").toLowerCase().includes(q)
       );
     }
     return lista;
@@ -136,7 +142,8 @@ export const CategorizarGastos = ({ restauranteIdOverride }: CategorizarGastosPr
     </div>
   );
 
-  const totalEnRevision = items.filter(i => i.es_otros).length;
+  // totalEnRevision = totalEnOtros (derived via useMemo above)
+  const totalEnRevision = totalEnOtros;
 
   return (
     <div style={{ maxWidth: "1000px", margin: "0 auto" }}>
@@ -284,7 +291,7 @@ export const CategorizarGastos = ({ restauranteIdOverride }: CategorizarGastosPr
                     {item.es_otros && (
                       <span style={{ fontSize: "9px", padding: "1px 5px", borderRadius: "4px", background: "#FDE68A", color: "#B45309", fontWeight: "700" }}>REVISAR</span>
                     )}
-                    {!item.catalogo_cuenta_id && !item.es_otros && (
+                    {!item.catalogo_cuenta_id && (
                       <span style={{ fontSize: "9px", padding: "1px 5px", borderRadius: "4px", background: "#FEE2E2", color: "#B91C1C", fontWeight: "700" }}>SIN CATEGORÍA</span>
                     )}
                   </div>
@@ -294,6 +301,12 @@ export const CategorizarGastos = ({ restauranteIdOverride }: CategorizarGastosPr
                       <span style={{ marginLeft: "4px", fontSize: "10px", color: "#C4B5FD" }}>· cierre</span>
                     )}
                   </div>
+                  {/* Descripción — campo clave para categorizar correctamente */}
+                  {(item.descripcion || item.categoria_texto) && (
+                    <div style={{ fontSize: "11px", color: "#6B7280", marginTop: "2px", fontStyle: "italic", maxWidth: "340px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const }}>
+                      {item.descripcion || item.categoria_texto}
+                    </div>
+                  )}
                 </div>
 
                 {/* Dropdown de categoría OPERATIVA — auto-save al cambiar */}

@@ -161,6 +161,7 @@ _CATEGORIA_MAP: dict[str, str] = {
     "iva":                  "impuestos",
 
     # ── Otros gastos (default) ────────────────────────────────────────────
+    "estacionamiento":      "otros_gastos",
     "papeleria":            "otros_gastos",    # ← corregido (antes: admin)
     "software":             "otros_gastos",    # ← corregido (antes: admin)
     "comisiones_bancarias": "otros_gastos",    # ← corregido (antes: admin)
