@@ -5,9 +5,13 @@ import { Tag, Check } from "lucide-react";
 
 const fmt = (n: number) => new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(n);
 
-export const CategorizarGastos = () => {
+interface CategorizarGastosProps {
+  restauranteIdOverride?: number;
+}
+
+export const CategorizarGastos = ({ restauranteIdOverride }: CategorizarGastosProps = {}) => {
   const { authUser } = useStore();
-  const restauranteId = authUser?.restaurante_id ?? 1;
+  const restauranteId = restauranteIdOverride ?? authUser?.restaurante_id ?? 1;
   const [items, setItems] = useState<any[]>([]);
   const [cuentas, setCuentas] = useState<any[]>([]);
   const [selecciones, setSelecciones] = useState<Record<string, number>>({});

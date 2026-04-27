@@ -19,6 +19,7 @@ import { ReconciliacionBancaria } from "./components/ReconciliacionBancaria";
 import { LoginPage } from "./components/LoginPage";
 import { PLDashboard } from "./components/PLDashboard";
 import { RBODashboard } from "./components/RBODashboard";
+import { RestauranteDashboard } from "./components/RestauranteDashboard";
 import { CategorizarGastos } from "./components/CategorizarGastos";
 import { api } from "./services/api";
 
@@ -203,6 +204,7 @@ function App() {
       {currentRoute === "/finder" && <InvoiceFinder />}
       {currentRoute === "/propinas" && <Propinas />}
       {currentRoute === "/rbo" && <RBODashboard />}
+      {currentRoute.startsWith("/rbo/restaurante/") && <RestauranteDashboard />}
       {currentRoute === "/pl-dashboard" && <PLDashboard />}
       {currentRoute === "/categorizar" && <CategorizarGastos />}
       {currentRoute === "/login" && <LoginPage />}

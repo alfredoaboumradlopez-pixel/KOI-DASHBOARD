@@ -177,8 +177,8 @@ export const RBODashboard = () => {
       ? plValues.reduce((s: number, p: any) => s + (p?.margen_neto_pct || 0), 0) /
         plValues.length
       : 0;
-  const totalAlertas = Object.values(alertasPorRestaurante).reduce(
-    (s, arr) => s + (Array.isArray(arr) ? arr.length : 0),
+  const totalAlertas: number = (Object.values(alertasPorRestaurante) as any[][]).reduce(
+    (s: number, arr: any[]) => s + (Array.isArray(arr) ? arr.length : 0),
     0
   );
 
