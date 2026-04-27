@@ -1,20 +1,22 @@
 /**
  * CategorizarGastos
  *
- * El equipo operativo de KOI ve categorías operativas (ABARROTES, BEBIDAS…),
- * NO códigos contables. El mapeo operativa→cuenta contable ocurre automáticamente
- * en el backend cada vez que se guarda una categoría.
+ * Muestra TODOS los gastos del restaurante (tabla gastos + gastos_diarios)
+ * con paginación y tabs para filtrar por estado.
  *
- * Flujo:
- *   1. Dropdown muestra categorías de la tabla `categorias` del restaurante
- *   2. Al seleccionar → PUT /api/gastos/{id}/cambiar-categoria con { categoria: "ABARROTES" }
- *   3. Backend actualiza categoria (texto) + catalogo_cuenta_id (auto-mapeado)
- *   4. PLService usa ambos campos; la cuenta contable es invisible al equipo
+ * Flujo de categorización:
+ *   1. Dropdown muestra categorías operativas (tabla `categorias`)
+ *   2. Al seleccionar → PUT /api/gastos/{id}/cambiar-categoria
+ *   3. Backend guarda categoria (texto) + catalogo_cuenta_id (auto-mapeado)
+ *   4. Fila se marca verde "✓ GUARDADO" en la sesión actual
  */
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { api } from "../services/api";
 import { useStore } from "../store/useStore";
-import { Tag, Check, AlertTriangle, Search, ChevronDown, RefreshCw, BarChart3, X } from "lucide-react";
+import {
+  Tag, Check, AlertTriangle, Search, ChevronDown,
+  RefreshCw, BarChart3, X, ChevronLeft, ChevronRight,
+} from "lucide-react";
 
 const fmt = (n: number) =>
   new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(n);
@@ -25,9 +27,10 @@ interface CategorizarGastosProps {
 
 type TabFiltro = "pendientes" | "en_revision" | "todos";
 
-// ── Toast ──────────────────────────────────────────────────────────────────────
 interface Toast { id: number; msg: string; tipo: "ok" | "error" }
 let _toastId = 0;
+
+const PAGE_SIZE = 50;
 
 export const CategorizarGastos = ({ restauranteIdOverride }: CategorizarGastosProps = {}) => {
   const { authUser } = useStore();
@@ -37,39 +40,50 @@ export const CategorizarGastos = ({ restauranteIdOverride }: CategorizarGastosPr
   const [items, setItems] = useState<any[]>([]);
   const [categorias, setCategorias] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tabFiltro, setTabFiltro] = useState<TabFiltro>("pendientes");
+  const [tabFiltro, setTabFiltro] = useState<TabFiltro>("todos");
   const [busqueda, setBusqueda] = useState("");
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState<Set<string>>(new Set());
   const [bulkCat, setBulkCat] = useState<string>("");
   const [applyingBulk, setApplyingBulk] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const [page, setPage] = useState(1);
 
-  // ── Contadores derivados — misma lógica que los filtros de tab ────────
-  // _guardado=true → ya procesado en esta sesión, no cuenta como pendiente
-  const totalSinCat  = useMemo(() => items.filter(i => !i.catalogo_cuenta_id && !i._guardado).length, [items]);
-  const totalEnOtros = useMemo(() => items.filter(i => i.es_otros && !i._guardado).length, [items]);
-  const montoTotal   = useMemo(
-    () => items.filter(i => (!i.catalogo_cuenta_id || i.es_otros) && !i._guardado).reduce((s, i) => s + (i.monto || 0), 0),
-    [items],
-  );
+  // Totales globales (de ambas tablas, no solo la página actual)
+  const [totalGlobal, setTotalGlobal] = useState(0);
+  const [totalSinCatDB, setTotalSinCatDB] = useState(0);
+  const [totalEnOtrosDB, setTotalEnOtrosDB] = useState(0);
 
   // ── Toast helpers ─────────────────────────────────────────────────────
   const addToast = useCallback((msg: string, tipo: "ok" | "error" = "ok") => {
     const id = ++_toastId;
     setToasts(prev => [...prev, { id, msg, tipo }]);
-    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 2000);
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 2500);
   }, []);
 
+  // ── Contadores locales (para la página actual, actualizados tras saves) ─
+  const localSinCat   = useMemo(() => items.filter(i => !i.catalogo_cuenta_id && !i._guardado).length, [items]);
+  const localEnOtros  = useMemo(() => items.filter(i => i.es_otros && !i._guardado).length, [items]);
+
   // ── Carga de datos ────────────────────────────────────────────────────
-  const cargar = async () => {
+  const cargar = async (p: number = 1) => {
     setLoading(true);
     try {
       const [sinCatData, catData] = await Promise.all([
-        api.get(`/api/gastos/sin-categorizar/${restauranteId}?incluir_otros=true`),
+        // incluir_todos=true → devuelve TODOS los gastos de ambas tablas
+        api.get(
+          `/api/gastos/sin-categorizar/${restauranteId}` +
+          `?incluir_todos=true&incluir_otros=true&page=${p}&limit=${PAGE_SIZE}`
+        ),
         api.get(`/api/categorias/${restauranteId}`),
       ]);
+
       setItems(sinCatData.items || []);
+      setTotalGlobal(sinCatData.total ?? 0);
+      setTotalSinCatDB(sinCatData.total_sin_catalogo ?? 0);
+      setTotalEnOtrosDB(sinCatData.total_en_otros ?? 0);
+      setPage(p);
+
       const cats: string[] = Array.isArray(catData)
         ? catData.map((c: any) => c.nombre).sort()
         : [];
@@ -80,28 +94,29 @@ export const CategorizarGastos = ({ restauranteIdOverride }: CategorizarGastosPr
     setLoading(false);
   };
 
-  useEffect(() => { cargar(); }, [restauranteId]);
+  useEffect(() => { cargar(1); }, [restauranteId]);
 
-  // ── Filtrado en memoria ───────────────────────────────────────────────
+  // ── Filtrado en memoria (sobre la página actual) ──────────────────────
   const itemsFiltrados = useMemo(() => {
     let lista = items;
-    // "Sin categoría" = catalogo_cuenta_id IS NULL y aún no guardado en esta sesión
-    if (tabFiltro === "pendientes")  lista = lista.filter(i => !i.catalogo_cuenta_id && !i._guardado);
-    // "En revisión" = va a 6008 y no es categoría operativa conocida
-    if (tabFiltro === "en_revision") lista = lista.filter(i => i.es_otros && !i._guardado);
-    // "Todos" muestra todo, incluyendo los ya guardados en esta sesión
+    if (tabFiltro === "pendientes")
+      lista = lista.filter(i => !i.catalogo_cuenta_id && !i._guardado);
+    if (tabFiltro === "en_revision")
+      lista = lista.filter(i => i.es_otros && !i._guardado);
+
     if (busqueda.trim()) {
       const q = busqueda.toLowerCase();
       lista = lista.filter(i =>
-        (i.proveedor    || "").toLowerCase().includes(q) ||
+        (i.proveedor      || "").toLowerCase().includes(q) ||
         (i.categoria_texto || "").toLowerCase().includes(q) ||
-        (i.descripcion  || "").toLowerCase().includes(q)
+        (i.descripcion    || "").toLowerCase().includes(q) ||
+        (i.cuenta_nombre  || "").toLowerCase().includes(q)
       );
     }
     return lista;
   }, [items, tabFiltro, busqueda]);
 
-  // ── Guardar categoría — auto-save al cambiar dropdown ─────────────────
+  // ── Guardar categoría ─────────────────────────────────────────────────
   const cambiarCategoria = async (item: any, nuevaCategoria: string) => {
     const key = `${item.tabla}-${item.id}`;
     setSaving(prev => new Set(prev).add(key));
@@ -112,33 +127,32 @@ export const CategorizarGastos = ({ restauranteIdOverride }: CategorizarGastosPr
 
       console.log(`[CategorizarGastos] PUT ${endpoint}`, { categoria: nuevaCategoria });
       const res = await api.put(endpoint, { categoria: nuevaCategoria });
-      console.log(`[CategorizarGastos] Respuesta backend:`, res);
-      // res = { ok: true, id, categoria, catalogo_cuenta_id }
+      console.log(`[CategorizarGastos] Respuesta:`, res);
 
-      // Actualizar local con los valores REALES confirmados por el backend:
-      // - categoria_texto: lo que guardó (puede diferir si el backend normaliza)
-      // - catalogo_cuenta_id: el ID real asignado (no -1 ni placeholder)
-      // - _guardado: marca visual de "guardado en esta sesión"
       setItems(prev => prev.map(i =>
         i.id === item.id && i.tabla === item.tabla
           ? {
               ...i,
-              categoria_texto:   res.categoria         ?? nuevaCategoria,
+              categoria_texto:    res.categoria          ?? nuevaCategoria,
               catalogo_cuenta_id: res.catalogo_cuenta_id ?? i.catalogo_cuenta_id,
-              es_otros:          false,
-              _guardado:         true,
+              es_otros:           false,
+              _guardado:          true,
             }
           : i
       ));
+      // Actualizar contadores globales
+      if (!item.catalogo_cuenta_id) setTotalSinCatDB(n => Math.max(0, n - 1));
+      if (item.es_otros)            setTotalEnOtrosDB(n => Math.max(0, n - 1));
+
       addToast(`✓ ${item.proveedor || "Gasto"} → ${res.categoria ?? nuevaCategoria}`);
     } catch (err: any) {
-      console.error(`[CategorizarGastos] ERROR al guardar ${item.tabla} id=${item.id}:`, err);
+      console.error(`[CategorizarGastos] ERROR ${item.tabla} id=${item.id}:`, err);
       addToast(`✗ Error al guardar "${item.proveedor || item.id}"`, "error");
     }
     setSaving(prev => { const n = new Set(prev); n.delete(key); return n; });
   };
 
-  // ── Bulk — aplicar misma categoría a todos los seleccionados ──────────
+  // ── Bulk ──────────────────────────────────────────────────────────────
   const aplicarBulk = async () => {
     if (!bulkCat || checked.size === 0) return;
     setApplyingBulk(true);
@@ -156,19 +170,21 @@ export const CategorizarGastos = ({ restauranteIdOverride }: CategorizarGastosPr
   const toggleCheck = (key: string) =>
     setChecked(prev => { const n = new Set(prev); if (n.has(key)) n.delete(key); else n.add(key); return n; });
 
-  // ── Loading skeleton ──────────────────────────────────────────────────
+  // ── Loading ───────────────────────────────────────────────────────────
   if (loading) return (
-    <div style={{ maxWidth: "1000px", margin: "0 auto" }}>
-      {Array.from({ length: 5 }).map((_, i) => (
-        <div key={i} style={{ background: "#FFF", borderRadius: "10px", padding: "16px", marginBottom: "8px", height: "60px", opacity: 0.6 }} />
+    <div style={{ maxWidth: "1060px", margin: "0 auto" }}>
+      {Array.from({ length: 8 }).map((_, i) => (
+        <div key={i} style={{ background: "#FFF", borderRadius: "10px", padding: "16px", marginBottom: "8px", height: "64px", opacity: 0.5 - i * 0.04 }} />
       ))}
     </div>
   );
 
-  const totalEnRevision = totalEnOtros;
+  const totalPages = PAGE_SIZE > 0 ? Math.ceil(totalGlobal / PAGE_SIZE) : 1;
+  const pageFrom = (page - 1) * PAGE_SIZE + 1;
+  const pageTo   = Math.min(page * PAGE_SIZE, totalGlobal);
 
   return (
-    <div style={{ maxWidth: "1000px", margin: "0 auto", position: "relative" as const }}>
+    <div style={{ maxWidth: "1060px", margin: "0 auto", position: "relative" as const }}>
 
       {/* ── Toast stack ─────────────────────────────────────────────────── */}
       <div style={{ position: "fixed" as const, bottom: "24px", right: "24px", display: "flex", flexDirection: "column" as const, gap: "8px", zIndex: 9999 }}>
@@ -184,7 +200,7 @@ export const CategorizarGastos = ({ restauranteIdOverride }: CategorizarGastosPr
           }}>
             {t.tipo === "ok"
               ? <Check style={{ width: "14px", height: "14px", flexShrink: 0 }} />
-              : <X    style={{ width: "14px", height: "14px", flexShrink: 0 }} />}
+              : <X     style={{ width: "14px", height: "14px", flexShrink: 0 }} />}
             {t.msg}
           </div>
         ))}
@@ -196,12 +212,14 @@ export const CategorizarGastos = ({ restauranteIdOverride }: CategorizarGastosPr
           <Tag style={{ width: "20px", height: "20px", color: "#C8FF00" }} />
         </div>
         <div>
-          <h1 style={{ fontSize: "20px", fontWeight: "800", color: "#111827", margin: 0 }}>Categorizar gastos</h1>
+          <h1 style={{ fontSize: "20px", fontWeight: "800", color: "#111827", margin: 0 }}>
+            Categorizar gastos
+          </h1>
           <p style={{ fontSize: "13px", color: "#9CA3AF", margin: 0 }}>
-            {fmt(montoTotal)} pendiente · {totalSinCat} sin categoría · {totalEnOtros} en revisión
+            {totalGlobal} gastos en total · {totalSinCatDB} sin categoría · {totalEnOtrosDB} en revisión
           </p>
         </div>
-        <button onClick={cargar} style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "6px", padding: "8px 14px", borderRadius: "8px", border: "1px solid #E5E7EB", background: "#FFF", color: "#6B7280", fontSize: "12px", cursor: "pointer" }}>
+        <button onClick={() => cargar(page)} style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "6px", padding: "8px 14px", borderRadius: "8px", border: "1px solid #E5E7EB", background: "#FFF", color: "#6B7280", fontSize: "12px", cursor: "pointer" }}>
           <RefreshCw style={{ width: "13px", height: "13px" }} /> Recargar
         </button>
       </div>
@@ -209,9 +227,9 @@ export const CategorizarGastos = ({ restauranteIdOverride }: CategorizarGastosPr
       {/* ── Summary cards ───────────────────────────────────────────────── */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "12px", marginBottom: "20px" }}>
         {[
-          { label: "Sin categoría",   val: totalSinCat,     color: "#DC2626", bg: "#FEF2F2", Icon: AlertTriangle },
-          { label: "En revisión",     val: totalEnRevision, color: "#D97706", bg: "#FFFBEB", Icon: Tag },
-          { label: "Monto pendiente", val: fmt(montoTotal), color: "#374151", bg: "#F9FAFB", Icon: BarChart3 },
+          { label: "Sin categoría",   val: totalSinCatDB,  color: "#DC2626", bg: "#FEF2F2", Icon: AlertTriangle },
+          { label: "En revisión",     val: totalEnOtrosDB, color: "#D97706", bg: "#FFFBEB", Icon: Tag },
+          { label: "Total gastos",    val: totalGlobal,    color: "#374151", bg: "#F9FAFB", Icon: BarChart3 },
         ].map(({ label, val, color, bg, Icon }, i) => (
           <div key={i} style={{ background: bg, borderRadius: "12px", padding: "14px 18px", display: "flex", alignItems: "center", gap: "12px" }}>
             <Icon style={{ width: "18px", height: "18px", color, flexShrink: 0 }} />
@@ -227,20 +245,28 @@ export const CategorizarGastos = ({ restauranteIdOverride }: CategorizarGastosPr
       <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "14px", flexWrap: "wrap" as const }}>
         <div style={{ display: "flex", background: "#FFF", borderRadius: "10px", padding: "3px", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
           {([
-            { key: "pendientes",  label: `Sin categoría (${totalSinCat})` },
-            { key: "en_revision", label: `En revisión (${totalEnRevision})` },
-            { key: "todos",       label: `Todos (${items.length})` },
+            { key: "pendientes",  label: `Sin categoría (${totalSinCatDB})` },
+            { key: "en_revision", label: `En revisión (${totalEnOtrosDB})` },
+            { key: "todos",       label: `Todos (${totalGlobal})` },
           ] as { key: TabFiltro; label: string }[]).map(t => (
-            <button key={t.key} onClick={() => { setTabFiltro(t.key); setChecked(new Set()); }}
-              style={{ padding: "6px 12px", borderRadius: "8px", border: "none", cursor: "pointer", fontSize: "12px", fontWeight: "600", background: tabFiltro === t.key ? "#3D1C1E" : "transparent", color: tabFiltro === t.key ? "#C8FF00" : "#9CA3AF" }}>
+            <button key={t.key}
+              onClick={() => { setTabFiltro(t.key); setChecked(new Set()); }}
+              style={{ padding: "6px 14px", borderRadius: "8px", border: "none", cursor: "pointer", fontSize: "12px", fontWeight: "600", background: tabFiltro === t.key ? "#3D1C1E" : "transparent", color: tabFiltro === t.key ? "#C8FF00" : "#9CA3AF" }}>
               {t.label}
             </button>
           ))}
         </div>
-        <div style={{ flex: 1, minWidth: "160px", display: "flex", alignItems: "center", gap: "8px", background: "#FFF", borderRadius: "10px", padding: "8px 12px", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
+
+        <div style={{ flex: 1, minWidth: "180px", display: "flex", alignItems: "center", gap: "8px", background: "#FFF", borderRadius: "10px", padding: "8px 12px", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
           <Search style={{ width: "14px", height: "14px", color: "#9CA3AF", flexShrink: 0 }} />
-          <input type="text" placeholder="Buscar proveedor o descripción…" value={busqueda} onChange={e => setBusqueda(e.target.value)}
+          <input type="text" placeholder="Buscar proveedor, categoría, descripción…"
+            value={busqueda} onChange={e => setBusqueda(e.target.value)}
             style={{ border: "none", outline: "none", fontSize: "13px", color: "#374151", flex: 1, background: "transparent" }} />
+          {busqueda && (
+            <button onClick={() => setBusqueda("")} style={{ border: "none", background: "none", cursor: "pointer", color: "#9CA3AF", padding: 0 }}>
+              <X style={{ width: "13px", height: "13px" }} />
+            </button>
+          )}
         </div>
       </div>
 
@@ -249,14 +275,8 @@ export const CategorizarGastos = ({ restauranteIdOverride }: CategorizarGastosPr
         <div style={{ display: "flex", gap: "8px", marginBottom: "12px", flexWrap: "wrap" as const, alignItems: "center" }}>
           <button onClick={() => setChecked(new Set(itemsFiltrados.map(i => `${i.tabla}-${i.id}`)))}
             style={{ padding: "6px 12px", borderRadius: "8px", border: "1px solid #E5E7EB", background: "#FFF", fontSize: "12px", cursor: "pointer", color: "#374151" }}>
-            Seleccionar todos ({itemsFiltrados.length})
+            Seleccionar página ({itemsFiltrados.length})
           </button>
-          {tabFiltro === "en_revision" && (
-            <button onClick={() => setChecked(new Set(itemsFiltrados.filter(i => i.es_otros).map(i => `${i.tabla}-${i.id}`)))}
-              style={{ padding: "6px 12px", borderRadius: "8px", border: "1px solid #FDE68A", background: "#FFFBEB", fontSize: "12px", cursor: "pointer", color: "#D97706", fontWeight: "600" }}>
-              ☑ Todos los de "Otros"
-            </button>
-          )}
           {checked.size > 0 && (
             <>
               <button onClick={() => setChecked(new Set())}
@@ -285,20 +305,23 @@ export const CategorizarGastos = ({ restauranteIdOverride }: CategorizarGastosPr
         <div style={{ background: "#FFF", borderRadius: "14px", padding: "48px", textAlign: "center" as const, boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
           <Check style={{ width: "32px", height: "32px", color: "#059669", margin: "0 auto 8px" }} />
           <p style={{ fontSize: "14px", color: "#6B7280" }}>
-            {tabFiltro === "pendientes"
+            {busqueda
+              ? `Sin resultados para "${busqueda}"`
+              : tabFiltro === "pendientes"
               ? "¡Todos los gastos tienen categoría! ✓"
               : tabFiltro === "en_revision"
               ? "No hay gastos pendientes de revisión ✓"
-              : "Sin resultados para esta búsqueda"}
+              : "Sin gastos en esta página"}
           </p>
         </div>
       ) : (
         <div style={{ background: "#FFF", borderRadius: "14px", overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
           {/* Cabecera */}
-          <div style={{ display: "grid", gridTemplateColumns: "40px 1fr 220px 110px", alignItems: "center", padding: "10px 20px", background: "#F9FAFB", borderBottom: "2px solid #F3F4F6" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "40px 1fr 200px 120px 110px", alignItems: "center", padding: "10px 20px", background: "#F9FAFB", borderBottom: "2px solid #F3F4F6" }}>
             <div />
             <span style={{ fontSize: "11px", fontWeight: "700", color: "#9CA3AF", textTransform: "uppercase" as const }}>Gasto</span>
             <span style={{ fontSize: "11px", fontWeight: "700", color: "#9CA3AF", textTransform: "uppercase" as const }}>Categoría operativa</span>
+            <span style={{ fontSize: "11px", fontWeight: "700", color: "#9CA3AF", textTransform: "uppercase" as const }}>Cuenta contable</span>
             <span style={{ fontSize: "11px", fontWeight: "700", color: "#9CA3AF", textTransform: "uppercase" as const, textAlign: "right" as const }}>Monto</span>
           </div>
 
@@ -309,11 +332,11 @@ export const CategorizarGastos = ({ restauranteIdOverride }: CategorizarGastosPr
 
             return (
               <div key={key} style={{
-                display: "grid", gridTemplateColumns: "40px 1fr 220px 110px",
+                display: "grid", gridTemplateColumns: "40px 1fr 200px 120px 110px",
                 alignItems: "start",
-                padding: "12px 20px", borderBottom: "1px solid #F9FAFB",
+                padding: "11px 20px", borderBottom: "1px solid #F9FAFB",
                 background: item._guardado ? "#F0FDF4" : isChecked ? "#FAFFFE" : item.es_otros ? "#FFFDF0" : "transparent",
-                transition: "background 0.1s",
+                transition: "background 0.15s",
               }}>
 
                 {/* Checkbox */}
@@ -323,7 +346,9 @@ export const CategorizarGastos = ({ restauranteIdOverride }: CategorizarGastosPr
                 {/* Info del gasto */}
                 <div style={{ paddingRight: "12px" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" as const }}>
-                    <span style={{ fontSize: "13px", fontWeight: "600", color: item._guardado ? "#059669" : "#111827" }}>{item.proveedor || "—"}</span>
+                    <span style={{ fontSize: "13px", fontWeight: "600", color: item._guardado ? "#059669" : "#111827" }}>
+                      {item.proveedor || "—"}
+                    </span>
                     {item._guardado && (
                       <span style={{ fontSize: "9px", padding: "1px 5px", borderRadius: "4px", background: "#D1FAE5", color: "#065F46", fontWeight: "700" }}>✓ GUARDADO</span>
                     )}
@@ -340,16 +365,8 @@ export const CategorizarGastos = ({ restauranteIdOverride }: CategorizarGastosPr
                       <span style={{ marginLeft: "4px", fontSize: "10px", color: "#C4B5FD" }}>· cierre</span>
                     )}
                   </div>
-                  {/* Descripción completa — nunca truncar, wrap natural */}
                   {(item.descripcion || item.categoria_texto) && (
-                    <div style={{
-                      fontSize: "12px",
-                      color: "#6B7280",
-                      fontStyle: "italic",
-                      marginTop: "3px",
-                      lineHeight: "1.4",
-                      /* sin overflow, sin ellipsis, sin nowrap */
-                    }}>
+                    <div style={{ fontSize: "12px", color: "#6B7280", fontStyle: "italic", marginTop: "3px", lineHeight: "1.4" }}>
                       {item.descripcion || item.categoria_texto}
                     </div>
                   )}
@@ -365,7 +382,7 @@ export const CategorizarGastos = ({ restauranteIdOverride }: CategorizarGastosPr
                       await cambiarCategoria(item, val);
                     }}
                     disabled={isSaving}
-                    style={{ width: "100%", padding: "5px 8px", borderRadius: "6px", border: `1px solid ${item.es_otros ? "#FDE68A" : "#E5E7EB"}`, fontSize: "12px", background: isSaving ? "#F9FAFB" : "#FFF", color: item.categoria_texto ? "#111827" : "#9CA3AF", cursor: isSaving ? "wait" : "pointer" }}
+                    style={{ width: "100%", padding: "5px 8px", borderRadius: "6px", border: `1px solid ${item.es_otros ? "#FDE68A" : item._guardado ? "#6EE7B7" : "#E5E7EB"}`, fontSize: "12px", background: isSaving ? "#F9FAFB" : "#FFF", color: item.categoria_texto ? "#111827" : "#9CA3AF", cursor: isSaving ? "wait" : "pointer" }}
                   >
                     <option value="">{item.categoria_texto || "Seleccionar…"}</option>
                     {categorias.map(cat => (
@@ -379,6 +396,11 @@ export const CategorizarGastos = ({ restauranteIdOverride }: CategorizarGastosPr
                   )}
                 </div>
 
+                {/* Cuenta contable asignada */}
+                <div style={{ fontSize: "11px", color: "#6B7280", paddingLeft: "8px", marginTop: "4px" }}>
+                  {item.cuenta_nombre || (item.catalogo_cuenta_id ? `ID ${item.catalogo_cuenta_id}` : "—")}
+                </div>
+
                 {/* Monto */}
                 <div style={{ textAlign: "right" as const, fontSize: "14px", fontWeight: "700", color: "#111827", marginTop: "3px" }}>
                   {fmt(item.monto)}
@@ -389,22 +411,42 @@ export const CategorizarGastos = ({ restauranteIdOverride }: CategorizarGastosPr
         </div>
       )}
 
-      {/* ── Aviso "En revisión" ─────────────────────────────────────────── */}
-      {totalEnRevision > 0 && tabFiltro !== "en_revision" && (
-        <div style={{ marginTop: "16px", background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: "12px", padding: "14px 18px", display: "flex", alignItems: "center", gap: "12px" }}>
-          <AlertTriangle style={{ width: "16px", height: "16px", color: "#D97706", flexShrink: 0 }} />
-          <div style={{ flex: 1, fontSize: "13px", color: "#92400E" }}>
-            {totalEnRevision} gastos en "Otros gastos" — podrían necesitar una categoría más específica
+      {/* ── Paginación ──────────────────────────────────────────────────── */}
+      {totalPages > 1 && !busqueda && tabFiltro === "todos" && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "16px", padding: "12px 16px", background: "#FFF", borderRadius: "12px", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
+          <span style={{ fontSize: "13px", color: "#6B7280" }}>
+            Mostrando <strong>{pageFrom}–{pageTo}</strong> de <strong>{totalGlobal}</strong> gastos
+          </span>
+          <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+            <button
+              onClick={() => cargar(page - 1)} disabled={page === 1}
+              style={{ display: "flex", alignItems: "center", gap: "4px", padding: "6px 12px", borderRadius: "8px", border: "1px solid #E5E7EB", background: page === 1 ? "#F9FAFB" : "#FFF", color: page === 1 ? "#D1D5DB" : "#374151", fontSize: "12px", fontWeight: "600", cursor: page === 1 ? "not-allowed" : "pointer" }}>
+              <ChevronLeft style={{ width: "14px", height: "14px" }} /> Anterior
+            </button>
+            {/* Números de página (hasta 7) */}
+            {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
+              const p = totalPages <= 7 ? i + 1
+                : page <= 4 ? i + 1
+                : page >= totalPages - 3 ? totalPages - 6 + i
+                : page - 3 + i;
+              return (
+                <button key={p} onClick={() => cargar(p)}
+                  style={{ width: "32px", height: "32px", borderRadius: "8px", border: "none", background: p === page ? "#3D1C1E" : "transparent", color: p === page ? "#C8FF00" : "#6B7280", fontSize: "12px", fontWeight: "700", cursor: "pointer" }}>
+                  {p}
+                </button>
+              );
+            })}
+            <button
+              onClick={() => cargar(page + 1)} disabled={page === totalPages}
+              style={{ display: "flex", alignItems: "center", gap: "4px", padding: "6px 12px", borderRadius: "8px", border: "1px solid #E5E7EB", background: page === totalPages ? "#F9FAFB" : "#FFF", color: page === totalPages ? "#D1D5DB" : "#374151", fontSize: "12px", fontWeight: "600", cursor: page === totalPages ? "not-allowed" : "pointer" }}>
+              Siguiente <ChevronRight style={{ width: "14px", height: "14px" }} />
+            </button>
           </div>
-          <button onClick={() => setTabFiltro("en_revision")}
-            style={{ padding: "5px 12px", borderRadius: "7px", border: "1px solid #F59E0B", background: "#FFF", color: "#D97706", fontSize: "12px", fontWeight: "700", cursor: "pointer", flexShrink: 0 }}>
-            Revisar →
-          </button>
         </div>
       )}
 
-      {/* ── Todo ok ─────────────────────────────────────────────────────── */}
-      {totalSinCat === 0 && totalEnRevision === 0 && (
+      {/* ── Todo categorizado ────────────────────────────────────────────── */}
+      {totalSinCatDB === 0 && totalEnOtrosDB === 0 && (
         <div style={{ marginTop: "16px", background: "#F0FDF4", border: "1px solid #BBF7D0", borderRadius: "12px", padding: "14px 18px" }}>
           <div style={{ fontSize: "13px", fontWeight: "700", color: "#15803D" }}>✓ Todos los gastos están categorizados correctamente</div>
           <div style={{ fontSize: "12px", color: "#16A34A", marginTop: "4px" }}>

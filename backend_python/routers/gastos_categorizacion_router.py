@@ -12,6 +12,7 @@ from datetime import datetime
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from pydantic import BaseModel
 from ..database import get_db
 from .. import models
@@ -98,26 +99,35 @@ def categorizar_gasto_diario(
 def gastos_sin_categorizar(
     restaurante_id: int,
     incluir_otros: bool = False,
+    incluir_todos: bool = False,   # retorna TODOS los gastos de ambas tablas
+    page: int = 1,                 # página actual (1-based)
+    limit: int = 200,              # items por página (0 = sin límite)
     db: Session = Depends(get_db),
     current_user: Optional[models.Usuario] = Depends(get_optional_user),
 ):
     """
-    Devuelve gastos sin catalogo_cuenta_id.
-    Con incluir_otros=true también devuelve gastos en 'Otros gastos' (6008)
-    para que el usuario pueda revisarlos manualmente.
+    Devuelve gastos para la pantalla de categorización.
+
+    Modos:
+    - incluir_todos=false (default): solo gastos con catalogo_cuenta_id IS NULL
+      + opcionalmente los que están en cuenta 6008 (incluir_otros=true).
+    - incluir_todos=true: TODOS los gastos de ambas tablas (gastos + gastos_diarios),
+      con paginación (page / limit). Permite revisar y cambiar cualquier categoría.
+
+    Paginación: page=1, limit=200. limit=0 → sin límite (úsalo con precaución).
     """
     from ..services.pl_service import _map_categoria_texto
+
+    # ── Catálogo de cuentas del restaurante ──────────────────────────────
     cuentas = db.query(models.CatalogoCuenta).filter(
         models.CatalogoCuenta.restaurante_id == restaurante_id,
         models.CatalogoCuenta.activo == True,
     ).all()
+    cuentas_map: dict[int, models.CatalogoCuenta] = {c.id: c for c in cuentas}
 
-    # ID de la cuenta "Otros gastos" (código 6008) para este restaurante
     id_otros = next((c.id for c in cuentas if c.codigo == "6008"), None)
 
-    # Categorías operativas CONOCIDAS del restaurante
-    # Si una categoría está en esta lista, aunque mapee a 6008 NO es "en revisión"
-    # (está correctamente categorizada — papelería, otros, propinas, etc. van a 6008)
+    # ── Categorías operativas conocidas (para _es_en_revision) ───────────
     cats_conocidas = {
         c.nombre.strip().upper()
         for c in db.query(models.Categoria).filter(
@@ -126,50 +136,147 @@ def gastos_sin_categorizar(
         ).all()
     }
 
-    def _es_en_revision(categoria_texto: Optional[str]) -> bool:
-        """True si la categoría está en 6008 PERO no está en la lista de ops conocidas.
-        Gastos como PAPELERÍA u OTROS que legitimamente van a 6008 NO son 'en revisión'."""
-        if not categoria_texto:
-            return True  # Sin categoría → sí revisar
-        return categoria_texto.strip().upper() not in cats_conocidas
+    def _es_en_revision(cat_txt: Optional[str]) -> bool:
+        if not cat_txt:
+            return True
+        return cat_txt.strip().upper() not in cats_conocidas
+
+    def _nombre_cuenta(cuenta_id: Optional[int]) -> Optional[str]:
+        if not cuenta_id or cuenta_id not in cuentas_map:
+            return None
+        return cuentas_map[cuenta_id].nombre
 
     def _sugerir(categoria_texto: Optional[str], cuenta_actual_id: Optional[int]):
         if not categoria_texto:
             return None
         txt_lower = categoria_texto.lower().strip()
-        # Exact nombre match
         for c in cuentas:
             if c.nombre.lower().strip() == txt_lower:
                 return {"catalogo_cuenta_id": c.id, "nombre": c.nombre, "confianza": "alta"}
-        # Substring match
         for c in cuentas:
             if txt_lower in c.nombre.lower() or c.nombre.lower() in txt_lower:
                 return {"catalogo_cuenta_id": c.id, "nombre": c.nombre, "confianza": "media"}
-        # Fallback map
         cat_pl = _map_categoria_texto(categoria_texto)
         for c in cuentas:
             if c.categoria_pl == cat_pl:
-                confianza = "baja"
-                if c.id == cuenta_actual_id:
-                    confianza = "alta"  # ya está bien categorizado
+                confianza = "alta" if c.id == cuenta_actual_id else "baja"
                 return {"catalogo_cuenta_id": c.id, "nombre": c.nombre, "confianza": confianza}
         return None
 
-    def _nombre_cuenta(cuenta_id: Optional[int]) -> Optional[str]:
-        if not cuenta_id:
-            return None
-        for c in cuentas:
-            if c.id == cuenta_id:
-                return c.nombre
-        return None
+    # ── Modo incluir_todos: retorna TODOS los gastos con paginación ──────
+    if incluir_todos:
+        offset = (page - 1) * limit if limit > 0 else 0
 
+        # ── Conteos totales (para paginación y tabs) ─────────────────────
+        total_g = db.query(func.count(models.Gasto.id)).filter(
+            models.Gasto.restaurante_id == restaurante_id
+        ).scalar() or 0
+
+        total_gd = db.query(func.count(models.GastoDiario.id)).join(
+            models.CierreTurno, models.GastoDiario.cierre_id == models.CierreTurno.id
+        ).filter(
+            models.CierreTurno.restaurante_id == restaurante_id
+        ).scalar() or 0
+
+        total_global = total_g + total_gd
+
+        # Conteos por estado (sin paginación — van a los tabs)
+        null_g = db.query(func.count(models.Gasto.id)).filter(
+            models.Gasto.restaurante_id == restaurante_id,
+            models.Gasto.catalogo_cuenta_id == None,
+        ).scalar() or 0
+
+        null_gd = db.query(func.count(models.GastoDiario.id)).join(
+            models.CierreTurno, models.GastoDiario.cierre_id == models.CierreTurno.id
+        ).filter(
+            models.CierreTurno.restaurante_id == restaurante_id,
+            models.GastoDiario.catalogo_cuenta_id == None,
+        ).scalar() or 0
+
+        otros_g = db.query(func.count(models.Gasto.id)).filter(
+            models.Gasto.restaurante_id == restaurante_id,
+            models.Gasto.catalogo_cuenta_id == id_otros,
+        ).scalar() or 0 if id_otros else 0
+
+        otros_gd = db.query(func.count(models.GastoDiario.id)).join(
+            models.CierreTurno, models.GastoDiario.cierre_id == models.CierreTurno.id
+        ).filter(
+            models.CierreTurno.restaurante_id == restaurante_id,
+            models.GastoDiario.catalogo_cuenta_id == id_otros,
+        ).scalar() or 0 if id_otros else 0
+
+        # ── Fetch página de gastos ────────────────────────────────────────
+        items: list[dict] = []
+
+        q_g = db.query(models.Gasto).filter(
+            models.Gasto.restaurante_id == restaurante_id
+        ).order_by(models.Gasto.fecha.desc())
+
+        if limit > 0:
+            q_g = q_g.offset(offset).limit(limit)
+
+        for g in q_g.all():
+            ccid = g.catalogo_cuenta_id
+            items.append({
+                "id": g.id, "tabla": "gastos",
+                "fecha": str(g.fecha), "proveedor": g.proveedor,
+                "descripcion": g.descripcion or "",
+                "categoria_texto": g.categoria, "monto": round(g.monto or 0, 2),
+                "catalogo_cuenta_id": ccid,
+                "cuenta_nombre": _nombre_cuenta(ccid),
+                "es_otros": (ccid == id_otros) and _es_en_revision(g.categoria),
+                "sugerencia": None,   # omitir en modo todos para performance
+            })
+
+        # Si no llenamos la página con gastos, tomamos gastos_diarios
+        remaining = (limit - len(items)) if limit > 0 else None
+        gd_offset = max(0, offset - total_g) if limit > 0 else 0
+
+        if remaining is None or remaining > 0:
+            q_gd = db.query(models.GastoDiario, models.CierreTurno.fecha).join(
+                models.CierreTurno, models.GastoDiario.cierre_id == models.CierreTurno.id
+            ).filter(
+                models.CierreTurno.restaurante_id == restaurante_id
+            ).order_by(models.CierreTurno.fecha.desc())
+
+            if limit > 0:
+                q_gd = q_gd.offset(gd_offset).limit(remaining)
+
+            for gd, fecha in q_gd.all():
+                ccid = gd.catalogo_cuenta_id
+                items.append({
+                    "id": gd.id, "tabla": "gastos_diarios",
+                    "fecha": str(fecha), "proveedor": gd.proveedor,
+                    "descripcion": gd.descripcion or "",
+                    "categoria_texto": gd.categoria, "monto": round(gd.monto or 0, 2),
+                    "catalogo_cuenta_id": ccid,
+                    "cuenta_nombre": _nombre_cuenta(ccid),
+                    "es_otros": (ccid == id_otros) and _es_en_revision(gd.categoria),
+                    "sugerencia": None,
+                })
+
+        monto_pag = sum(i["monto"] for i in items)
+
+        return {
+            "total": total_global,          # total REAL en ambas tablas
+            "total_gastos": total_g,
+            "total_gastos_diarios": total_gd,
+            "total_sin_catalogo": null_g + null_gd,
+            "total_en_otros": otros_g + otros_gd,
+            "monto_total": round(monto_pag, 2),
+            "page": page,
+            "limit": limit,
+            "items": items,
+        }
+
+    # ── Modo original: solo NULL + opcionalmente 6008 ────────────────────
     items = []
 
     # gastos sin catalogo_cuenta_id
     q_null = db.query(models.Gasto).filter(
         models.Gasto.restaurante_id == restaurante_id,
         models.Gasto.catalogo_cuenta_id == None,
-    ).order_by(models.Gasto.fecha.desc()).limit(200)
+    ).order_by(models.Gasto.fecha.desc())
     for g in q_null.all():
         items.append({
             "id": g.id, "tabla": "gastos",
@@ -181,12 +288,12 @@ def gastos_sin_categorizar(
             "sugerencia": _sugerir(g.categoria, None),
         })
 
-    # gastos en "Otros gastos" (para revisión manual, opcional)
+    # gastos en "Otros gastos"
     if incluir_otros and id_otros:
         q_otros = db.query(models.Gasto).filter(
             models.Gasto.restaurante_id == restaurante_id,
             models.Gasto.catalogo_cuenta_id == id_otros,
-        ).order_by(models.Gasto.fecha.desc()).limit(500)
+        ).order_by(models.Gasto.fecha.desc())
         for g in q_otros.all():
             items.append({
                 "id": g.id, "tabla": "gastos",
@@ -204,7 +311,7 @@ def gastos_sin_categorizar(
     ).filter(
         models.CierreTurno.restaurante_id == restaurante_id,
         models.GastoDiario.catalogo_cuenta_id == None,
-    ).order_by(models.CierreTurno.fecha.desc()).limit(200)
+    ).order_by(models.CierreTurno.fecha.desc())
     for gd, fecha in gd_q.all():
         items.append({
             "id": gd.id, "tabla": "gastos_diarios",
@@ -223,7 +330,7 @@ def gastos_sin_categorizar(
         ).filter(
             models.CierreTurno.restaurante_id == restaurante_id,
             models.GastoDiario.catalogo_cuenta_id == id_otros,
-        ).order_by(models.CierreTurno.fecha.desc()).limit(500)
+        ).order_by(models.CierreTurno.fecha.desc())
         for gd, fecha in gd_otros_q.all():
             items.append({
                 "id": gd.id, "tabla": "gastos_diarios",
@@ -235,7 +342,7 @@ def gastos_sin_categorizar(
                 "sugerencia": _sugerir(gd.categoria, id_otros),
             })
 
-    total_sin_cat = sum(1 for i in items if not i["es_otros"])
+    total_sin_cat = sum(1 for i in items if not i["es_otros"] and not i["catalogo_cuenta_id"])
     total_en_otros = sum(1 for i in items if i["es_otros"])
     monto_total = sum(i["monto"] for i in items)
 
@@ -244,6 +351,8 @@ def gastos_sin_categorizar(
         "total_sin_catalogo": total_sin_cat,
         "total_en_otros": total_en_otros,
         "monto_total": round(monto_total, 2),
+        "page": 1,
+        "limit": 0,
         "items": items,
     }
 
