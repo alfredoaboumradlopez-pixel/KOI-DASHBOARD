@@ -1,7 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { api } from "../services/api";
 import { useStore } from "../store/useStore";
-import { TrendingUp, TrendingDown, AlertTriangle, RefreshCw, AlertCircle } from "lucide-react";
+import { TrendingUp, TrendingDown, AlertTriangle, RefreshCw, AlertCircle, ChevronRight, ChevronDown } from "lucide-react";
 
 const fmt = (n: number) =>
   new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(n);
@@ -100,6 +100,12 @@ interface PLResult {
   dias_con_datos: number;
   gastos_sin_categorizar: number;
   advertencias: string[];
+  gastos_por_categoria?: Array<{
+    categoria: string;
+    categoria_pl: string;
+    monto: number;
+    pct_ventas: number;
+  }>;
 }
 
 // Props opcionales: si se pasa restauranteIdOverride, usa ese en vez del del JWT
@@ -213,86 +219,32 @@ export const PLDashboard = ({ restauranteIdOverride }: PLDashboardProps = {}) =>
     cargar(mes);
   }, [mes, restauranteId]);
 
-  const plRows = pl
-    ? [
-        { label: "Ventas netas", monto: pl.ventas_netas, bold: false, pct: 100 },
-        {
-          label: "↳ Costo de ventas",
-          monto: -pl.total_costo_ventas,
-          bold: false,
-          pct: (pl.total_costo_ventas / (pl.ventas_netas || 1)) * 100,
-        },
-        {
-          label: "Utilidad bruta",
-          monto: pl.utilidad_bruta,
-          bold: true,
-          pct: pl.margen_bruto_pct,
-          subtotal: true,
-        },
-        {
-          label: "Nómina",
-          monto: -pl.gastos_nomina,
-          bold: false,
-          pct: pl.nomina_pct,
-        },
-        {
-          label: "Renta",
-          monto: -pl.gastos_renta,
-          bold: false,
-          pct: (pl.gastos_renta / (pl.ventas_netas || 1)) * 100,
-        },
-        {
-          label: "Servicios",
-          monto: -pl.gastos_servicios,
-          bold: false,
-          pct: (pl.gastos_servicios / (pl.ventas_netas || 1)) * 100,
-        },
-        {
-          label: "Mantenimiento",
-          monto: -pl.gastos_mantenimiento,
-          bold: false,
-          pct: (pl.gastos_mantenimiento / (pl.ventas_netas || 1)) * 100,
-        },
-        {
-          label: "Limpieza",
-          monto: -pl.gastos_limpieza,
-          bold: false,
-          pct: (pl.gastos_limpieza / (pl.ventas_netas || 1)) * 100,
-        },
-        {
-          label: "Marketing",
-          monto: -pl.gastos_marketing,
-          bold: false,
-          pct: (pl.gastos_marketing / (pl.ventas_netas || 1)) * 100,
-        },
-        {
-          label: "Otros gastos",
-          monto: -(pl.gastos_admin + pl.gastos_otros),
-          bold: false,
-          pct: ((pl.gastos_admin + pl.gastos_otros) / (pl.ventas_netas || 1)) * 100,
-        },
-        {
-          label: "EBITDA",
-          monto: pl.ebitda,
-          bold: true,
-          pct: pl.margen_ebitda_pct,
-          subtotal: true,
-        },
-        {
-          label: "Impuestos est.",
-          monto: -pl.impuestos_estimados,
-          bold: false,
-          pct: (pl.impuestos_estimados / (pl.ventas_netas || 1)) * 100,
-        },
-        {
-          label: "Utilidad neta",
-          monto: pl.utilidad_neta,
-          bold: true,
-          pct: pl.margen_neto_pct,
-          subtotal: true,
-        },
-      ]
-    : [];
+  const isSuperAdmin = localStorage.getItem("user_role") === "SUPER_ADMIN";
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const toggleGrupo = (k: string) =>
+    setExpandedGroups(prev => { const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n; });
+
+  const GRUPO_MAP: Record<string, string> = {
+    costo_alimentos: "Costo de ventas", costo_bebidas: "Costo de ventas",
+    nomina: "Nómina", renta: "Renta", servicios: "Servicios",
+    limpieza: "Limpieza", mantenimiento: "Mantenimiento",
+    marketing: "Marketing", otros_gastos: "Otros gastos", admin: "Otros gastos",
+  };
+  const GRUPO_ORDER = ["Costo de ventas","Nómina","Renta","Servicios","Limpieza","Mantenimiento","Marketing","Otros gastos"];
+
+  // Build {grupoNombre: [{categoria, monto, pct_ventas}]} from gastos_por_categoria
+  const gruposData = useMemo(() => {
+    const cats = pl?.gastos_por_categoria ?? [];
+    const map: Record<string, typeof cats> = {};
+    cats.forEach(c => {
+      const nombre = GRUPO_MAP[c.categoria_pl] ?? "Otros gastos";
+      if (!map[nombre]) map[nombre] = [];
+      map[nombre].push(c);
+    });
+    return map;
+  }, [pl]);
+
+  const hasDesglose = Object.keys(gruposData).length > 0;
 
   return (
     <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
@@ -684,7 +636,7 @@ export const PLDashboard = ({ restauranteIdOverride }: PLDashboardProps = {}) =>
               </span>
             ) : null}
           </div>
-          <div style={{ overflow: "auto", maxHeight: "320px" }}>
+          <div style={{ overflow: "auto", maxHeight: "520px" }}>
             {loading ? (
               <div style={{ padding: "16px 20px" }}>
                 {Array.from({ length: 8 }).map((_, i) => (
@@ -786,51 +738,136 @@ export const PLDashboard = ({ restauranteIdOverride }: PLDashboardProps = {}) =>
                   </tr>
                 </thead>
                 <tbody>
-                  {plRows.map((row, i) => (
-                    <tr
-                      key={i}
-                      style={{
-                        background: (row as any).subtotal
-                          ? "#F9FAFB"
-                          : "transparent",
-                        borderTop: (row as any).subtotal
-                          ? "1px solid #E5E7EB"
-                          : "1px solid #F9FAFB",
-                      }}
-                    >
-                      <td
-                        style={{
-                          padding: "8px 20px",
-                          fontSize: "13px",
-                          fontWeight: row.bold ? "700" : "400",
-                          color: "#374151",
-                        }}
-                      >
-                        {row.label}
-                      </td>
-                      <td
-                        style={{
-                          padding: "8px 20px",
-                          textAlign: "right" as const,
-                          fontSize: "13px",
-                          fontWeight: row.bold ? "700" : "400",
-                          color: row.monto >= 0 ? "#111827" : "#6B7280",
-                        }}
-                      >
-                        {fmt(Math.abs(row.monto))}
-                      </td>
-                      <td
-                        style={{
-                          padding: "8px 20px",
-                          textAlign: "right" as const,
-                          fontSize: "12px",
-                          color: "#9CA3AF",
-                        }}
-                      >
-                        {row.pct != null ? `${row.pct.toFixed(1)}%` : ""}
-                      </td>
-                    </tr>
-                  ))}
+                  {/* Ventas netas */}
+                  <tr style={{ borderTop: "1px solid #F9FAFB" }}>
+                    <td style={{ padding: "9px 20px", fontSize: "13px", fontWeight: "700", color: "#059669" }}>Ventas netas</td>
+                    <td style={{ padding: "9px 20px", textAlign: "right", fontSize: "13px", fontWeight: "700", color: "#059669" }}>{fmt(pl!.ventas_netas)}</td>
+                    <td style={{ padding: "9px 20px", textAlign: "right", fontSize: "12px", color: "#059669" }}>100%</td>
+                  </tr>
+
+                  {/* Grupos antes de Utilidad Bruta (solo Costo de ventas) y después */}
+                  {(() => {
+                    const rows: ReturnType<typeof Array<any>>[] = [] as any[];
+                    const ventas = pl!.ventas_netas || 1;
+
+                    const renderGrupo = (nombre: string, isCosto: boolean) => {
+                      const cats = gruposData[nombre];
+                      if (!cats || cats.length === 0) return;
+                      const total = cats.reduce((s, c) => s + c.monto, 0);
+                      const pctGrupo = (total / ventas * 100).toFixed(1);
+                      const isOpen = isSuperAdmin || expandedGroups.has(nombre);
+
+                      rows.push(
+                        <tr
+                          key={nombre}
+                          onClick={() => !isSuperAdmin && toggleGrupo(nombre)}
+                          style={{ borderTop: "1px solid #F9FAFB", cursor: isSuperAdmin ? "default" : "pointer", background: isOpen ? "#FAFBFC" : "transparent" }}
+                        >
+                          <td style={{ padding: "8px 20px", fontSize: "13px", color: "#374151" }}>
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                              {!isSuperAdmin && (isOpen
+                                ? <ChevronDown style={{ width: "13px", height: "13px", color: "#9CA3AF" }} />
+                                : <ChevronRight style={{ width: "13px", height: "13px", color: "#9CA3AF" }} />
+                              )}
+                              ↳ {nombre}
+                            </span>
+                          </td>
+                          <td style={{ padding: "8px 20px", textAlign: "right", fontSize: "13px", color: "#DC2626" }}>{fmt(total)}</td>
+                          <td style={{ padding: "8px 20px", textAlign: "right", fontSize: "12px", color: "#DC2626" }}>{pctGrupo}%</td>
+                        </tr>
+                      );
+
+                      if (isOpen) {
+                        cats.forEach(c => {
+                          rows.push(
+                            <tr key={c.categoria} style={{ borderTop: "1px solid #F9FAFB", background: "#FAFBFC" }}>
+                              <td style={{ padding: "5px 20px 5px 44px", fontSize: "12px", color: "#6B7280" }}>
+                                {c.categoria.replace(/_/g, " ")}
+                              </td>
+                              <td style={{ padding: "5px 20px", textAlign: "right", fontSize: "12px", color: "#374151" }}>{fmt(c.monto)}</td>
+                              <td style={{ padding: "5px 20px", textAlign: "right", fontSize: "11px", color: "#9CA3AF" }}>{c.pct_ventas.toFixed(1)}%</td>
+                            </tr>
+                          );
+                        });
+                      }
+                    };
+
+                    // Costo de ventas (antes de utilidad bruta)
+                    if (hasDesglose) {
+                      renderGrupo("Costo de ventas", true);
+                    } else {
+                      rows.push(
+                        <tr key="costo-fb" style={{ borderTop: "1px solid #F9FAFB" }}>
+                          <td style={{ padding: "8px 20px", fontSize: "13px", color: "#374151" }}>↳ Costo de ventas</td>
+                          <td style={{ padding: "8px 20px", textAlign: "right", fontSize: "13px", color: "#DC2626" }}>{fmt(pl!.total_costo_ventas)}</td>
+                          <td style={{ padding: "8px 20px", textAlign: "right", fontSize: "12px", color: "#DC2626" }}>{(pl!.total_costo_ventas/ventas*100).toFixed(1)}%</td>
+                        </tr>
+                      );
+                    }
+
+                    // Utilidad bruta
+                    rows.push(
+                      <tr key="ub" style={{ borderTop: "1px solid #E5E7EB", background: "#F9FAFB" }}>
+                        <td style={{ padding: "9px 20px", fontSize: "13px", fontWeight: "700", color: pl!.utilidad_bruta >= 0 ? "#059669" : "#DC2626" }}>Utilidad bruta</td>
+                        <td style={{ padding: "9px 20px", textAlign: "right", fontSize: "13px", fontWeight: "700", color: pl!.utilidad_bruta >= 0 ? "#059669" : "#DC2626" }}>{fmt(pl!.utilidad_bruta)}</td>
+                        <td style={{ padding: "9px 20px", textAlign: "right", fontSize: "12px", color: pl!.utilidad_bruta >= 0 ? "#059669" : "#DC2626" }}>{pl!.margen_bruto_pct.toFixed(1)}%</td>
+                      </tr>
+                    );
+
+                    // Gastos operativos (todos los grupos excepto costo)
+                    if (hasDesglose) {
+                      GRUPO_ORDER.filter(n => n !== "Costo de ventas").forEach(nombre => renderGrupo(nombre, false));
+                    } else {
+                      [
+                        { label: "Nómina", v: pl!.gastos_nomina },
+                        { label: "Renta", v: pl!.gastos_renta },
+                        { label: "Servicios", v: pl!.gastos_servicios },
+                        { label: "Mantenimiento", v: pl!.gastos_mantenimiento },
+                        { label: "Limpieza", v: pl!.gastos_limpieza },
+                        { label: "Marketing", v: pl!.gastos_marketing },
+                        { label: "Otros gastos", v: pl!.gastos_admin + pl!.gastos_otros },
+                      ].filter(r => r.v > 0).forEach(r => {
+                        rows.push(
+                          <tr key={r.label} style={{ borderTop: "1px solid #F9FAFB" }}>
+                            <td style={{ padding: "8px 20px", fontSize: "13px", color: "#374151" }}>{r.label}</td>
+                            <td style={{ padding: "8px 20px", textAlign: "right", fontSize: "13px", color: "#DC2626" }}>{fmt(r.v)}</td>
+                            <td style={{ padding: "8px 20px", textAlign: "right", fontSize: "12px", color: "#DC2626" }}>{(r.v/ventas*100).toFixed(1)}%</td>
+                          </tr>
+                        );
+                      });
+                    }
+
+                    // EBITDA
+                    rows.push(
+                      <tr key="ebitda" style={{ borderTop: "1px solid #E5E7EB", background: "#F9FAFB" }}>
+                        <td style={{ padding: "9px 20px", fontSize: "13px", fontWeight: "700", color: pl!.ebitda >= 0 ? "#059669" : "#DC2626" }}>EBITDA</td>
+                        <td style={{ padding: "9px 20px", textAlign: "right", fontSize: "13px", fontWeight: "700", color: pl!.ebitda >= 0 ? "#059669" : "#DC2626" }}>{fmt(pl!.ebitda)}</td>
+                        <td style={{ padding: "9px 20px", textAlign: "right", fontSize: "12px", color: pl!.ebitda >= 0 ? "#059669" : "#DC2626" }}>{pl!.margen_ebitda_pct.toFixed(1)}%</td>
+                      </tr>
+                    );
+
+                    // Impuestos
+                    if (pl!.impuestos_estimados > 0) {
+                      rows.push(
+                        <tr key="imp" style={{ borderTop: "1px solid #F9FAFB" }}>
+                          <td style={{ padding: "8px 20px", fontSize: "13px", color: "#374151" }}>Impuestos est.</td>
+                          <td style={{ padding: "8px 20px", textAlign: "right", fontSize: "13px", color: "#DC2626" }}>{fmt(pl!.impuestos_estimados)}</td>
+                          <td style={{ padding: "8px 20px", textAlign: "right", fontSize: "12px", color: "#9CA3AF" }}>{(pl!.impuestos_estimados/ventas*100).toFixed(1)}%</td>
+                        </tr>
+                      );
+                    }
+
+                    // Utilidad neta
+                    rows.push(
+                      <tr key="un" style={{ borderTop: "1px solid #E5E7EB", background: pl!.utilidad_neta >= 0 ? "#ECFDF5" : "#FEF2F2" }}>
+                        <td style={{ padding: "9px 20px", fontSize: "13px", fontWeight: "700", color: pl!.utilidad_neta >= 0 ? "#059669" : "#DC2626" }}>Utilidad neta</td>
+                        <td style={{ padding: "9px 20px", textAlign: "right", fontSize: "13px", fontWeight: "700", color: pl!.utilidad_neta >= 0 ? "#059669" : "#DC2626" }}>{fmt(pl!.utilidad_neta)}</td>
+                        <td style={{ padding: "9px 20px", textAlign: "right", fontSize: "12px", color: pl!.utilidad_neta >= 0 ? "#059669" : "#DC2626" }}>{pl!.margen_neto_pct.toFixed(1)}%</td>
+                      </tr>
+                    );
+
+                    return rows;
+                  })()}
                 </tbody>
               </table>
             )}
