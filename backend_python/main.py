@@ -1357,25 +1357,27 @@ async def actualizar_propinas(cierre_id: int, request: Request, db: Session = De
 @app.post("/api/gastos/importar-bitacora")
 async def importar_bitacora(file: UploadFile = File(...)):
     import pdfplumber, io, re as _re
+    from collections import defaultdict
     contents = await file.read()
 
-    # ── Extract text from all pages ───────────────────────────────────────
     try:
         with pdfplumber.open(io.BytesIO(contents)) as _pdf:
-            texto_completo = "\n".join(p.extract_text() or "" for p in _pdf.pages)
+            pagina_p1 = _pdf.pages[0] if _pdf.pages else None
+            pagina_p2 = _pdf.pages[1] if len(_pdf.pages) > 1 else None
+            texto_p1 = pagina_p1.extract_text() or "" if pagina_p1 else ""
+            texto_p2 = pagina_p2.extract_text() or "" if pagina_p2 else ""
+            texto_completo = texto_p1 + "\n" + texto_p2
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"Error leyendo PDF: {str(e)}")
 
-    # ── Metadata ──────────────────────────────────────────────────────────
-    lineas = [l.strip() for l in texto_completo.split("\n") if l.strip()]
-
+    # ── Metadata from text ────────────────────────────────────────────────
     responsable = "Sin responsable"
     fecha = None
     MESES_NUM = {"ENERO":"01","FEBRERO":"02","MARZO":"03","ABRIL":"04","MAYO":"05",
                  "JUNIO":"06","JULIO":"07","AGOSTO":"08","SEPTIEMBRE":"09",
                  "OCTUBRE":"10","NOVIEMBRE":"11","DICIEMBRE":"12"}
-    for ln in lineas[:10]:
-        lu = ln.upper()
+    for ln in texto_p1.split("\n")[:10]:
+        lu = ln.strip().upper()
         if "RESPONSABLE:" in lu:
             responsable = ln.split(":", 1)[-1].strip()
         elif "FECHA:" in lu:
@@ -1384,7 +1386,7 @@ async def importar_bitacora(file: UploadFile = File(...)):
                 dia, mes_txt, anio = fm.group(1).zfill(2), fm.group(2), fm.group(3)
                 fecha = f"{anio}-{MESES_NUM.get(mes_txt,'01')}-{dia}"
 
-    # ── Category helpers ───────────────────────────────────────────────────
+    # ── Category helpers ──────────────────────────────────────────────────
     CATEGORIAS_KOI = [
         "COMIDA PERSONAL", "ENTREGA DE UTILIDADES", "PRODUCTOS ASIATICOS",
         "DESECHABLES EMPAQUES", "VEGETALES FRUTAS", "LIMPIEZA MANTTO",
@@ -1431,141 +1433,158 @@ async def importar_bitacora(file: UploadFile = File(...)):
     def map_categoria(raw: str) -> str:
         return CAT_MAP.get(raw, "OTROS")
 
-    # ── Block parser (user's parsear_bloque logic) ─────────────────────────
-    def parsear_bloque(bloque_lineas: list, monto_val: float) -> dict | None:
-        """
-        Joins all block lines into one string, then:
-        1. Finds monto at end (already known as monto_val).
-        2. Finds \\bNMP\\b / \\bMP\\b → clase; proveedor = text before.
-        3. Finds TICKET / VALE after clase → comprobante.
-        4. Text before comprobante = categoria; after = descripcion.
-        """
-        texto = " ".join(bloque_lineas)
-        texto_u = texto.upper()
+    def limpiar_monto(s: str) -> float:
+        try:
+            return float(str(s or "").replace("$", "").replace(",", "").strip())
+        except Exception:
+            return 0.0
 
-        # Clase (NMP before MP to avoid matching MP inside NMP)
-        clase = "NMP"
-        clase_pos = -1
-        for cl in ["NMP", "MP"]:
-            m = _re.search(r"\b" + cl + r"\b", texto_u)
-            if m:
-                clase = cl
-                clase_pos = m.start()
-                break
-
-        if clase_pos < 0:
-            return None  # no clase → cannot parse
-
-        # Proveedor = text before clase, parentheticals removed
-        prov_raw = texto[:clase_pos].strip()
-        prov_raw = _re.sub(r"\s*\(.*?\)\s*", " ", prov_raw).strip().strip("/, ")
-        proveedor = " ".join(prov_raw.split()).upper()
-
-        # Text after clase
-        texto_post_clase = texto[clase_pos + len(clase):].strip()
-        texto_post_clase_u = texto_post_clase.upper()
-
-        # Comprobante (TICKET before VALE to prefer specificity)
-        comprobante = "VALE"
-        comp_pos = -1
-        for comp in ["TICKET", "VALE"]:
-            m = _re.search(r"\b" + comp + r"\b", texto_post_clase_u)
-            if m:
-                comprobante = comp
-                comp_pos = m.start()
-                break
-
-        if comp_pos >= 0:
-            texto_categoria = texto_post_clase[:comp_pos].strip()
-            texto_descripcion = texto_post_clase[comp_pos + len(comprobante):].strip()
-        else:
-            texto_categoria = texto_post_clase
-            texto_descripcion = ""
-
-        categoria_raw = extraer_categoria(texto_categoria) if texto_categoria else "OTROS"
-
-        # Clean up description: strip trailing monto if it leaked in
-        descripcion = _re.sub(r"\$?[\d,]+\s*$", "", texto_descripcion).strip().rstrip(",").strip()
-        if not descripcion:
-            descripcion = ""
-
-        INVALID_PROV = {"MP", "NMP", "TICKET", "VALE", "TOTAL", "DESCONOCIDO", ""}
-        valido = bool(proveedor) and proveedor not in INVALID_PROV and len(proveedor.split()) <= 5
-        advertencias = [] if valido else ["Proveedor no identificado"]
-
+    def make_gasto(proveedor: str, clase: str, categoria_raw: str,
+                   comprobante: str, descripcion: str, monto: float) -> dict:
+        proveedor = _re.sub(r"\s*\(.*?\)\s*", " ", proveedor).strip().strip("/, ").upper()
+        proveedor = " ".join(proveedor.split())
+        INVALID = {"MP", "NMP", "TICKET", "VALE", "TOTAL", ""}
+        valido = bool(proveedor) and proveedor not in INVALID and len(proveedor.split()) <= 5
         return {
             "fecha":              fecha or str(date.today()),
-            "proveedor":          proveedor[:80] if proveedor else "DESCONOCIDO",
-            "clase":              clase,
+            "proveedor":          proveedor[:80] or "DESCONOCIDO",
+            "clase":              clase if clase in ("MP", "NMP") else "NMP",
             "categoria":          map_categoria(categoria_raw),
             "categoria_bitacora": categoria_raw,
-            "monto":              monto_val,
+            "monto":              monto,
             "metodo_pago":        "EFECTIVO",
-            "comprobante":        comprobante,
-            "descripcion":        descripcion[:200],
+            "comprobante":        comprobante if comprobante in ("TICKET","VALE","FACTURA","TRANSFERENCIA","RECIBO") else "VALE",
+            "descripcion":        str(descripcion or "")[:200],
             "valido":             valido,
-            "advertencias":       advertencias,
+            "advertencias":       [] if valido else ["Proveedor no identificado"],
         }
 
-    # ── Find gastos section boundaries ────────────────────────────────────
-    inicio = 0
-    for i, ln in enumerate(lineas):
-        lu = ln.lower()
-        if "proveedor" in lu and "clase" in lu:
-            inicio = i + 1
-            break
-
-    fin = len(lineas)
-    total_pdf = 0.0
-    for i, ln in enumerate(lineas[inicio:], start=inicio):
-        lu = ln.upper().strip()
-        if _re.search(r"\bTOTAL\b", lu) and "$" in ln:
-            m = _re.search(r"\$\s*([\d,]+)", ln)
-            if m:
-                total_pdf = float(m.group(1).replace(",", ""))
-            fin = i
-            break
-        if "CIERRE DEL" in lu:
-            fin = i
-            break
-
-    lineas_tabla = lineas[inicio:fin]
-
-    # ── Split into blocks: close at standalone montos OR end-of-line montos ──
+    # ── INTENTO 1: extract_table() automático ─────────────────────────────
     gastos_parsed: list = []
-    bloque_actual: list = []
+    total_pdf = 0.0
+    tabla_ok = False
 
-    for ln in lineas_tabla:
-        ln_sin = ln.replace("$", "").replace(",", "").strip()
+    if pagina_p1:
+        for strategy in [None, {"vertical_strategy": "lines", "horizontal_strategy": "lines"}]:
+            tabla = pagina_p1.extract_table(strategy) if strategy else pagina_p1.extract_table()
+            if not tabla:
+                continue
 
-        # Standalone monto: "$1752", "37,000", "$1,860"
-        es_solo_monto = bool(_re.match(r"^\d+(\.\d{1,2})?$", ln_sin)) and float(ln_sin.split(".")[0]) > 0
+            # Find header row
+            enc_idx = None
+            for ri, row in enumerate(tabla):
+                row_str = " ".join(str(c or "").lower() for c in row)
+                if "proveedor" in row_str and "clase" in row_str:
+                    enc_idx = ri
+                    break
+            if enc_idx is None:
+                continue
 
-        # End-of-line monto with preceding text: "VALE Presupuesto del día $400"
-        m_eol = _re.search(r"\$\s*([\d,]+)\s*$", ln)
-        es_monto_eol = bool(m_eol) and not es_solo_monto
+            enc = [str(c or "").lower().strip() for c in tabla[enc_idx]]
+            ci = lambda kw, default: next((i for i, c in enumerate(enc) if kw in c), default)
+            c_prov = ci("proveedor", 0); c_cls = ci("clase", 1)
+            c_cat  = ci("categ", 2);     c_cmp = ci("comprobante", 3)
+            c_desc = ci("descrip", 4);   c_mnt = ci("monto", 5)
 
-        if es_solo_monto:
-            try:
-                monto_val = float(ln_sin.replace(",", ""))
-            except Exception:
-                monto_val = 0.0
-            if monto_val > 0:
-                result = parsear_bloque(bloque_actual, monto_val)
-                if result:
-                    gastos_parsed.append(result)
-                bloque_actual = []
-        elif es_monto_eol:
-            monto_val = float(m_eol.group(1).replace(",", ""))
-            bloque_actual.append(ln)   # include this line so parsear_bloque sees comprobante/desc
-            result = parsear_bloque(bloque_actual, monto_val)
-            if result:
-                gastos_parsed.append(result)
-            bloque_actual = []
-        else:
-            bloque_actual.append(ln)
+            def gc(row, idx):
+                return str(row[idx]).strip() if idx < len(row) and row[idx] else ""
 
-    # ── Cierre del día (text-based) ───────────────────────────────────────
+            for row in tabla[enc_idx + 1:]:
+                if not row or all(not (c or "").strip() for c in row):
+                    continue
+                prov = gc(row, c_prov)
+                if not prov or prov.upper() in ("PROVEEDOR",):
+                    continue
+                if "TOTAL" in prov.upper():
+                    m = _re.search(r"\$?([\d,]+)", gc(row, c_mnt) or prov)
+                    if m:
+                        total_pdf = float(m.group(1).replace(",", ""))
+                    break
+                monto = limpiar_monto(gc(row, c_mnt))
+                if monto <= 0:
+                    continue
+                cat_raw = extraer_categoria(gc(row, c_cat))
+                gastos_parsed.append(make_gasto(
+                    proveedor   = prov,
+                    clase       = gc(row, c_cls).upper(),
+                    categoria_raw = cat_raw,
+                    comprobante = gc(row, c_cmp).upper(),
+                    descripcion = gc(row, c_desc),
+                    monto       = monto,
+                ))
+
+            if gastos_parsed:
+                tabla_ok = True
+                break
+
+    # ── INTENTO 2: extract_words() por coordenadas x ──────────────────────
+    if not tabla_ok and pagina_p1:
+        words = pagina_p1.extract_words() or []
+
+        # Calibrate column x-positions from header words
+        header_x: dict = {}
+        for kw, key in [("proveedor","prov"),("clase","cls"),("categ","cat"),
+                        ("comprobante","cmp"),("descrip","desc"),("monto","mnt")]:
+            for w in words:
+                if kw in w["text"].lower() and key not in header_x:
+                    header_x[key] = w["x0"]
+
+        if len(header_x) >= 4:
+            col_keys  = ["prov","cls","cat","cmp","desc","mnt"]
+            col_x     = [header_x.get(k, 0) for k in col_keys]
+
+            def get_col(x: float) -> int:
+                best = 0
+                for ci2, cx in enumerate(col_x[1:], 1):
+                    if x >= cx:
+                        best = ci2
+                return best
+
+            y_inicio = max((w["top"] for w in words if "proveedor" in w["text"].lower()), default=0)
+            y_fin    = min((w["top"] for w in words if w["text"].upper() == "TOTAL"), default=pagina_p1.height)
+
+            filas: dict = defaultdict(lambda: defaultdict(list))
+            for w in words:
+                if w["top"] <= y_inicio or w["top"] >= y_fin:
+                    continue
+                y_key = round(w["top"] / 4) * 4
+                filas[y_key][get_col(w["x0"])].append(w["text"])
+
+            gasto_raw: dict = defaultdict(list)
+            for y_key in sorted(filas.keys()):
+                fila = filas[y_key]
+                # New gasto starts when col 0 (proveedor) AND col 1 (clase) have content
+                if 0 in fila and 1 in fila:
+                    if gasto_raw:
+                        prov  = " ".join(gasto_raw[0])
+                        cls_  = " ".join(gasto_raw[1]).upper()
+                        cat_t = " ".join(gasto_raw[2])
+                        cmp_  = " ".join(gasto_raw[3]).upper()
+                        desc  = " ".join(gasto_raw[4])
+                        mnt   = limpiar_monto(" ".join(gasto_raw[5]))
+                        if mnt > 0 and prov.upper() not in ("PROVEEDOR",):
+                            gastos_parsed.append(make_gasto(prov, cls_, extraer_categoria(cat_t), cmp_, desc, mnt))
+                    gasto_raw = defaultdict(list)
+                for col, ws in fila.items():
+                    gasto_raw[col].extend(ws)
+
+            # Flush last block
+            if gasto_raw:
+                prov  = " ".join(gasto_raw[0])
+                cls_  = " ".join(gasto_raw[1]).upper()
+                cat_t = " ".join(gasto_raw[2])
+                cmp_  = " ".join(gasto_raw[3]).upper()
+                desc  = " ".join(gasto_raw[4])
+                mnt   = limpiar_monto(" ".join(gasto_raw[5]))
+                if mnt > 0 and "TOTAL" not in prov.upper() and prov.upper() not in ("PROVEEDOR",):
+                    gastos_parsed.append(make_gasto(prov, cls_, extraer_categoria(cat_t), cmp_, desc, mnt))
+
+        # total_pdf from text if not found
+        m_tot = _re.search(r"\bTOTAL\b[^\d]*\$?([\d,]+)", texto_p1, _re.IGNORECASE)
+        if m_tot:
+            total_pdf = float(m_tot.group(1).replace(",", ""))
+
+    # ── Cierre del día ────────────────────────────────────────────────────
     def _ev(pat: str) -> float:
         m = _re.search(pat, texto_completo, _re.IGNORECASE)
         return float(m.group(1).replace(",", "")) if m else 0.0
@@ -1580,6 +1599,11 @@ async def importar_bitacora(file: UploadFile = File(...)):
     }
     if not any(cierre_data.values()):
         cierre_data = None
+
+    if not total_pdf:
+        m_tot2 = _re.search(r"\bTOTAL\b[^\d]*\$?([\d,]+)", texto_completo, _re.IGNORECASE)
+        if m_tot2:
+            total_pdf = float(m_tot2.group(1).replace(",", ""))
 
     total_extraido = round(sum(g["monto"] for g in gastos_parsed), 2)
     coincide_total = abs(total_extraido - total_pdf) < 2.0 if total_pdf > 0 else None
