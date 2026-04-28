@@ -29,8 +29,8 @@ export const EstadoResultados = () => {
         const resp = await api.get(`/api/pl/${RESTAURANTE_ID}/mes/${anio}/${mes}`);
         // pl_router wraps response in {data, generado_en, periodo}
         const d = resp.data ?? resp;
-        console.log("[P&L] raw response:", resp);
-        console.log("[P&L] gastos_por_categoria:", d?.gastos_por_categoria);
+        console.log("PL raw response:", resp);
+        console.log("PL gastos_por_categoria:", d?.gastos_por_categoria);
         setData(d);
       } catch(e) { setData(null); }
       setLoading(false);
