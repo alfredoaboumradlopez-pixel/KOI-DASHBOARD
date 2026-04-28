@@ -22,6 +22,7 @@ import { PLDashboard } from "./components/PLDashboard";
 import { RBODashboard } from "./components/RBODashboard";
 import { RestauranteDashboard } from "./components/RestauranteDashboard";
 import { CategorizarGastos } from "./components/CategorizarGastos";
+import { Costeo } from "./components/Costeo";
 import { api } from "./services/api";
 
 // Suppress unused import warnings for icon imports kept for potential future use
@@ -209,6 +210,7 @@ function App() {
       {currentRoute.startsWith("/rbo/restaurante/") && <RestauranteDashboard />}
       {currentRoute === "/pl-dashboard" && <PLDashboard />}
       {currentRoute === "/categorizar" && <CategorizarGastos />}
+      {currentRoute === "/costeo" && <Costeo />}
       {currentRoute === "/login" && <LoginPage />}
     </Layout>
   );

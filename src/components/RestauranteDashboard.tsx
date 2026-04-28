@@ -27,6 +27,7 @@ import {
   RefreshCw,
   AlertCircle,
   Calculator,
+  ChefHat,
 } from "lucide-react";
 
 // Sub-componentes reutilizados
@@ -38,6 +39,7 @@ import { CapturaGastos } from "./CapturaGastos";
 import { Nomina } from "./Nomina";
 import { Tesoreria } from "./Tesoreria";
 import { Fiscal } from "./Fiscal";
+import { Costeo } from "./Costeo";
 import { RestauranteProvider } from "../context/RestauranteContext";
 
 type SubModule =
@@ -48,7 +50,8 @@ type SubModule =
   | "categorizar"
   | "nomina"
   | "tesoreria"
-  | "fiscal";
+  | "fiscal"
+  | "costeo";
 
 const MODULOS: { key: SubModule; label: string; icon: any; badgeKey?: string }[] = [
   { key: "dashboard",         label: "Dashboard",            icon: LayoutDashboard },
@@ -59,6 +62,7 @@ const MODULOS: { key: SubModule; label: string; icon: any; badgeKey?: string }[]
   { key: "nomina",            label: "Nómina",               icon: Users },
   { key: "tesoreria",         label: "Calendario Pagos",     icon: Wallet },
   { key: "fiscal",            label: "Fiscal",               icon: Calculator },
+  { key: "costeo",            label: "Costeo & Menú",        icon: ChefHat },
 ];
 
 export const RestauranteDashboard = () => {
@@ -368,6 +372,10 @@ export const RestauranteDashboard = () => {
       {subModule === "tesoreria" && <Tesoreria />}
 
       {subModule === "fiscal" && <Fiscal />}
+
+      {subModule === "costeo" && (
+        <Costeo restauranteIdOverride={restauranteId} />
+      )}
     </div>
     </RestauranteProvider>
   );

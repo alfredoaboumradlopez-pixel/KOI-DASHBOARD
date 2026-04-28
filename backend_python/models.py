@@ -434,3 +434,74 @@ class DeclaracionFiscal(Base):
     fecha_declarada = Column(Date, nullable=True)
     declarada_por = Column(String(100), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+# ── Costeo + Ingeniería de Menú ──────────────────────────────────────────────
+
+class InsumoCosteo(Base):
+    __tablename__ = "insumos_costeo"
+    id = Column(Integer, primary_key=True, index=True)
+    restaurante_id = Column(Integer, ForeignKey("restaurantes.id"), nullable=False)
+    numero = Column(Integer, nullable=True)
+    categoria = Column(String(50), nullable=False)
+    nombre = Column(String(100), nullable=False)
+    unidad = Column(String(20), nullable=False)
+    precio_unitario = Column(Float, nullable=False)
+    precio_por_g_ml = Column(Float, nullable=False)
+    porcentaje_merma = Column(Float, default=0.0)
+    costo_real = Column(Float, nullable=False)
+    activo = Column(Boolean, default=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class Subreceta(Base):
+    __tablename__ = "subrecetas"
+    id = Column(Integer, primary_key=True, index=True)
+    restaurante_id = Column(Integer, ForeignKey("restaurantes.id"), nullable=False)
+    codigo = Column(String(10), nullable=True)
+    nombre = Column(String(100), nullable=False)
+    rendimiento_g = Column(Float, nullable=True)
+    costo_total = Column(Float, default=0.0)
+    costo_por_g_ml = Column(Float, default=0.0)
+    activo = Column(Boolean, default=True)
+
+
+class SubrecetaIngrediente(Base):
+    __tablename__ = "subreceta_ingredientes"
+    id = Column(Integer, primary_key=True, index=True)
+    subreceta_id = Column(Integer, ForeignKey("subrecetas.id"), nullable=False)
+    insumo_id = Column(Integer, ForeignKey("insumos_costeo.id"), nullable=True)
+    nombre_ingrediente = Column(String(100), nullable=True)
+    unidad = Column(String(20), nullable=True)
+    cantidad = Column(Float, default=0.0)
+    costo_unitario = Column(Float, default=0.0)
+    costo_total = Column(Float, default=0.0)
+
+
+class Platillo(Base):
+    __tablename__ = "platillos"
+    id = Column(Integer, primary_key=True, index=True)
+    restaurante_id = Column(Integer, ForeignKey("restaurantes.id"), nullable=False)
+    numero = Column(Integer, nullable=True)
+    nombre = Column(String(100), nullable=False)
+    categoria = Column(String(50), nullable=False)
+    costo_receta = Column(Float, nullable=False)
+    markup = Column(Float, default=3.0)
+    precio_venta = Column(Float, nullable=False)
+    precio_venta_con_iva = Column(Float, nullable=False)
+    margen_contribucion_pesos = Column(Float, nullable=False)
+    margen_contribucion_pct = Column(Float, nullable=False)
+    activo = Column(Boolean, default=True)
+
+
+class PlatilloIngrediente(Base):
+    __tablename__ = "platillo_ingredientes"
+    id = Column(Integer, primary_key=True, index=True)
+    platillo_id = Column(Integer, ForeignKey("platillos.id"), nullable=False)
+    insumo_id = Column(Integer, ForeignKey("insumos_costeo.id"), nullable=True)
+    subreceta_id = Column(Integer, ForeignKey("subrecetas.id"), nullable=True)
+    nombre_ingrediente = Column(String(100), nullable=True)
+    unidad = Column(String(20), nullable=True)
+    cantidad = Column(Float, default=0.0)
+    costo_unitario = Column(Float, default=0.0)
+    costo_total = Column(Float, default=0.0)

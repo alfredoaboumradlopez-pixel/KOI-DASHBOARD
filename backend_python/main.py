@@ -47,6 +47,7 @@ from .routers.pl_router import router as pl_router
 from .routers.gastos_categorizacion_router import router as gastos_cat_router
 from .routers.alertas_router import router as alertas_router
 from .routers.gastos_dashboard_router import router as gastos_dashboard_router
+from .routers.costeo_router import router as costeo_router, seed_costeo
 
 models.Base.metadata.create_all(bind=engine)
 
@@ -219,6 +220,17 @@ try:
 except Exception as _e_gsc:
     print(f"Seed GASTO_SIN_CATEGORIA: {_e_gsc}")
 
+# Seed costeo KOI (insumos + platillos)
+try:
+    from sqlalchemy.orm import Session as _Session3
+    with _Session3(engine) as _s3:
+        _koi3 = _s3.query(models.Restaurante).filter(models.Restaurante.slug == 'koi').first()
+        if _koi3:
+            seed_costeo(_s3, restaurante_id=_koi3.id)
+            print("Seed costeo KOI OK")
+except Exception as _e_seed:
+    print(f"Seed costeo: {_e_seed}")
+
 # Migracion: agregar catalogo_cuenta_id a gastos y gastos_diarios
 try:
     _insp_cc = _inspect(engine)
@@ -264,6 +276,7 @@ app.include_router(pl_router)
 app.include_router(gastos_cat_router)
 app.include_router(alertas_router)
 app.include_router(gastos_dashboard_router)
+app.include_router(costeo_router)
 
 UPLOADS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
 os.makedirs(os.path.join(UPLOADS_DIR, "documentos"), exist_ok=True)
