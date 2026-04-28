@@ -43,6 +43,9 @@ class AlertasJob:
             # Alertas fiscales: obligaciones que vencen en ≤10 días
             alertas_creadas.extend(self._evaluar_obligacion_fiscal(db, restaurante_id, hoy))
 
+            # Alertas de proveedores con incremento de precio >10%
+            alertas_creadas.extend(self._evaluar_proveedor_precio_alto(db, restaurante_id, hoy))
+
             if alertas_creadas:
                 db.commit()
 
@@ -353,6 +356,113 @@ class AlertasJob:
                 tipo="OBLIGACION_FISCAL",
                 mensaje=f"{tipo} {mes_nombre} vence en {dias_restantes} día(s) — confirmar con PMG",
                 valor_detectado=float(dias_restantes),
+                umbral_config=10.0,
+                revisada=False,
+                severidad=sev,
+            )
+            db.add(alerta)
+            creadas.append(alerta)
+
+        return creadas
+
+
+    def _evaluar_proveedor_precio_alto(
+        self, db: Session, restaurante_id: int, hoy: date
+    ) -> List[models.AlertaLog]:
+        """
+        Crea alertas PROVEEDOR_PRECIO_ALTO para proveedores cuyo gasto
+        mensual subió > 10% vs el mes anterior.
+        Severidad: WARNING si variación < 20%, CRITICAL si >= 20%.
+        Anti-duplicado: no crea si ya existe alerta del mismo tipo y
+        proveedor en el mensaje en las últimas 24h.
+        """
+        import os as _os_ap
+        _USE_PG_AP = bool(_os_ap.environ.get("DATABASE_URL"))
+
+        mes = hoy.month
+        anio = hoy.year
+        if mes == 1:
+            mes_ant, anio_ant = 12, anio - 1
+        else:
+            mes_ant, anio_ant = mes - 1, anio
+
+        def _sumar(m, y):
+            result = {}
+
+            def _filt_pg(q, col):
+                if _USE_PG_AP:
+                    from sqlalchemy import extract as _ext
+                    return q.filter(_ext("month", col) == m, _ext("year", col) == y)
+                else:
+                    return q.filter(
+                        func.strftime("%m", col) == str(m).zfill(2),
+                        func.strftime("%Y", col) == str(y),
+                    )
+
+            q_g = _filt_pg(
+                db.query(models.Gasto).filter(
+                    models.Gasto.restaurante_id == restaurante_id,
+                    models.Gasto.proveedor != "",
+                    models.Gasto.proveedor != None,
+                ),
+                models.Gasto.fecha,
+            )
+            for g in q_g.all():
+                key = g.proveedor.strip().upper()
+                if key:
+                    result[key] = result.get(key, 0.0) + (g.monto or 0.0)
+
+            q_gd = _filt_pg(
+                db.query(models.GastoDiario, models.CierreTurno.fecha)
+                .join(models.CierreTurno, models.GastoDiario.cierre_id == models.CierreTurno.id)
+                .filter(
+                    models.GastoDiario.restaurante_id == restaurante_id,
+                    models.GastoDiario.proveedor != "",
+                    models.GastoDiario.proveedor != None,
+                ),
+                models.CierreTurno.fecha,
+            )
+            for gd, _ in q_gd.all():
+                key = gd.proveedor.strip().upper()
+                if key:
+                    result[key] = result.get(key, 0.0) + (gd.monto or 0.0)
+
+            return result
+
+        actual = _sumar(mes, anio)
+        anterior = _sumar(mes_ant, anio_ant)
+
+        creadas: List[models.AlertaLog] = []
+        hace_24h = datetime.utcnow() - timedelta(hours=24)
+
+        for proveedor, total_actual in actual.items():
+            total_anterior = anterior.get(proveedor, 0.0)
+            if total_anterior <= 0:
+                continue
+            variacion = (total_actual - total_anterior) / total_anterior * 100
+            if variacion <= 10:
+                continue
+
+            # Anti-duplicado por proveedor en mensaje
+            existe = db.query(models.AlertaLog).filter(
+                models.AlertaLog.restaurante_id == restaurante_id,
+                models.AlertaLog.tipo == "PROVEEDOR_PRECIO_ALTO",
+                models.AlertaLog.mensaje.contains(proveedor),
+                models.AlertaLog.revisada == False,
+                models.AlertaLog.created_at >= hace_24h,
+            ).first()
+            if existe:
+                continue
+
+            sev = "CRITICAL" if variacion >= 20 else "WARNING"
+            alerta = models.AlertaLog(
+                restaurante_id=restaurante_id,
+                tipo="PROVEEDOR_PRECIO_ALTO",
+                mensaje=(
+                    f"Proveedor {proveedor} subió {variacion:.1f}% vs mes anterior "
+                    f"(${total_anterior:,.0f} → ${total_actual:,.0f})"
+                ),
+                valor_detectado=round(variacion, 2),
                 umbral_config=10.0,
                 revisada=False,
                 severidad=sev,
