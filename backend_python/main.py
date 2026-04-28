@@ -1359,30 +1359,40 @@ async def importar_bitacora(file: UploadFile = File(...)):
     import pdfplumber, io, re as _re
     contents = await file.read()
 
+    # ── Extract text from all pages ───────────────────────────────────────
     try:
-        pdf = pdfplumber.open(io.BytesIO(contents))
-        pages = list(pdf.pages)
-        text_p1   = pages[0].extract_text() or "" if pages else ""
-        tables_p2 = pages[1].extract_tables() if len(pages) > 1 else []
-        text_p2   = pages[1].extract_text() or "" if len(pages) > 1 else ""
-        pdf.close()
+        with pdfplumber.open(io.BytesIO(contents)) as _pdf:
+            texto_completo = "\n".join(p.extract_text() or "" for p in _pdf.pages)
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"Error leyendo PDF: {str(e)}")
 
-    # ── Fecha y Responsable ───────────────────────────────────────────────
+    # ── Metadata ──────────────────────────────────────────────────────────
+    lineas = [l.strip() for l in texto_completo.split("\n") if l.strip()]
+
+    responsable = "Sin responsable"
     fecha = None
     MESES_NUM = {"ENERO":"01","FEBRERO":"02","MARZO":"03","ABRIL":"04","MAYO":"05",
                  "JUNIO":"06","JULIO":"07","AGOSTO":"08","SEPTIEMBRE":"09",
                  "OCTUBRE":"10","NOVIEMBRE":"11","DICIEMBRE":"12"}
-    fm = _re.search(r"FECHA[:\s]*\w+\s+(\d{1,2})\s+(\w+)\s+(\d{4})", text_p1.upper())
-    if fm:
-        dia, mes_txt, anio = fm.group(1).zfill(2), fm.group(2), fm.group(3)
-        fecha = f"{anio}-{MESES_NUM.get(mes_txt, '01')}-{dia}"
+    for ln in lineas[:10]:
+        lu = ln.upper()
+        if "RESPONSABLE:" in lu:
+            responsable = ln.split(":", 1)[-1].strip()
+        elif "FECHA:" in lu:
+            fm = _re.search(r"FECHA[:\s]*\w+\s+(\d{1,2})\s+(\w+)\s+(\d{4})", lu)
+            if fm:
+                dia, mes_txt, anio = fm.group(1).zfill(2), fm.group(2), fm.group(3)
+                fecha = f"{anio}-{MESES_NUM.get(mes_txt,'01')}-{dia}"
 
-    resp_m = _re.search(r"RESPONSABLE[:\s]*(.+)", text_p1)
-    responsable = resp_m.group(1).strip() if resp_m else "Sin responsable"
-
-    # ── Categorías y helpers ──────────────────────────────────────────────
+    # ── Category helpers ───────────────────────────────────────────────────
+    CATEGORIAS_KOI = [
+        "COMIDA PERSONAL", "ENTREGA DE UTILIDADES", "PRODUCTOS ASIATICOS",
+        "DESECHABLES EMPAQUES", "VEGETALES FRUTAS", "LIMPIEZA MANTTO",
+        "COMISIONES BANCARIAS", "COMISIONES PLATAFORMAS", "ABARROTES",
+        "BEBIDAS", "PERSONAL", "PROPINAS", "PROTEINA", "MARKETING",
+        "MANTENIMIENTO", "SERVICIOS", "PAPELERIA", "EQUIPO", "OTROS",
+        "ESTACIONAMIENTO", "LUZ", "NOMINA", "RENTA",
+    ]
     CAT_MAP = {
         "COMISIONES PLATAFORMAS": "COMISIONES_PLATAFORMAS",
         "COMISIONES BANCARIAS":   "COMISIONES_BANCARIAS",
@@ -1410,305 +1420,166 @@ async def importar_bitacora(file: UploadFile = File(...)):
         "SOFTWARE":               "SOFTWARE",
         "OTROS":                  "OTROS",
     }
-    _CAT_KEYS = sorted(CAT_MAP.keys(), key=len, reverse=True)
 
-    # NMP must be checked before MP to avoid matching the "MP" inside "NMP"
-    CLASES       = ["NMP", "MP"]
-    COMPROBANTES = ["TICKET", "VALE", "FACTURA", "NOTA REMISION", "TRANSFERENCIA", "RECIBO"]
+    def extraer_categoria(texto: str) -> str:
+        t = texto.upper()
+        for cat in sorted(CATEGORIAS_KOI, key=len, reverse=True):
+            if cat in t:
+                return cat
+        return "OTROS"
 
     def map_categoria(raw: str) -> str:
-        c = " ".join(raw.split()).upper()
-        for key in _CAT_KEYS:
-            if key in c:
-                return CAT_MAP[key]
-        return "OTROS"
+        return CAT_MAP.get(raw, "OTROS")
 
-    def extraer_categoria_raw(texto: str) -> str:
-        t = texto.upper()
-        for key in _CAT_KEYS:
-            if key in t:
-                return key
-        return "OTROS"
-
-    def extraer_comprobante(texto: str):
-        t = texto.upper()
-        for comp in COMPROBANTES:
-            if comp in t:
-                return comp
-        return None
-
-    def es_monto_val(s: str) -> float:
+    # ── Block parser (user's parsear_bloque logic) ─────────────────────────
+    def parsear_bloque(bloque_lineas: list, monto_val: float) -> dict | None:
         """
-        Returns the float monto if the line is or ends with a money amount.
-        Handles: "$1752", "$1,860", "37,000", "VALE Presupuesto $400" (end-of-line).
+        Joins all block lines into one string, then:
+        1. Finds monto at end (already known as monto_val).
+        2. Finds \\bNMP\\b / \\bMP\\b → clase; proveedor = text before.
+        3. Finds TICKET / VALE after clase → comprobante.
+        4. Text before comprobante = categoria; after = descripcion.
         """
-        s = s.strip()
-        # Standalone number: "$1752", "37,000", "$1,860"
-        m = _re.match(r'^\$?\s*([\d]{1,3}(?:,[\d]{3})*|\d+)$', s)
-        if m:
-            try:
-                v = float(m.group(1).replace(',', ''))
-                if v > 0:
-                    return v
-            except Exception:
-                pass
-        # Number at end of line: "Presupuesto del día $400"
-        m2 = _re.search(r'\$\s*([\d,]+)\s*$', s)
-        if m2:
-            try:
-                v = float(m2.group(1).replace(',', ''))
-                if v > 0:
-                    return v
-            except Exception:
-                pass
-        return 0.0
+        texto = " ".join(bloque_lineas)
+        texto_u = texto.upper()
 
-    def es_desc_line(linea: str) -> bool:
-        """
-        True if the line looks like a description item rather than a company name.
-        - Starts with digit: "1 Bidon Aceite", "4 Quesos"
-        - Starts with $: "$32 c/u" (money reference in description, not standalone monto)
-        - Parenthetical "(INTERLOMAS /": proveedor fragment → False
-        - Zero uppercase letters ("c/u", "basura", "de"): description fragment → True
-        - More lowercase letters than uppercase: "Vegetal", "Chipotles 220 grms" → True
-        - All uppercase (company names like "SAMS", "GOURMET"): → False
-        """
-        s = linea.strip()
-        if not s:
-            return False
-        if s[0].isdigit():
-            return True
-        # "$32 c/u" style: starts with $ but is not a standalone monto
-        if s.startswith('$') and not _re.match(r'^\$\s*[\d,]+$', s):
-            return True
-        if s.startswith('('):
-            return False
-        ups = sum(1 for c in s if c.isupper())
-        lws = sum(1 for c in s if c.islower())
-        # No uppercase at all → description fragment (e.g. "c/u", "de", "vegetal")
-        if ups == 0 and lws > 0:
-            return True
-        # More lowercase than uppercase → description
-        return lws > ups
-
-    def procesar_bloque(block_lines: list, monto_linea: str, monto_val: float):
-        """
-        Parse one gasto block (all lines between two montos).
-
-        Strategy: find the "clase line" (contains \\bMP\\b or \\bNMP\\b).
-        - Lines BEFORE clase line: classify as proveedor prefix (uppercase) or description
-          (digit-start / mostly lowercase). This handles PDFs where description column
-          is extracted before the proveedor/clase column.
-        - Clase line itself: text before clase = proveedor suffix.
-        - Lines AFTER clase line: scan for TICKET/VALE; before it = categoria; after = description.
-        - monto_linea: may contain TICKET/VALE and/or description text before the number.
-        """
-        if not block_lines and not monto_val:
-            return None
-
-        # 1. Find the clase line
-        clase_idx = -1
+        # Clase (NMP before MP to avoid matching MP inside NMP)
         clase = "NMP"
-        for idx, ln in enumerate(block_lines):
-            ln_u = ln.upper()
-            for cl in CLASES:
-                if _re.search(r'\b' + cl + r'\b', ln_u):
-                    clase_idx = idx
-                    clase = cl
-                    break
-            if clase_idx >= 0:
+        clase_pos = -1
+        for cl in ["NMP", "MP"]:
+            m = _re.search(r"\b" + cl + r"\b", texto_u)
+            if m:
+                clase = cl
+                clase_pos = m.start()
                 break
 
-        if clase_idx < 0:
-            return None  # no clase found → cannot parse
+        if clase_pos < 0:
+            return None  # no clase → cannot parse
 
-        clase_linea = block_lines[clase_idx]
-        clase_linea_u = clase_linea.upper()
+        # Proveedor = text before clase, parentheticals removed
+        prov_raw = texto[:clase_pos].strip()
+        prov_raw = _re.sub(r"\s*\(.*?\)\s*", " ", prov_raw).strip().strip("/, ")
+        proveedor = " ".join(prov_raw.split()).upper()
 
-        # 2. Text on clase line: split at the clase keyword
-        m_clase = _re.search(r'\b' + clase + r'\b', clase_linea_u)
-        prov_suffix = clase_linea[:m_clase.start()].strip() if m_clase else ""
-        post_clase  = clase_linea[m_clase.end():].strip()   if m_clase else clase_linea_u
+        # Text after clase
+        texto_post_clase = texto[clase_pos + len(clase):].strip()
+        texto_post_clase_u = texto_post_clase.upper()
 
-        # 3. Lines BEFORE clase line → proveedor prefix or description
-        prov_prefix: list = []
-        desc_before: list = []
-        for ln in block_lines[:clase_idx]:
-            if es_desc_line(ln):
-                desc_before.append(ln.strip())
-            else:
-                prov_prefix.append(ln.strip())
+        # Comprobante (TICKET before VALE to prefer specificity)
+        comprobante = "VALE"
+        comp_pos = -1
+        for comp in ["TICKET", "VALE"]:
+            m = _re.search(r"\b" + comp + r"\b", texto_post_clase_u)
+            if m:
+                comprobante = comp
+                comp_pos = m.start()
+                break
 
-        # 4. Build raw proveedor string and clean it
-        prov_parts = prov_prefix + ([prov_suffix] if prov_suffix else [])
-        prov_raw   = " ".join(prov_parts)
-        prov_raw   = _re.sub(r'\s*\(.*?\)\s*', ' ', prov_raw).strip().strip('/').strip()
-        proveedor  = " ".join(prov_raw.split()).upper()
-
-        # 5. Lines AFTER clase line → categoria then description
-        after_clase   = block_lines[clase_idx + 1:]
-        categoria_parts: list = []
-        desc_after:      list = []
-        comprobante = extraer_comprobante(post_clase)
-
-        if comprobante:
-            # Comprobante is on the clase line itself
-            cp = post_clase.upper().find(comprobante)
-            cat_part  = post_clase[:cp].strip()
-            desc_part = post_clase[cp + len(comprobante):].strip()
-            if cat_part:
-                categoria_parts.append(cat_part)
-            if desc_part:
-                desc_after.append(desc_part)
-            desc_after.extend(ln.strip() for ln in after_clase if ln.strip())
+        if comp_pos >= 0:
+            texto_categoria = texto_post_clase[:comp_pos].strip()
+            texto_descripcion = texto_post_clase[comp_pos + len(comprobante):].strip()
         else:
-            if post_clase.strip():
-                categoria_parts.append(post_clase.strip())
-            found_comp = False
-            for ln in after_clase:
-                comp = extraer_comprobante(ln.upper())
-                if comp and not found_comp:
-                    found_comp  = True
-                    comprobante = comp
-                    cp = ln.upper().find(comp)
-                    cat_part  = ln[:cp].strip()
-                    desc_part = ln[cp + len(comp):].strip()
-                    if cat_part:
-                        categoria_parts.append(cat_part)
-                    if desc_part:
-                        desc_after.append(desc_part)
-                elif found_comp:
-                    if ln.strip():
-                        desc_after.append(ln.strip())
-                else:
-                    if ln.strip():
-                        categoria_parts.append(ln.strip())
+            texto_categoria = texto_post_clase
+            texto_descripcion = ""
 
-        # 6. Check monto_linea for comprobante and/or extra description
-        ml = monto_linea.strip()
-        comp_in_ml = extraer_comprobante(ml.upper())
-        if comp_in_ml:
-            if not comprobante:
-                comprobante = comp_in_ml
-            cp = ml.upper().find(comp_in_ml)
-            post_comp_ml = ml[cp + len(comp_in_ml):].strip()
-            # Strip the number from the end
-            m_num = _re.search(r'\$?\s*([\d,]+)\s*$', post_comp_ml)
-            if m_num:
-                desc_text = post_comp_ml[:m_num.start()].strip()
-                if desc_text:
-                    desc_after.append(desc_text)
-        else:
-            # Just strip the monto from end; whatever precedes it on that line is description
-            m_num = _re.search(r'\$?\s*([\d,]+)\s*$', ml)
-            if m_num:
-                pre_num = ml[:m_num.start()].strip()
-                if pre_num:
-                    desc_after.append(pre_num)
+        categoria_raw = extraer_categoria(texto_categoria) if texto_categoria else "OTROS"
 
-        # 7. Assemble categoria — try post-clase text first, then full block
-        categoria_text = " ".join(p for p in categoria_parts if p)
-        categoria_raw  = extraer_categoria_raw(categoria_text)
-        if categoria_raw == "OTROS":
-            full_block = " ".join(block_lines).upper()
-            categoria_raw = extraer_categoria_raw(full_block)
+        # Clean up description: strip trailing monto if it leaked in
+        descripcion = _re.sub(r"\$?[\d,]+\s*$", "", texto_descripcion).strip().rstrip(",").strip()
+        if not descripcion:
+            descripcion = ""
 
-        # 8. Assemble description (deduplicated, joined)
-        all_desc = desc_before + desc_after
-        descripcion = ", ".join(l.rstrip(",") for l in all_desc if l.strip())
-
-        INVALID_PROV = {"MP", "NMP", "TICKET", "VALE", "TOTAL", ""}
-        valido = bool(proveedor) and proveedor not in INVALID_PROV
+        INVALID_PROV = {"MP", "NMP", "TICKET", "VALE", "TOTAL", "DESCONOCIDO", ""}
+        valido = bool(proveedor) and proveedor not in INVALID_PROV and len(proveedor.split()) <= 5
         advertencias = [] if valido else ["Proveedor no identificado"]
 
         return {
             "fecha":              fecha or str(date.today()),
-            "proveedor":          proveedor[:80],
+            "proveedor":          proveedor[:80] if proveedor else "DESCONOCIDO",
             "clase":              clase,
             "categoria":          map_categoria(categoria_raw),
             "categoria_bitacora": categoria_raw,
             "monto":              monto_val,
             "metodo_pago":        "EFECTIVO",
-            "comprobante":        comprobante or "VALE",
+            "comprobante":        comprobante,
             "descripcion":        descripcion[:200],
             "valido":             valido,
             "advertencias":       advertencias,
         }
 
-    # ── Split extracted text into gasto blocks by monto lines ─────────────
-    lineas = text_p1.split("\n")
-
-    # Find where the gastos section starts (skip document header)
-    inicio_tabla = 0
+    # ── Find gastos section boundaries ────────────────────────────────────
+    inicio = 0
     for i, ln in enumerate(lineas):
-        lu = ln.upper()
-        if "PROVEEDOR" in lu and ("CLASE" in lu or "CATEGORIA" in lu or "COMPROBANTE" in lu):
-            inicio_tabla = i + 1
+        lu = ln.lower()
+        if "proveedor" in lu and "clase" in lu:
+            inicio = i + 1
             break
 
-    # Find where it ends and capture total_pdf
-    fin_tabla = len(lineas)
+    fin = len(lineas)
     total_pdf = 0.0
-    for i, ln in enumerate(lineas[inicio_tabla:], start=inicio_tabla):
+    for i, ln in enumerate(lineas[inicio:], start=inicio):
         lu = ln.upper().strip()
-        if _re.search(r'\bTOTAL\b', lu) and "$" in ln:
-            m = _re.search(r'\$\s*([\d,]+)', ln)
+        if _re.search(r"\bTOTAL\b", lu) and "$" in ln:
+            m = _re.search(r"\$\s*([\d,]+)", ln)
             if m:
                 total_pdf = float(m.group(1).replace(",", ""))
-            fin_tabla = i
+            fin = i
             break
         if "CIERRE DEL" in lu:
-            fin_tabla = i
+            fin = i
             break
 
-    lineas_gastos = [ln.strip() for ln in lineas[inicio_tabla:fin_tabla] if ln.strip()]
+    lineas_tabla = lineas[inicio:fin]
 
-    # Group into blocks: each block ends at a monto line
-    gastos_parsed = []
-    current_block: list = []
-    for ln in lineas_gastos:
-        mv = es_monto_val(ln)
-        if mv > 0:
-            result = procesar_bloque(current_block, ln, mv)
+    # ── Split into blocks: close at standalone montos OR end-of-line montos ──
+    gastos_parsed: list = []
+    bloque_actual: list = []
+
+    for ln in lineas_tabla:
+        ln_sin = ln.replace("$", "").replace(",", "").strip()
+
+        # Standalone monto: "$1752", "37,000", "$1,860"
+        es_solo_monto = bool(_re.match(r"^\d+(\.\d{1,2})?$", ln_sin)) and float(ln_sin.split(".")[0]) > 0
+
+        # End-of-line monto with preceding text: "VALE Presupuesto del día $400"
+        m_eol = _re.search(r"\$\s*([\d,]+)\s*$", ln)
+        es_monto_eol = bool(m_eol) and not es_solo_monto
+
+        if es_solo_monto:
+            try:
+                monto_val = float(ln_sin.replace(",", ""))
+            except Exception:
+                monto_val = 0.0
+            if monto_val > 0:
+                result = parsear_bloque(bloque_actual, monto_val)
+                if result:
+                    gastos_parsed.append(result)
+                bloque_actual = []
+        elif es_monto_eol:
+            monto_val = float(m_eol.group(1).replace(",", ""))
+            bloque_actual.append(ln)   # include this line so parsear_bloque sees comprobante/desc
+            result = parsear_bloque(bloque_actual, monto_val)
             if result:
                 gastos_parsed.append(result)
-            current_block = []
+            bloque_actual = []
         else:
-            current_block.append(ln)
+            bloque_actual.append(ln)
 
-    # ── Cierre del día ────────────────────────────────────────────────────
-    cierre_data = None
-    if tables_p2:
-        cm: dict = {}
-        for row in tables_p2[0]:
-            if row and len(row) >= 2 and row[0]:
-                lbl = str(row[0]).upper()
-                val_str = str(row[1] or "").replace("$","").replace(",","").strip()
-                try: val = float(val_str)
-                except Exception: val = 0.0
-                if "SALDO INICIAL" in lbl:           cm["saldo_inicial"]       = val
-                elif "TOTAL GASTOS" in lbl:          cm["total_gastos"]         = val
-                elif "VENTAS EN EFECTIVO" in lbl:    cm["ventas_efectivo"]      = val
-                elif "SALDO FINAL" in lbl:           cm["saldo_final_esperado"] = val
-                elif "EFECTIVO" in lbl and ("CONTADO" in lbl or "FISICO" in lbl or "FÍSICO" in lbl):
-                    cm["efectivo_fisico"] = val
-                elif "DIFERENCIA" in lbl:            cm["diferencia"]           = val
-        if cm:
-            cierre_data = cm
-    if not cierre_data and text_p2:
-        def _ev(pat):
-            m = _re.search(pat, text_p2, _re.IGNORECASE)
-            return float(m.group(1).replace(",", "")) if m else 0.0
-        cierre_data = {
-            "saldo_inicial":       _ev(r"Saldo Inicial[:\s]*\$?([\d,]+)"),
-            "total_gastos":        _ev(r"Total Gastos[:\s]*\$?([\d,]+)"),
-            "ventas_efectivo":     _ev(r"Ventas en Efectivo[:\s]*\$?([\d,]+)"),
-            "saldo_final_esperado":_ev(r"Saldo Final Esperado[:\s]*\$?([\d,]+)"),
-            "efectivo_fisico":     _ev(r"Efectivo F[ií]sico[:\s]*\$?([\d,]+)"),
-            "diferencia":          _ev(r"Diferencia[:\s]*\$?([\d,]+)"),
-        }
-        if not any(cierre_data.values()):
-            cierre_data = None
+    # ── Cierre del día (text-based) ───────────────────────────────────────
+    def _ev(pat: str) -> float:
+        m = _re.search(pat, texto_completo, _re.IGNORECASE)
+        return float(m.group(1).replace(",", "")) if m else 0.0
+
+    cierre_data = {
+        "saldo_inicial":       _ev(r"Saldo Inicial[:\s]*\$?([\d,]+)"),
+        "total_gastos":        _ev(r"Total Gastos[:\s]*\$?([\d,]+)"),
+        "ventas_efectivo":     _ev(r"Ventas en Efectivo[:\s]*\$?([\d,]+)"),
+        "saldo_final_esperado":_ev(r"Saldo Final Esperado[:\s]*\$?([\d,]+)"),
+        "efectivo_fisico":     _ev(r"Efectivo F[ií]sico[:\s]*\$?([\d,]+)"),
+        "diferencia":          _ev(r"Diferencia[:\s]*\$?([\d,]+)"),
+    }
+    if not any(cierre_data.values()):
+        cierre_data = None
 
     total_extraido = round(sum(g["monto"] for g in gastos_parsed), 2)
     coincide_total = abs(total_extraido - total_pdf) < 2.0 if total_pdf > 0 else None
