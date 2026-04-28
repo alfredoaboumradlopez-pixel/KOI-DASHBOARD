@@ -113,8 +113,8 @@ export const CierreTurno: React.FC = () => {
 
   // ── Save ──
   const handleSave = async () => {
-    if (!responsable || !elaboradoPor) {
-      setError("Selecciona responsable y elaborado por");
+    if (!elaboradoPor) {
+      setError("Selecciona quién elabora el cierre");
       return;
     }
     if (totalVentas === 0) {
@@ -128,7 +128,7 @@ export const CierreTurno: React.FC = () => {
     try {
       await api.post("/api/cierre-turno", {
         fecha,
-        responsable,
+        responsable: elaboradoPor,
         elaborado_por: elaboradoPor,
         saldo_inicial: n(saldoInicial),
         ventas_efectivo: n(ventas.efectivo),
@@ -260,7 +260,7 @@ export const CierreTurno: React.FC = () => {
 
           {/* ── SECCIÓN 1: Header compacto ── */}
           <div style={sectionCard}>
-            <div style={{ display: "grid", gridTemplateColumns: "auto 1fr 1fr 1fr auto", gap: "16px", alignItems: "end" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "auto 1fr 200px auto", gap: "16px", alignItems: "end" }}>
 
               {/* Fecha */}
               <div>
@@ -278,30 +278,26 @@ export const CierreTurno: React.FC = () => {
                 <span style={{ fontSize: "14px", fontWeight: "700", color: "#374151" }}>{fechaLabel}</span>
               </div>
 
-              {/* Responsable */}
-              <div>
-                <div style={{ fontSize: "10px", fontWeight: "700", color: "#9CA3AF", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "4px" }}>👤 Responsable</div>
-                <select
-                  value={responsable}
-                  onChange={e => setResponsable(e.target.value)}
-                  style={{ width: "100%", padding: "7px 10px", borderRadius: "8px", border: `1px solid ${!responsable ? "#FCA5A5" : "#E5E7EB"}`, fontSize: "13px", color: responsable ? "#111827" : "#9CA3AF", background: "#FFF" }}
-                >
-                  <option value="">Seleccionar...</option>
-                  {empleados.map((e: any) => <option key={e.id} value={e.nombre}>{e.nombre}</option>)}
-                </select>
-              </div>
-
               {/* Elaborado por */}
               <div>
                 <div style={{ fontSize: "10px", fontWeight: "700", color: "#9CA3AF", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "4px" }}>✍️ Elaborado por</div>
-                <select
-                  value={elaboradoPor}
-                  onChange={e => setElaboradoPor(e.target.value)}
-                  style={{ width: "100%", padding: "7px 10px", borderRadius: "8px", border: `1px solid ${!elaboradoPor ? "#FCA5A5" : "#E5E7EB"}`, fontSize: "13px", color: elaboradoPor ? "#111827" : "#9CA3AF", background: "#FFF" }}
-                >
-                  <option value="">Seleccionar...</option>
-                  {empleados.map((e: any) => <option key={e.id} value={e.nombre}>{e.nombre}</option>)}
-                </select>
+                {empleados.length > 0 ? (
+                  <select
+                    value={elaboradoPor}
+                    onChange={e => setElaboradoPor(e.target.value)}
+                    style={{ width: "100%", padding: "7px 10px", borderRadius: "8px", border: `1px solid ${!elaboradoPor ? "#FCA5A5" : "#E5E7EB"}`, fontSize: "13px", color: elaboradoPor ? "#111827" : "#9CA3AF", background: "#FFF" }}
+                  >
+                    <option value="">Seleccionar...</option>
+                    {empleados.map((e: any) => <option key={e.id} value={e.nombre}>{e.nombre}</option>)}
+                  </select>
+                ) : (
+                  <input
+                    value={elaboradoPor}
+                    onChange={e => setElaboradoPor(e.target.value)}
+                    placeholder="Escribe tu nombre"
+                    style={{ width: "100%", padding: "7px 10px", borderRadius: "8px", border: `1px solid ${!elaboradoPor ? "#FCA5A5" : "#E5E7EB"}`, fontSize: "13px", color: "#111827", boxSizing: "border-box" }}
+                  />
+                )}
               </div>
 
               {/* Semana */}
@@ -320,21 +316,25 @@ export const CierreTurno: React.FC = () => {
                 <p style={{ fontSize: "12px", color: "#9CA3AF", margin: "3px 0 0" }}>Ingresa el total vendido por cada canal</p>
               </div>
               {/* Comisiones editables */}
-              <div style={{ display: "flex", gap: "8px", alignItems: "center", background: "#F9FAFB", borderRadius: "8px", padding: "6px 12px", border: "1px solid #F3F4F6" }}>
-                <span style={{ fontSize: "10px", fontWeight: "600", color: "#9CA3AF" }}>Comisiones:</span>
-                {[
-                  { label: "Uber", value: comisionUber, set: setComisionUber },
-                  { label: "Rappi", value: comisionRappi, set: setComisionRappi },
-                ].map(({ label, value, set }) => (
-                  <div key={label} style={{ display: "flex", alignItems: "center", gap: "3px" }}>
-                    <span style={{ fontSize: "10px", color: "#6B7280" }}>{label}</span>
-                    <input
-                      type="number" value={value} onChange={e => set(e.target.value)}
-                      style={{ width: "36px", padding: "2px 4px", borderRadius: "4px", border: "1px solid #E5E7EB", fontSize: "11px", textAlign: "center" }}
-                    />
-                    <span style={{ fontSize: "10px", color: "#6B7280" }}>%</span>
-                  </div>
-                ))}
+              <div style={{ background: "#F9FAFB", borderRadius: "10px", padding: "10px 14px", border: "1px solid #F0F0F0", minWidth: "220px" }}>
+                <div style={{ fontSize: "10px", fontWeight: "700", color: "#9CA3AF", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "8px" }}>Comisiones de plataformas</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                  {[
+                    { label: "Uber Eats", value: comisionUber, set: setComisionUber },
+                    { label: "Rappi", value: comisionRappi, set: setComisionRappi },
+                  ].map(({ label, value, set }) => (
+                    <div key={label} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
+                      <span style={{ fontSize: "12px", fontWeight: "600", color: "#374151" }}>{label}</span>
+                      <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                        <input
+                          type="number" value={value} onChange={e => set(e.target.value)}
+                          style={{ width: "56px", padding: "4px 8px", borderRadius: "6px", border: "1px solid #E5E7EB", fontSize: "13px", fontWeight: "700", textAlign: "center", background: "#FFF" }}
+                        />
+                        <span style={{ fontSize: "12px", fontWeight: "600", color: "#6B7280" }}>%</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
 
