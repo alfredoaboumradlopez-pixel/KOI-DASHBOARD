@@ -4,7 +4,7 @@ Endpoints para catálogo de insumos, platillos y análisis de menú.
 """
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import text
+from sqlalchemy import text, func
 from typing import List, Optional
 from datetime import datetime
 
@@ -263,6 +263,7 @@ def detalle_platillo(restaurante_id: int, platillo_id: int, db: Session = Depend
         "numero": p.numero,
         "nombre": p.nombre,
         "categoria": p.categoria,
+        "activo": p.activo,
         "costo_receta": round(p.costo_receta, 2),
         "markup": p.markup,
         "precio_venta": round(p.precio_venta, 2),
@@ -274,11 +275,12 @@ def detalle_platillo(restaurante_id: int, platillo_id: int, db: Session = Depend
         "recomendacion": _RECOMENDACIONES.get(clasificacion, ""),
         "ingredientes": [
             {
-                "nombre": ing.nombre_ingrediente,
-                "unidad": ing.unidad,
-                "cantidad": ing.cantidad,
-                "costo_unitario": round(ing.costo_unitario, 4),
-                "costo_total": round(ing.costo_total, 2),
+                "insumo_id": ing.insumo_id,
+                "nombre_ingrediente": ing.nombre_ingrediente or "",
+                "unidad": ing.unidad or "",
+                "cantidad": ing.cantidad or 0,
+                "costo_unitario": round(ing.costo_unitario or 0, 6),
+                "costo_total": round(ing.costo_total or 0, 4),
             }
             for ing in ingredientes
         ],
@@ -319,6 +321,115 @@ def ingenieria_menu(restaurante_id: int, db: Session = Depends(get_db)):
             for cat, items in categorias.items()
         },
     }
+
+
+def _recalc_platillo(p: models.Platillo, ingredientes_body: list | None, db: Session) -> None:
+    """Reemplaza ingredientes y recalcula márgenes del platillo."""
+    if ingredientes_body is not None:
+        db.query(models.PlatilloIngrediente).filter(
+            models.PlatilloIngrediente.platillo_id == p.id
+        ).delete()
+        costo_total = 0.0
+        for ing in ingredientes_body:
+            ct = round(float(ing.get("costo_total", 0)), 4)
+            costo_total += ct
+            db.add(models.PlatilloIngrediente(
+                platillo_id=p.id,
+                insumo_id=ing.get("insumo_id"),
+                nombre_ingrediente=ing.get("nombre_ingrediente", ""),
+                unidad=ing.get("unidad", ""),
+                cantidad=float(ing.get("cantidad", 0)),
+                costo_unitario=float(ing.get("costo_unitario", 0)),
+                costo_total=ct,
+            ))
+        p.costo_receta = round(costo_total, 2)
+
+    p.precio_venta_con_iva = round(p.precio_venta * 1.16, 2)
+    if p.precio_venta > 0:
+        p.margen_contribucion_pesos = round(p.precio_venta - p.costo_receta, 2)
+        p.margen_contribucion_pct = round(p.margen_contribucion_pesos / p.precio_venta, 6)
+
+
+@router.put("/{restaurante_id}/platillo/{platillo_id}")
+def actualizar_platillo(
+    restaurante_id: int,
+    platillo_id: int,
+    body: dict,
+    db: Session = Depends(get_db),
+):
+    p = db.query(models.Platillo).filter(
+        models.Platillo.id == platillo_id,
+        models.Platillo.restaurante_id == restaurante_id,
+    ).first()
+    if not p:
+        raise HTTPException(status_code=404, detail="Platillo no encontrado")
+
+    if "nombre" in body:
+        p.nombre = str(body["nombre"])
+    if "categoria" in body:
+        p.categoria = str(body["categoria"])
+    if "precio_venta" in body:
+        p.precio_venta = round(float(body["precio_venta"]), 2)
+    if "markup" in body:
+        p.markup = round(float(body["markup"]), 2)
+    if "activo" in body:
+        p.activo = bool(body["activo"])
+
+    _recalc_platillo(p, body.get("ingredientes"), db)
+    db.commit()
+    db.refresh(p)
+    return {"ok": True, "id": p.id, "costo_receta": p.costo_receta,
+            "margen_pesos": p.margen_contribucion_pesos,
+            "margen_pct": round(p.margen_contribucion_pct * 100, 1)}
+
+
+@router.post("/{restaurante_id}/platillos")
+def crear_platillo(
+    restaurante_id: int,
+    body: dict,
+    db: Session = Depends(get_db),
+):
+    precio_venta = round(float(body.get("precio_venta", 0)), 2)
+    markup = round(float(body.get("markup", 3.0)), 2)
+    ingredientes_body = body.get("ingredientes", [])
+    costo_receta = round(sum(float(i.get("costo_total", 0)) for i in ingredientes_body), 2)
+    margen_pesos = round(precio_venta - costo_receta, 2)
+    margen_pct = round(margen_pesos / precio_venta, 6) if precio_venta > 0 else 0.0
+
+    max_num = db.query(func.max(models.Platillo.numero)).filter(
+        models.Platillo.restaurante_id == restaurante_id
+    ).scalar() or 0
+
+    p = models.Platillo(
+        restaurante_id=restaurante_id,
+        numero=max_num + 1,
+        nombre=str(body.get("nombre", "Nuevo platillo")),
+        categoria=str(body.get("categoria", "OTRAS ENTRADAS")),
+        costo_receta=costo_receta,
+        markup=markup,
+        precio_venta=precio_venta,
+        precio_venta_con_iva=round(precio_venta * 1.16, 2),
+        margen_contribucion_pesos=margen_pesos,
+        margen_contribucion_pct=margen_pct,
+        activo=bool(body.get("activo", True)),
+    )
+    db.add(p)
+    db.flush()
+
+    for ing in ingredientes_body:
+        ct = round(float(ing.get("costo_total", 0)), 4)
+        db.add(models.PlatilloIngrediente(
+            platillo_id=p.id,
+            insumo_id=ing.get("insumo_id"),
+            nombre_ingrediente=ing.get("nombre_ingrediente", ""),
+            unidad=ing.get("unidad", ""),
+            cantidad=float(ing.get("cantidad", 0)),
+            costo_unitario=float(ing.get("costo_unitario", 0)),
+            costo_total=ct,
+        ))
+
+    db.commit()
+    return {"ok": True, "id": p.id}
 
 
 @router.put("/{restaurante_id}/insumo/{insumo_id}")
