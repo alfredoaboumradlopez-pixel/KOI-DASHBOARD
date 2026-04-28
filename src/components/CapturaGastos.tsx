@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { UploadCloud, ChevronLeft, ChevronRight, Trash2, FileText, CheckCircle, Loader2 } from 'lucide-react';
 import { api } from '../services/api';
 import { CuentasPorPagar } from "./CuentasPorPagar";
+import { CategoriaChips } from "./CategoriaChips";
 import { useRestaurante } from "../context/RestauranteContext";
 
 const fmt = (n: number) => n.toLocaleString("es-MX", { style: "currency", currency: "MXN" });
@@ -205,7 +206,21 @@ export const CapturaGastos: React.FC = () => {
   }, [restauranteId]);
 
   // ── Tab state ──
-  const [tabGastos, setTabGastos] = useState<"caja" | "rbs" | "proveedores">("caja");
+  const [tabGastos, setTabGastos] = useState<"caja" | "rbs" | "proveedores" | "categorias">("caja");
+
+  // ── Calendar popover state ──
+  const [showCalPopover, setShowCalPopover] = useState(false);
+  const calContainerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!showCalPopover) return;
+    const handler = (e: MouseEvent) => {
+      if (calContainerRef.current && !calContainerRef.current.contains(e.target as Node)) {
+        setShowCalPopover(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showCalPopover]);
 
   // ── NEW: Caja KOI day-navigator state ──
   const hoyDate = useMemo(() => new Date(), []);
@@ -363,10 +378,18 @@ export const CapturaGastos: React.FC = () => {
         <button onClick={() => setTabGastos("caja")} style={{ flex: 1, padding: "10px 16px", borderRadius: "10px", border: "none", cursor: "pointer", background: tabGastos === "caja" ? "#059669" : "transparent", color: tabGastos === "caja" ? "#FFF" : "#6B7280", fontSize: "13px", fontWeight: "600", transition: "all 0.15s" }}>Caja KOI</button>
         <button onClick={() => setTabGastos("rbs")} style={{ flex: 1, padding: "10px 16px", borderRadius: "10px", border: "none", cursor: "pointer", background: tabGastos === "rbs" ? "#7C3AED" : "transparent", color: tabGastos === "rbs" ? "#FFF" : "#6B7280", fontSize: "13px", fontWeight: "600", transition: "all 0.15s" }}>RBS</button>
         <button onClick={() => setTabGastos("proveedores")} style={{ flex: 1, padding: "10px 16px", borderRadius: "10px", border: "none", cursor: "pointer", background: tabGastos === "proveedores" ? "#3D1C1E" : "transparent", color: tabGastos === "proveedores" ? "#FFF" : "#6B7280", fontSize: "13px", fontWeight: "600", transition: "all 0.15s" }}>Proveedores</button>
+        <button onClick={() => setTabGastos("categorias")} style={{ flex: 1, padding: "10px 16px", borderRadius: "10px", border: "none", cursor: "pointer", background: tabGastos === "categorias" ? "#F59E0B" : "transparent", color: tabGastos === "categorias" ? "#FFF" : "#6B7280", fontSize: "13px", fontWeight: "600", transition: "all 0.15s" }}>Categorías</button>
       </div>
 
       {/* ── PROVEEDORES TAB ── */}
       {tabGastos === "proveedores" && <CuentasPorPagar />}
+
+      {/* ── CATEGORÍAS TAB ── */}
+      {tabGastos === "categorias" && (
+        <div style={{ background: "#FFF", borderRadius: "14px", padding: "24px", boxShadow: "0 1px 3px rgba(0,0,0,0.04),0 4px 12px rgba(0,0,0,0.02)" }}>
+          <CategoriaChips />
+        </div>
+      )}
 
       {/* ── RBS TAB ── */}
       {tabGastos === "rbs" && !showNuevoGasto && (
@@ -383,15 +406,61 @@ export const CapturaGastos: React.FC = () => {
       {tabGastos === "caja" && !showNuevoGasto && !gastoRapido && !bitacoraMode && (
         <div>
           {/* Month selector */}
-          <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "16px" }}>
+          <div ref={calContainerRef} style={{ position: "relative", display: "inline-flex", alignItems: "center", gap: "10px", marginBottom: "16px" }}>
             <button onClick={() => { const d = new Date(cajaAnio, cajaMes - 2, 1); setCajaMes(d.getMonth() + 1); setCajaAnio(d.getFullYear()); setSelectedDay(null); }} style={{ width: "28px", height: "28px", borderRadius: "8px", border: "1px solid #E5E7EB", background: "#FFF", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <ChevronLeft style={{ width: "14px", height: "14px", color: "#6B7280" }} />
             </button>
-            <span style={{ fontSize: "14px", fontWeight: "700", color: "#111827", minWidth: "140px", textAlign: "center" }}>{mesLabel}</span>
+            <button
+              onClick={() => setShowCalPopover(v => !v)}
+              style={{ fontSize: "14px", fontWeight: "700", color: "#111827", minWidth: "140px", textAlign: "center", background: showCalPopover ? "#F3F4F6" : "transparent", border: "1px solid " + (showCalPopover ? "#D1D5DB" : "transparent"), borderRadius: "8px", padding: "4px 10px", cursor: "pointer" }}
+            >
+              {mesLabel}
+            </button>
             <button onClick={() => { const d = new Date(cajaAnio, cajaMes, 1); setCajaMes(d.getMonth() + 1); setCajaAnio(d.getFullYear()); setSelectedDay(null); }} style={{ width: "28px", height: "28px", borderRadius: "8px", border: "1px solid #E5E7EB", background: "#FFF", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <ChevronRight style={{ width: "14px", height: "14px", color: "#6B7280" }} />
             </button>
             {cajaLoading && <Loader2 style={{ width: "16px", height: "16px", color: "#9CA3AF", animation: "spin 1s linear infinite" }} />}
+
+            {/* Calendar popover */}
+            {showCalPopover && (
+              <div style={{ position: "absolute", top: "calc(100% + 6px)", left: "50%", transform: "translateX(-50%)", width: "280px", background: "#FFF", borderRadius: "14px", boxShadow: "0 8px 32px rgba(0,0,0,0.14)", border: "1px solid #E5E7EB", zIndex: 50, padding: "14px" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: "2px", marginBottom: "6px" }}>
+                  {["L", "M", "X", "J", "V", "S", "D"].map(d => (
+                    <div key={d} style={{ textAlign: "center", fontSize: "9px", fontWeight: "700", color: "#9CA3AF", padding: "2px 0" }}>{d}</div>
+                  ))}
+                </div>
+                {(() => {
+                  const firstDay = parseDateStr(allDaysOfMonth[0]);
+                  const offsetDay = (firstDay.getDay() + 6) % 7;
+                  const cells: (string | null)[] = Array(offsetDay).fill(null).concat(allDaysOfMonth);
+                  while (cells.length % 7 !== 0) cells.push(null);
+                  const weeks: (string | null)[][] = [];
+                  for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
+                  return weeks.map((week, wi) => (
+                    <div key={wi} style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: "2px", marginBottom: "2px" }}>
+                      {week.map((dateStr, ci) => {
+                        if (!dateStr) return <div key={ci} />;
+                        const d = parseDateStr(dateStr);
+                        const isSelected = dateStr === selectedDay;
+                        const hasGastos = !!totalesPorDia[dateStr];
+                        return (
+                          <button
+                            key={ci}
+                            onClick={() => { selectDay(dateStr); setShowCalPopover(false); }}
+                            style={{ position: "relative", width: "32px", height: "32px", borderRadius: "8px", border: "none", background: isSelected ? "#3D1C1E" : "transparent", color: isSelected ? "#C8FF00" : "#374151", fontSize: "11px", fontWeight: isSelected ? "800" : "600", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "1px" }}
+                          >
+                            {d.getDate()}
+                            {hasGastos && (
+                              <div style={{ width: "4px", height: "4px", borderRadius: "50%", background: isSelected ? "#C8FF00" : "#059669" }} />
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ));
+                })()}
+              </div>
+            )}
           </div>
 
           {/* Summary cards */}
