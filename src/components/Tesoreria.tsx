@@ -1,8 +1,5 @@
-import { useState, useEffect } from "react";
-import {
-  Calendar, AlertTriangle, CheckCircle, Bell, Plus, Edit2, Trash2, X,
-  TrendingUp, TrendingDown, Wallet, RefreshCw, Check,
-} from "lucide-react";
+import { useState, useEffect, useMemo } from "react";
+import { Calendar, Plus, Edit2, Trash2, X, RefreshCw, Check, ChevronDown, ChevronUp } from "lucide-react";
 import { api } from "../services/api";
 import { useRestaurante } from "../context/RestauranteContext";
 
@@ -48,18 +45,11 @@ interface SemanaFlujo {
 interface FlujoCaja {
   datos_insuficientes: boolean;
   mensaje?: string;
-  periodo_dias: number;
   ventas_promedio_diario: number;
   ingresos_proyectados_30d: number;
-  pagos_comprometidos: PagoComprometido[];
   total_comprometido_30d: number;
   semanas: SemanaFlujo[];
-  alertas_flujo: SemanaFlujo[];
-  resumen: {
-    semaforo_general: "verde" | "amarillo" | "rojo";
-    semanas_en_riesgo: number;
-    superavit_estimado_30d: number;
-  };
+  resumen: { semaforo_general: "verde" | "amarillo" | "rojo"; semanas_en_riesgo: number; superavit_estimado_30d: number };
 }
 
 interface FormData {
@@ -75,143 +65,136 @@ interface FormData {
 
 const emptyForm: FormData = {
   concepto: "", proveedor: "", categoria: "RENTA", frecuencia: "MENSUAL",
-  deadline_texto: "", dia_limite: "", monto_estimado: "0", notas: "",
+  deadline_texto: "", dia_limite: "", monto_estimado: "", notas: "",
 };
 
-// ── Helpers de estado de pago ─────────────────────────────────────────────────
-function getDiaActual() { return new Date().getDate(); }
-function getMesActual() { return new Date().getMonth() + 1; }
-function getAnioActual() { return new Date().getFullYear(); }
-function getDiasEnMes() { const d = new Date(); return new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate(); }
+// ── Date helpers ──────────────────────────────────────────────────────────────
+const getDiaActual  = () => new Date().getDate();
+const getMesActual  = () => new Date().getMonth() + 1;
+const getAnioActual = () => new Date().getFullYear();
+const getDiasEnMes  = () => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate(); };
 
 function isPagadoEsteMes(p: PagoRecurrente) {
   return p.pagado_mes === getMesActual() && p.pagado_anio === getAnioActual();
 }
 
-function getDiasParaVencer(dia_limite: number | null): number | null {
-  if (dia_limite == null) return null;
+// Calcula días reales hasta el vencimiento (positivo = faltan, 0 = hoy, negativo = venció)
+function calcDias(deadline_texto: string, dia_limite: number | null): number | null {
   const hoy = getDiaActual();
   const diasMes = getDiasEnMes();
-  if (dia_limite >= hoy) return dia_limite - hoy;
-  // Ya pasó este mes → calcular para mes siguiente (aproximado en días)
-  return (diasMes - hoy) + dia_limite;
-}
+  if (!deadline_texto) return null;
+  const dl = deadline_texto.toLowerCase();
+  if (dl === "continuo" || dl === "variable") return null;
+  if (dl === "cierre mes" || dl === "último día") return diasMes - hoy;
 
-function getStatus(deadline: string | undefined, dia_limite: number | null): { status: "urgente" | "proximo" | "ok" | "continuo"; label: string } {
-  if (!deadline) return { status: "ok", label: "-" };
-  const dia = getDiaActual();
-  const diasMes = getDiasEnMes();
-  if (deadline === "Continuo" || deadline === "Variable") return { status: "continuo", label: deadline };
-  if (deadline === "Cierre mes" || deadline === "Último día") {
-    const f = diasMes - dia;
-    if (f <= 3) return { status: "urgente", label: "En " + f + " días" };
-    if (f <= 7) return { status: "proximo", label: "En " + f + " días" };
-    return { status: "ok", label: "Día " + diasMes };
-  }
   if (dia_limite != null) {
-    if (dia > dia_limite) return { status: "ok", label: "Venció día " + dia_limite };
-    if (dia >= dia_limite - 2) return { status: "urgente", label: "Vence día " + dia_limite };
-    if (dia_limite - dia <= 7) return { status: "proximo", label: "En " + (dia_limite - dia) + " días" };
-    return { status: "ok", label: "Día " + dia_limite };
+    if (dia_limite >= hoy) return dia_limite - hoy;
+    return (diasMes - hoy) + dia_limite; // pasó → próximo mes
   }
-  const nums = deadline.match(/\d+/g);
-  if (nums && nums.length > 0) {
+
+  const nums = deadline_texto.match(/\d+/g);
+  if (nums) {
     const d1 = parseInt(nums[0]);
-    const d2 = nums.length > 1 ? parseInt(nums[nums.length - 1]) : d1;
-    if (dia > d2) return { status: "ok", label: "Venció día " + d2 };
-    if (dia >= d1) return { status: "urgente", label: "Vence día " + d2 };
-    if (d1 - dia <= 5) return { status: "proximo", label: "En " + (d1 - dia) + " días" };
-    return { status: "ok", label: deadline };
+    if (d1 >= hoy) return d1 - hoy;
+    return (diasMes - hoy) + d1;
   }
-  return { status: "ok", label: deadline };
+  return null;
 }
 
-const statusColors = {
-  urgente: { bg: "#FEF2F2", color: "#DC2626", border: "#FECACA" },
-  proximo: { bg: "#FEF3C7", color: "#D97706", border: "#FDE68A" },
-  ok: { bg: "#F9FAFB", color: "#6B7280", border: "#F3F4F6" },
-  continuo: { bg: "#EFF6FF", color: "#2563EB", border: "#BFDBFE" },
-};
+function urgencyDot(dias: number | null, pagado: boolean): { dot: string; label: string; sortKey: number } {
+  if (pagado) return { dot: "⬜", label: "pagado", sortKey: 9999 };
+  if (dias == null) return { dot: "⬜", label: "continuo", sortKey: 500 };
+  if (dias <= 2)  return { dot: "🔴", label: dias === 0 ? "hoy" : `${dias}d`, sortKey: dias };
+  if (dias <= 7)  return { dot: "🟡", label: `${dias}d`, sortKey: 100 + dias };
+  return           { dot: "🟢", label: `${dias}d`, sortKey: 200 + dias };
+}
 
-const semaforoEmoji = { verde: "🟢", amarillo: "🟡", rojo: "🔴" };
-const semaforoColor = { verde: "#059669", amarillo: "#D97706", rojo: "#DC2626" };
-const semaforoBg = { verde: "#ECFDF5", amarillo: "#FFFBEB", rojo: "#FEF2F2" };
+function deadlineLabel(p: PagoRecurrente, dias: number | null): string {
+  if (p.deadline_texto === "Continuo" || p.deadline_texto === "Variable") return p.deadline_texto;
+  if (dias == null) return p.deadline_texto;
+  if (dias === 0) return "Vence hoy";
+  if (dias === 1) return `Vence mañana — día ${p.dia_limite ?? p.deadline_texto}`;
+  if (dias <= 7)  return `Vence en ${dias} días — ${p.deadline_texto}`;
+  return `Vence día ${p.dia_limite ?? p.deadline_texto} del mes`;
+}
+
+const SEMAFORO_BG    = { verde: "#ECFDF5", amarillo: "#FFFBEB", rojo: "#FEF2F2" } as const;
+const SEMAFORO_COLOR = { verde: "#059669", amarillo: "#D97706", rojo: "#DC2626" } as const;
+const SEMAFORO_BORDE = { verde: "#6EE7B7", amarillo: "#FDE68A", rojo: "#FECACA" } as const;
+const SEMAFORO_EMOJI = { verde: "🟢", amarillo: "🟡", rojo: "🔴" } as const;
+const SEMAFORO_TEXTO = {
+  verde:    "Esta semana estás bien",
+  amarillo: "Esta semana está ajustada — revisa tus pagos",
+  rojo:     "Esta semana puede estar apretada — considera priorizar pagos",
+} as const;
 
 // ════════════════════════════════════════════════════════════════════════════════
 export const Tesoreria = () => {
   const { restauranteId } = useRestaurante();
+
   const [CATEGORIAS, setCATEGORIAS] = useState<string[]>([]);
   useEffect(() => {
     api.get("/api/categorias").then((data: any[]) => setCATEGORIAS(data.map((c) => c.nombre))).catch(() => {});
   }, []);
 
-  const [pagos, setPagos] = useState<PagoRecurrente[]>([]);
-  const [flujo, setFlujo] = useState<FlujoCaja | null>(null);
-  const [loadingPagos, setLoadingPagos] = useState(true);
-  const [loadingFlujo, setLoadingFlujo] = useState(true);
-  const [filtro, setFiltro] = useState<"todos" | "urgentes" | "proximos">("todos");
-  const [showForm, setShowForm] = useState(false);
-  const [editId, setEditId] = useState<number | null>(null);
-  const [form, setForm] = useState<FormData>(emptyForm);
-  const [saving, setSaving] = useState(false);
-  const [marcandoPagado, setMarcandoPagado] = useState<Set<number>>(new Set());
+  const [pagos,       setPagos]       = useState<PagoRecurrente[]>([]);
+  const [flujo,       setFlujo]       = useState<FlujoCaja | null>(null);
+  const [loadingP,    setLoadingP]    = useState(true);
+  const [loadingF,    setLoadingF]    = useState(true);
+  const [proyeccion,  setProyeccion]  = useState(false);   // colapsable
+  const [showForm,    setShowForm]    = useState(false);
+  const [editId,      setEditId]      = useState<number | null>(null);
+  const [form,        setForm]        = useState<FormData>(emptyForm);
+  const [saving,      setSaving]      = useState(false);
+  const [marcando,    setMarcando]    = useState<Set<number>>(new Set());
+  const [confirm,     setConfirm]     = useState<{ id: number; concepto: string; monto: number } | null>(null);
 
+  // ── Fetch ─────────────────────────────────────────────────────────────────
   const fetchPagos = async () => {
+    setLoadingP(true);
     try {
       const data = await api.get(`/api/pagos-recurrentes?restaurante_id=${restauranteId}`);
       setPagos(data);
-    } catch (e) {
-      console.error("Error cargando pagos:", e);
-    } finally {
-      setLoadingPagos(false);
-    }
+    } catch {}
+    finally { setLoadingP(false); }
   };
 
   const fetchFlujo = async () => {
-    setLoadingFlujo(true);
+    setLoadingF(true);
     try {
       const data = await api.get(`/api/pagos/flujo-caja/${restauranteId}?dias=30`);
       setFlujo(data);
-    } catch (e) {
-      console.error("Error cargando flujo de caja:", e);
-    } finally {
-      setLoadingFlujo(false);
-    }
+    } catch {}
+    finally { setLoadingF(false); }
   };
 
-  useEffect(() => {
-    fetchPagos();
-    fetchFlujo();
-  }, [restauranteId]);
+  useEffect(() => { fetchPagos(); fetchFlujo(); }, [restauranteId]);
 
-  const pagosConStatus = pagos.map((p) => {
-    const pagado = isPagadoEsteMes(p);
-    const s = pagado
-      ? { status: "ok" as const, label: "✓ Pagado" }
-      : getStatus(p.deadline_texto, p.dia_limite);
-    return { ...p, status: s.status, label: s.label, pagado };
-  });
+  // ── Pagos enriquecidos y ordenados ────────────────────────────────────────
+  const pagosOrdenados = useMemo(() => {
+    return pagos
+      .map((p) => {
+        const pagado = isPagadoEsteMes(p);
+        const dias   = pagado ? null : calcDias(p.deadline_texto, p.dia_limite);
+        const urg    = urgencyDot(dias, pagado);
+        return { ...p, pagado, dias, urg };
+      })
+      .sort((a, b) => a.urg.sortKey - b.urg.sortKey);
+  }, [pagos]);
 
-  const urgentes = pagosConStatus.filter((p) => p.status === "urgente" && !p.pagado).length;
-  const proximos = pagosConStatus.filter((p) => p.status === "proximo" && !p.pagado).length;
+  // ── Semana actual del flujo ───────────────────────────────────────────────
+  const semanaActual: SemanaFlujo | null = flujo && !flujo.datos_insuficientes && flujo.semanas.length > 0
+    ? flujo.semanas[0] : null;
 
-  const filtrados = filtro === "urgentes"
-    ? pagosConStatus.filter((p) => p.status === "urgente")
-    : filtro === "proximos"
-    ? pagosConStatus.filter((p) => p.status === "urgente" || p.status === "proximo")
-    : pagosConStatus;
-
-  const pagosPendientes = filtrados.filter((p) => !p.pagado);
-  const pagosPagados = filtrados.filter((p) => p.pagado);
-  const filtradosOrdenados = [...pagosPendientes, ...pagosPagados];
-
+  // ── Acciones ──────────────────────────────────────────────────────────────
   const openCreate = () => { setForm(emptyForm); setEditId(null); setShowForm(true); };
-  const openEdit = (p: PagoRecurrente) => {
+  const openEdit   = (p: PagoRecurrente) => {
     setForm({
       concepto: p.concepto, proveedor: p.proveedor, categoria: p.categoria,
       frecuencia: p.frecuencia, deadline_texto: p.deadline_texto,
       dia_limite: p.dia_limite != null ? String(p.dia_limite) : "",
-      monto_estimado: String(p.monto_estimado), notas: p.notas ?? "",
+      monto_estimado: p.monto_estimado ? String(p.monto_estimado) : "",
+      notas: p.notas ?? "",
     });
     setEditId(p.id);
     setShowForm(true);
@@ -228,66 +211,66 @@ export const Tesoreria = () => {
       notas: form.notas || null,
     };
     try {
-      if (editId) {
-        await api.put(`/api/pagos-recurrentes/${editId}`, body);
-      } else {
-        await api.post("/api/pagos-recurrentes", { ...body, restaurante_id: restauranteId });
-      }
+      if (editId) await api.put(`/api/pagos-recurrentes/${editId}`, body);
+      else        await api.post("/api/pagos-recurrentes", { ...body, restaurante_id: restauranteId });
       setShowForm(false);
       await Promise.all([fetchPagos(), fetchFlujo()]);
     } catch (e: any) {
       alert(`Error al guardar: ${e?.message ?? e}`);
-    } finally {
-      setSaving(false);
-    }
+    } finally { setSaving(false); }
   };
 
   const handleDelete = async (id: number) => {
-    if (!confirm("¿Eliminar este pago recurrente?")) return;
+    if (!window.confirm("¿Eliminar este pago recurrente?")) return;
     try { await api.del(`/api/pagos-recurrentes/${id}`); } catch {}
     await Promise.all([fetchPagos(), fetchFlujo()]);
   };
 
-  const marcarPagado = async (id: number, yaPagado: boolean) => {
-    setMarcandoPagado((prev) => new Set(prev).add(id));
-    try {
-      if (yaPagado) {
-        await api.post(`/api/pagos-recurrentes/${id}/desmarcar-pagado`, {});
-      } else {
-        await api.post(`/api/pagos-recurrentes/${id}/marcar-pagado`, {});
-      }
-      await Promise.all([fetchPagos(), fetchFlujo()]);
-    } catch (e: any) {
-      alert(`Error: ${e?.message ?? e}`);
-    } finally {
-      setMarcandoPagado((prev) => { const n = new Set(prev); n.delete(id); return n; });
+  const confirmarPago = (p: typeof pagosOrdenados[0]) => {
+    if (p.pagado) {
+      // Deshacer directamente sin confirmación
+      doMarcar(p.id, true);
+    } else {
+      setConfirm({ id: p.id, concepto: p.concepto, monto: p.monto_estimado });
     }
   };
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  const doMarcar = async (id: number, yaPagado: boolean) => {
+    setConfirm(null);
+    setMarcando((prev) => new Set(prev).add(id));
+    try {
+      if (yaPagado) await api.post(`/api/pagos-recurrentes/${id}/desmarcar-pagado`, {});
+      else          await api.post(`/api/pagos-recurrentes/${id}/marcar-pagado`, {});
+      await Promise.all([fetchPagos(), fetchFlujo()]);
+    } catch (e: any) { alert(`Error: ${e?.message ?? e}`); }
+    finally { setMarcando((prev) => { const n = new Set(prev); n.delete(id); return n; }); }
+  };
+
+  // ─────────────────────────────────────────────────────────────────────────
   return (
-    <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
+    <div style={{ maxWidth: "840px", margin: "0 auto" }}>
       <style>{`
-        @keyframes fadeUp { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
-        .pago-row:hover { background: #FAFAFA !important; }
+        @keyframes fadeIn { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:translateY(0); } }
+        @keyframes fadeOut { from { opacity:1; } to { opacity:0; } }
+        .pr-row { transition: background 0.15s, opacity 0.2s; }
+        .pr-row:hover { background: #FAFAFA !important; }
       `}</style>
 
       {/* ── Header ──────────────────────────────────────────────────────── */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "28px" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "24px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
           <div style={{ width: "40px", height: "40px", borderRadius: "12px", background: "linear-gradient(135deg,#3D1C1E,#5C2D30)", display: "flex", alignItems: "center", justifyContent: "center" }}>
             <Calendar style={{ width: "20px", height: "20px", color: "#C8FF00" }} />
           </div>
           <div>
-            <h1 style={{ fontSize: "22px", fontWeight: "800", color: "#111827", margin: 0 }}>Calendario de Pagos</h1>
-            <p style={{ fontSize: "13px", color: "#9CA3AF", margin: 0 }}>Control de pagos recurrentes y flujo de caja</p>
+            <h1 style={{ fontSize: "20px", fontWeight: "800", color: "#111827", margin: 0 }}>Calendario de Pagos</h1>
+            <p style={{ fontSize: "12px", color: "#9CA3AF", margin: 0 }}>Día {getDiaActual()} del mes</p>
           </div>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          <div style={{ fontSize: "13px", color: "#6B7280" }}>Hoy: día {getDiaActual()} del mes</div>
+        <div style={{ display: "flex", gap: "8px" }}>
           <button
             onClick={() => { fetchPagos(); fetchFlujo(); }}
-            style={{ display: "flex", alignItems: "center", gap: "6px", padding: "7px 12px", border: "1px solid #E5E7EB", borderRadius: "8px", background: "#FFF", fontSize: "12px", color: "#6B7280", cursor: "pointer" }}
+            style={{ padding: "7px 10px", border: "1px solid #E5E7EB", borderRadius: "8px", background: "#FFF", cursor: "pointer", color: "#6B7280", display: "flex", alignItems: "center" }}
           >
             <RefreshCw style={{ width: "13px", height: "13px" }} />
           </button>
@@ -301,279 +284,140 @@ export const Tesoreria = () => {
       </div>
 
       {/* ══════════════════════════════════════════════════════════════════ */}
-      {/* SECCIÓN 1 — Proyección de flujo de caja                          */}
+      {/* SECCIÓN 1 — Banner de situación actual                            */}
       {/* ══════════════════════════════════════════════════════════════════ */}
-      <div style={{ marginBottom: "24px" }}>
-        <div style={{ fontSize: "12px", fontWeight: "600", color: "#9CA3AF", textTransform: "uppercase" as const, letterSpacing: "0.5px", marginBottom: "12px" }}>
-          Proyección flujo de caja · próximos 30 días
-        </div>
-
-        {loadingFlujo && (
-          <div style={{ background: "#FFF", borderRadius: "14px", padding: "28px", textAlign: "center", color: "#9CA3AF", fontSize: "13px", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
-            <RefreshCw style={{ width: "16px", height: "16px", margin: "0 auto 8px", display: "block" }} />
-            Calculando proyección…
-          </div>
-        )}
-
-        {!loadingFlujo && flujo?.datos_insuficientes && (
-          <div style={{ background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: "12px", padding: "16px 20px", fontSize: "13px", color: "#92400E" }}>
-            <AlertTriangle style={{ width: "14px", height: "14px", display: "inline", marginRight: "6px" }} />
-            {flujo.mensaje}
-          </div>
-        )}
-
-        {!loadingFlujo && flujo && !flujo.datos_insuficientes && (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "14px", animation: "fadeUp 0.3s ease both" }}>
-            {[
-              {
-                label: "Ingresos estimados 30D",
-                value: fmt(flujo.ingresos_proyectados_30d),
-                sub: `${fmt(flujo.ventas_promedio_diario)}/día promedio`,
-                color: "#059669", bg: "#ECFDF5",
-                icon: TrendingUp,
-              },
-              {
-                label: "Egresos comprometidos",
-                value: fmt(flujo.total_comprometido_30d),
-                sub: `${flujo.pagos_comprometidos.length} pagos pendientes`,
-                color: "#DC2626", bg: "#FEF2F2",
-                icon: TrendingDown,
-              },
-              {
-                label: "Balance proyectado",
-                value: fmt(flujo.resumen.superavit_estimado_30d),
-                sub: flujo.resumen.semanas_en_riesgo > 0
-                  ? `${flujo.resumen.semanas_en_riesgo} semana(s) en riesgo`
-                  : "Sin semanas en riesgo",
-                color: flujo.resumen.superavit_estimado_30d >= 0 ? "#059669" : "#DC2626",
-                bg: flujo.resumen.superavit_estimado_30d >= 0 ? "#ECFDF5" : "#FEF2F2",
-                icon: Wallet,
-              },
-              {
-                label: "Semáforo general",
-                value: flujo.resumen.semaforo_general.charAt(0).toUpperCase() + flujo.resumen.semaforo_general.slice(1),
-                sub: `${semaforoEmoji[flujo.resumen.semaforo_general]} Flujo de caja`,
-                color: semaforoColor[flujo.resumen.semaforo_general],
-                bg: semaforoBg[flujo.resumen.semaforo_general],
-                icon: CheckCircle,
-              },
-            ].map((card, i) => {
-              const Ic = card.icon;
-              return (
-                <div key={i} style={{ background: "#FFF", borderRadius: "14px", padding: "16px 20px", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                    <span style={{ fontSize: "10px", fontWeight: "600", color: "#9CA3AF", textTransform: "uppercase" as const, letterSpacing: "0.5px" }}>{card.label}</span>
-                    <div style={{ width: "28px", height: "28px", borderRadius: "8px", background: card.bg, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                      <Ic style={{ width: "14px", height: "14px", color: card.color }} />
-                    </div>
-                  </div>
-                  <div style={{ fontSize: "20px", fontWeight: "800", color: card.color, margin: "8px 0 4px" }}>{card.value}</div>
-                  <div style={{ fontSize: "11px", color: "#9CA3AF" }}>{card.sub}</div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* ══════════════════════════════════════════════════════════════════ */}
-      {/* SECCIÓN 2 — Timeline semanal                                      */}
-      {/* ══════════════════════════════════════════════════════════════════ */}
-      {!loadingFlujo && flujo && !flujo.datos_insuficientes && flujo.semanas.length > 0 && (
-        <div style={{ marginBottom: "24px" }}>
-          <div style={{ fontSize: "12px", fontWeight: "600", color: "#9CA3AF", textTransform: "uppercase" as const, letterSpacing: "0.5px", marginBottom: "12px" }}>
-            Timeline semanal
-          </div>
-
-          {/* Alertas de semanas críticas */}
-          {flujo.alertas_flujo.map((sem, i) => (
-            <div key={i} style={{ background: sem.semaforo === "rojo" ? "#FEF2F2" : "#FFFBEB", border: `1px solid ${sem.semaforo === "rojo" ? "#FECACA" : "#FDE68A"}`, borderRadius: "10px", padding: "10px 16px", marginBottom: "8px", fontSize: "13px", color: sem.semaforo === "rojo" ? "#DC2626" : "#92400E", display: "flex", alignItems: "center", gap: "8px" }}>
-              <AlertTriangle style={{ width: "14px", height: "14px", flexShrink: 0 }} />
-              <span>
-                <strong>Semana {sem.semana}:</strong> egresos ({fmt(sem.egresos_comprometidos)}) {sem.semaforo === "rojo" ? "superan" : "se acercan a"} los ingresos estimados ({fmt(sem.ingresos_estimados)}) — revisar flujo
-              </span>
-            </div>
-          ))}
-
-          <div style={{ display: "flex", flexDirection: "column" as const, gap: "8px" }}>
-            {flujo.semanas.map((sem, i) => (
-              <div
-                key={i}
-                style={{
-                  background: "#FFF",
-                  borderRadius: "12px",
-                  padding: "14px 18px",
-                  boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
-                  borderLeft: `4px solid ${semaforoColor[sem.semaforo]}`,
-                  animation: `fadeUp 0.25s ease ${i * 0.04}s both`,
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: sem.pagos.length > 0 ? "8px" : 0 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                    <span style={{ fontSize: "16px" }}>{semaforoEmoji[sem.semaforo]}</span>
-                    <span style={{ fontSize: "13px", fontWeight: "700", color: "#111827" }}>Semana {sem.semana}</span>
-                  </div>
-                  <div style={{ display: "flex", gap: "16px", fontSize: "12px" }}>
-                    <span style={{ color: "#059669" }}>Ingresos est. {fmt(sem.ingresos_estimados)}</span>
-                    {sem.egresos_comprometidos > 0 && (
-                      <span style={{ color: "#DC2626" }}>· Egresos {fmt(sem.egresos_comprometidos)}</span>
-                    )}
-                    <span style={{ fontWeight: "700", color: sem.balance >= 0 ? "#059669" : "#DC2626" }}>
-                      · Balance {sem.balance >= 0 ? "+" : ""}{fmt(sem.balance)}
-                    </span>
-                  </div>
-                </div>
-                {sem.pagos.length > 0 && (
-                  <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" as const }}>
-                    {sem.pagos.map((p, j) => (
-                      <span key={j} style={{ fontSize: "11px", padding: "3px 10px", borderRadius: "20px", background: "#F3F4F6", color: "#374151" }}>
-                        → {p.concepto} {fmt(p.monto)} (día {new Date(p.fecha_vencimiento + "T12:00:00").getDate()})
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
+      {loadingF && (
+        <div style={{ background: "#FFF", borderRadius: "16px", padding: "28px 24px", marginBottom: "20px", boxShadow: "0 1px 4px rgba(0,0,0,0.05)", textAlign: "center", color: "#9CA3AF", fontSize: "13px" }}>
+          Calculando proyección…
         </div>
       )}
 
-      {/* ══════════════════════════════════════════════════════════════════ */}
-      {/* SECCIÓN 3 — Cards de estado (existentes)                          */}
-      {/* ══════════════════════════════════════════════════════════════════ */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "14px", marginBottom: "20px" }}>
-        <div onClick={() => setFiltro("urgentes")} style={{ background: "#FFF", borderRadius: "14px", padding: "16px 20px", boxShadow: "0 1px 3px rgba(0,0,0,0.04)", cursor: "pointer", border: filtro === "urgentes" ? "2px solid #DC2626" : "2px solid transparent" }}>
-          <div style={{ display: "flex", justifyContent: "space-between" }}>
-            <span style={{ fontSize: "11px", fontWeight: "600", color: "#9CA3AF", textTransform: "uppercase" as const }}>Urgentes</span>
-            <AlertTriangle style={{ width: "16px", height: "16px", color: "#DC2626" }} />
-          </div>
-          <div style={{ fontSize: "28px", fontWeight: "800", color: "#DC2626", marginTop: "4px" }}>{urgentes}</div>
-          <span style={{ fontSize: "11px", color: "#9CA3AF" }}>pagos por vencer</span>
+      {!loadingF && flujo?.datos_insuficientes && (
+        <div style={{ background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: "14px", padding: "18px 22px", marginBottom: "20px", fontSize: "13px", color: "#92400E" }}>
+          Sin suficientes cierres de turno para proyectar el flujo de caja esta semana.
         </div>
-        <div onClick={() => setFiltro("proximos")} style={{ background: "#FFF", borderRadius: "14px", padding: "16px 20px", boxShadow: "0 1px 3px rgba(0,0,0,0.04)", cursor: "pointer", border: filtro === "proximos" ? "2px solid #D97706" : "2px solid transparent" }}>
-          <div style={{ display: "flex", justifyContent: "space-between" }}>
-            <span style={{ fontSize: "11px", fontWeight: "600", color: "#9CA3AF", textTransform: "uppercase" as const }}>Próximos</span>
-            <Bell style={{ width: "16px", height: "16px", color: "#D97706" }} />
+      )}
+
+      {!loadingF && semanaActual && (() => {
+        const sem = semanaActual;
+        const bg    = SEMAFORO_BG[sem.semaforo];
+        const color = SEMAFORO_COLOR[sem.semaforo];
+        const borde = SEMAFORO_BORDE[sem.semaforo];
+        return (
+          <div style={{ background: bg, border: `1px solid ${borde}`, borderRadius: "16px", padding: "22px 26px", marginBottom: "24px", animation: "fadeIn 0.3s ease both" }}>
+            <div style={{ fontSize: "18px", fontWeight: "800", color, marginBottom: "10px" }}>
+              {SEMAFORO_EMOJI[sem.semaforo]} {SEMAFORO_TEXTO[sem.semaforo]}
+            </div>
+            <div style={{ display: "flex", gap: "6px", fontSize: "13px", color, flexWrap: "wrap" as const }}>
+              <span>Ventas estimadas {fmt(sem.ingresos_estimados)}</span>
+              {sem.egresos_comprometidos > 0 && (
+                <span style={{ opacity: 0.75 }}>· Por pagar {fmt(sem.egresos_comprometidos)}</span>
+              )}
+            </div>
+            {sem.balance > 0 && (
+              <div style={{ fontSize: "13px", color, opacity: 0.75, marginTop: "4px" }}>
+                Te sobran ~{fmt(sem.balance)} después de compromisos esta semana
+              </div>
+            )}
+            {sem.balance <= 0 && sem.egresos_comprometidos > 0 && (
+              <div style={{ fontSize: "13px", color, opacity: 0.75, marginTop: "4px" }}>
+                Los compromisos exceden las ventas estimadas en {fmt(Math.abs(sem.balance))}
+              </div>
+            )}
           </div>
-          <div style={{ fontSize: "28px", fontWeight: "800", color: "#D97706", marginTop: "4px" }}>{proximos}</div>
-          <span style={{ fontSize: "11px", color: "#9CA3AF" }}>próximos 5 días</span>
-        </div>
-        <div onClick={() => setFiltro("todos")} style={{ background: "#FFF", borderRadius: "14px", padding: "16px 20px", boxShadow: "0 1px 3px rgba(0,0,0,0.04)", cursor: "pointer", border: filtro === "todos" ? "2px solid #059669" : "2px solid transparent" }}>
-          <div style={{ display: "flex", justifyContent: "space-between" }}>
-            <span style={{ fontSize: "11px", fontWeight: "600", color: "#9CA3AF", textTransform: "uppercase" as const }}>Total Compromisos</span>
-            <CheckCircle style={{ width: "16px", height: "16px", color: "#059669" }} />
-          </div>
-          <div style={{ fontSize: "28px", fontWeight: "800", color: "#059669", marginTop: "4px" }}>{pagos.length}</div>
-          <span style={{ fontSize: "11px", color: "#9CA3AF" }}>pagos recurrentes</span>
-        </div>
-      </div>
+        );
+      })()}
 
       {/* ══════════════════════════════════════════════════════════════════ */}
-      {/* SECCIÓN 4 — Lista de pagos con "Marcar pagado"                    */}
+      {/* SECCIÓN 2 — Lista de pagos ordenada por urgencia                  */}
       {/* ══════════════════════════════════════════════════════════════════ */}
-      <div style={{ background: "#FFF", borderRadius: "14px", overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.04),0 4px 12px rgba(0,0,0,0.02)" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 120px 100px 100px 110px 120px 110px", padding: "10px 20px", background: "#FAFBFC", borderBottom: "1px solid #F3F4F6" }}>
-          {["Concepto", "Proveedor", "Días p/vencer", "Frecuencia", "Deadline", "Estado", ""].map((h) => (
-            <span key={h} style={{ fontSize: "10px", fontWeight: "700", color: "#9CA3AF", textTransform: "uppercase" as const, letterSpacing: "0.5px" }}>{h}</span>
-          ))}
-        </div>
-
-        {loadingPagos && (
-          <div style={{ padding: "32px", textAlign: "center", color: "#9CA3AF", fontSize: "13px" }}>Cargando pagos...</div>
+      <div style={{ background: "#FFF", borderRadius: "14px", overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.04)", marginBottom: "16px" }}>
+        {loadingP && (
+          <div style={{ padding: "32px", textAlign: "center", color: "#9CA3AF", fontSize: "13px" }}>Cargando pagos…</div>
         )}
-        {!loadingPagos && filtradosOrdenados.length === 0 && (
-          <div style={{ padding: "32px", textAlign: "center", color: "#9CA3AF", fontSize: "13px" }}>No hay pagos. Usa "Nuevo pago".</div>
+        {!loadingP && pagosOrdenados.length === 0 && (
+          <div style={{ padding: "40px", textAlign: "center", color: "#9CA3AF", fontSize: "13px" }}>
+            No hay pagos recurrentes. Usa "Nuevo pago" para agregar.
+          </div>
         )}
 
-        {filtradosOrdenados.map((p) => {
-          const sc = statusColors[p.status] || statusColors.ok;
-          const diasVencer = getDiasParaVencer(p.dia_limite);
-          const diasColor = diasVencer == null
-            ? "#9CA3AF"
-            : diasVencer <= 2 ? "#DC2626"
-            : diasVencer <= 7 ? "#D97706"
-            : "#059669";
-          const diasBg = diasVencer == null
-            ? "#F9FAFB"
-            : diasVencer <= 2 ? "#FEF2F2"
-            : diasVencer <= 7 ? "#FFFBEB"
-            : "#ECFDF5";
-          const marcando = marcandoPagado.has(p.id);
+        {pagosOrdenados.map((p, i) => {
+          const esMarcando = marcando.has(p.id);
+          const dl = deadlineLabel(p, p.dias);
 
           return (
             <div
               key={p.id}
-              className="pago-row"
+              className="pr-row"
               style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 120px 100px 100px 110px 120px 110px",
-                padding: "12px 20px",
-                borderBottom: "1px solid #F9FAFB",
+                display: "flex",
                 alignItems: "center",
-                background: p.pagado ? "#F0FDF4" : p.status === "urgente" ? "#FEF2F2" : "transparent",
-                opacity: p.pagado ? 0.8 : 1,
-                transition: "background 0.15s",
+                gap: "14px",
+                padding: "14px 20px",
+                borderBottom: i < pagosOrdenados.length - 1 ? "1px solid #F3F4F6" : "none",
+                background: "transparent",
+                opacity: p.pagado ? 0.6 : 1,
+                animation: `fadeIn 0.2s ease ${Math.min(i, 8) * 0.03}s both`,
               }}
             >
-              <div>
-                <span style={{
-                  fontSize: "13px", fontWeight: "600", color: "#111827",
-                  textDecoration: p.pagado ? "line-through" : "none",
-                }}>
-                  {p.concepto}
-                </span>
-                {p.monto_estimado > 0 && (
-                  <span style={{ fontSize: "11px", color: "#6B7280", marginLeft: "6px" }}>{fmt(p.monto_estimado)}</span>
-                )}
+              {/* Urgency indicator */}
+              <div style={{ display: "flex", flexDirection: "column" as const, alignItems: "center", gap: "2px", width: "36px", flexShrink: 0 }}>
+                <span style={{ fontSize: "15px", lineHeight: "1" }}>{p.urg.dot}</span>
+                <span style={{ fontSize: "10px", fontWeight: "700", color: "#9CA3AF" }}>{p.urg.label}</span>
               </div>
 
-              <span style={{ fontSize: "12px", color: "#374151" }}>{p.proveedor}</span>
+              {/* Info */}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "baseline", gap: "6px", flexWrap: "wrap" as const }}>
+                  <span style={{
+                    fontSize: "14px", fontWeight: "700", color: p.pagado ? "#9CA3AF" : "#111827",
+                    textDecoration: p.pagado ? "line-through" : "none",
+                  }}>
+                    {p.concepto}
+                  </span>
+                  <span style={{ fontSize: "12px", color: "#9CA3AF" }}>· {p.proveedor}</span>
+                  {p.monto_estimado > 0 ? (
+                    <span style={{ fontSize: "12px", fontWeight: "600", color: p.pagado ? "#9CA3AF" : "#374151" }}>
+                      {fmt(p.monto_estimado)}
+                    </span>
+                  ) : (
+                    <span style={{ fontSize: "11px", color: "#D1D5DB", fontStyle: "italic" }}>monto variable</span>
+                  )}
+                </div>
+                <div style={{ fontSize: "11px", color: "#9CA3AF", marginTop: "2px" }}>{dl}</div>
+              </div>
 
-              {/* Días para vencer */}
-              <span style={{
-                fontSize: "11px", fontWeight: "700", padding: "3px 8px", borderRadius: "6px",
-                background: p.pagado ? "#D1FAE5" : diasBg,
-                color: p.pagado ? "#059669" : diasColor,
-                width: "fit-content",
-              }}>
-                {p.pagado ? "✓ Pagado" : diasVencer == null ? "—" : diasVencer === 0 ? "Hoy" : `${diasVencer}d`}
-              </span>
-
-              <span style={{ fontSize: "11px", color: "#6B7280" }}>{p.frecuencia}</span>
-              <span style={{ fontSize: "11px", color: "#374151", fontWeight: "600" }}>{p.deadline_texto}</span>
-
-              <span style={{
-                fontSize: "11px", fontWeight: "600", padding: "4px 8px", borderRadius: "6px",
-                background: p.pagado ? "#D1FAE5" : sc.bg,
-                color: p.pagado ? "#059669" : sc.color,
-                border: `1px solid ${p.pagado ? "#6EE7B7" : sc.border}`,
-                textAlign: "center" as const,
-              }}>
-                {p.pagado ? "✓ Pagado este mes" : p.label}
-              </span>
-
-              {/* Acciones */}
-              <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
-                <button
-                  onClick={() => marcarPagado(p.id, p.pagado)}
-                  disabled={marcando}
-                  title={p.pagado ? "Desmarcar pagado" : "Marcar como pagado"}
-                  style={{
-                    display: "flex", alignItems: "center", gap: "3px",
-                    padding: "4px 8px", border: "none", borderRadius: "6px",
-                    background: p.pagado ? "#F3F4F6" : "#D1FAE5",
-                    color: p.pagado ? "#9CA3AF" : "#059669",
-                    fontSize: "10px", fontWeight: "700", cursor: marcando ? "not-allowed" : "pointer",
-                    opacity: marcando ? 0.5 : 1,
-                  }}
-                >
-                  <Check style={{ width: "10px", height: "10px" }} />
-                  {p.pagado ? "Deshacer" : "Pagado"}
-                </button>
-                <button onClick={() => openEdit(p)} style={{ padding: "4px", background: "none", border: "none", cursor: "pointer", color: "#6B7280" }}>
+              {/* Actions */}
+              <div style={{ display: "flex", gap: "4px", alignItems: "center", flexShrink: 0 }}>
+                {!p.pagado && (
+                  <button
+                    onClick={() => confirmarPago(p)}
+                    disabled={esMarcando}
+                    style={{
+                      display: "flex", alignItems: "center", gap: "4px",
+                      padding: "5px 10px", border: "1px solid #D1FAE5", borderRadius: "7px",
+                      background: "#ECFDF5", color: "#059669",
+                      fontSize: "11px", fontWeight: "700", cursor: esMarcando ? "not-allowed" : "pointer",
+                      opacity: esMarcando ? 0.5 : 1, whiteSpace: "nowrap" as const,
+                    }}
+                  >
+                    <Check style={{ width: "11px", height: "11px" }} />
+                    Marcar pagado
+                  </button>
+                )}
+                {p.pagado && (
+                  <button
+                    onClick={() => confirmarPago(p)}
+                    disabled={esMarcando}
+                    style={{ padding: "5px 8px", border: "1px solid #E5E7EB", borderRadius: "7px", background: "#FFF", color: "#9CA3AF", fontSize: "11px", cursor: "pointer" }}
+                  >
+                    Deshacer
+                  </button>
+                )}
+                <button onClick={() => openEdit(p)} style={{ padding: "5px", background: "none", border: "none", cursor: "pointer", color: "#9CA3AF" }}>
                   <Edit2 style={{ width: "13px", height: "13px" }} />
                 </button>
-                <button onClick={() => handleDelete(p.id)} style={{ padding: "4px", background: "none", border: "none", cursor: "pointer", color: "#DC2626" }}>
+                <button onClick={() => handleDelete(p.id)} style={{ padding: "5px", background: "none", border: "none", cursor: "pointer", color: "#DC2626" }}>
                   <Trash2 style={{ width: "13px", height: "13px" }} />
                 </button>
               </div>
@@ -582,22 +426,115 @@ export const Tesoreria = () => {
         })}
       </div>
 
-      {/* ── Modal crear/editar ───────────────────────────────────────────── */}
-      {showForm && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <div style={{ background: "#FFF", borderRadius: "16px", padding: "28px", width: "520px", maxHeight: "90vh", overflowY: "auto" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
-              <h2 style={{ margin: 0, fontSize: "17px", fontWeight: "700", color: "#111827" }}>{editId ? "Editar pago" : "Nuevo pago recurrente"}</h2>
-              <button onClick={() => setShowForm(false)} style={{ background: "none", border: "none", cursor: "pointer", color: "#6B7280" }}><X style={{ width: "18px", height: "18px" }} /></button>
-            </div>
-            <div style={{ display: "grid", gap: "14px" }}>
-              {[{ label: "Concepto", key: "concepto" }, { label: "Proveedor", key: "proveedor" }].map(({ label, key }) => (
-                <div key={key}>
-                  <label style={{ fontSize: "12px", fontWeight: "600", color: "#374151", display: "block", marginBottom: "4px" }}>{label}</label>
-                  <input type="text" value={form[key as keyof FormData]} onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
-                    style={{ width: "100%", padding: "8px 12px", border: "1px solid #E5E7EB", borderRadius: "8px", fontSize: "13px", boxSizing: "border-box" as const }} />
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      {/* SECCIÓN 3 — Proyección próximas 4 semanas (colapsable)            */}
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      {!loadingF && flujo && !flujo.datos_insuficientes && flujo.semanas.length > 0 && (
+        <div style={{ marginBottom: "24px" }}>
+          <button
+            onClick={() => setProyeccion((v) => !v)}
+            style={{
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+              width: "100%", padding: "13px 18px",
+              background: "#FFF", border: "1px solid #E5E7EB", borderRadius: proyeccion ? "12px 12px 0 0" : "12px",
+              cursor: "pointer", fontSize: "13px", fontWeight: "600", color: "#374151",
+            }}
+          >
+            <span>Ver proyección próximas 4 semanas</span>
+            {proyeccion ? <ChevronUp style={{ width: "16px", height: "16px", color: "#9CA3AF" }} /> : <ChevronDown style={{ width: "16px", height: "16px", color: "#9CA3AF" }} />}
+          </button>
+
+          {proyeccion && (
+            <div style={{ background: "#FFF", border: "1px solid #E5E7EB", borderTop: "none", borderRadius: "0 0 12px 12px", overflow: "hidden" }}>
+              {/* Header */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 40px", padding: "8px 18px", background: "#F9FAFB", borderBottom: "1px solid #F3F4F6" }}>
+                {["Semana", "Compromisos", "Balance estimado", ""].map((h) => (
+                  <span key={h} style={{ fontSize: "10px", fontWeight: "700", color: "#9CA3AF", textTransform: "uppercase" as const, letterSpacing: "0.4px" }}>{h}</span>
+                ))}
+              </div>
+              {flujo.semanas.map((sem, i) => (
+                <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 40px", padding: "11px 18px", borderBottom: i < flujo.semanas.length - 1 ? "1px solid #F9FAFB" : "none", alignItems: "center" }}>
+                  <span style={{ fontSize: "12px", color: "#374151", fontWeight: "600" }}>{sem.semana}</span>
+                  <span style={{ fontSize: "12px", color: "#374151" }}>
+                    {sem.pagos.length === 0
+                      ? <span style={{ color: "#9CA3AF" }}>Sin pagos</span>
+                      : sem.pagos.map((p) => `${p.concepto} ${fmt(p.monto)}`).join(" · ")
+                    }
+                  </span>
+                  <span style={{ fontSize: "12px", fontWeight: "700", color: sem.balance >= 0 ? "#059669" : "#DC2626" }}>
+                    {sem.egresos_comprometidos > 0
+                      ? `${fmt(sem.balance)} balance`
+                      : `${fmt(sem.ingresos_estimados)} estimado`
+                    }
+                  </span>
+                  <span style={{ fontSize: "14px", textAlign: "center" as const }}>
+                    {SEMAFORO_EMOJI[sem.semaforo]}
+                  </span>
                 </div>
               ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      {/* Modal de confirmación de pago                                      */}
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      {confirm && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ background: "#FFF", borderRadius: "14px", padding: "26px 28px", width: "360px", boxShadow: "0 20px 60px rgba(0,0,0,0.18)", animation: "fadeIn 0.18s ease both" }}>
+            <div style={{ fontSize: "15px", fontWeight: "700", color: "#111827", marginBottom: "8px" }}>Confirmar pago</div>
+            <div style={{ fontSize: "13px", color: "#6B7280", marginBottom: "20px" }}>
+              ¿Confirmar pago de <strong>{confirm.concepto}</strong>{confirm.monto > 0 ? ` ${fmt(confirm.monto)}` : ""}?
+            </div>
+            <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+              <button onClick={() => setConfirm(null)} style={{ padding: "8px 16px", border: "1px solid #E5E7EB", borderRadius: "8px", background: "#FFF", fontSize: "13px", cursor: "pointer", color: "#374151" }}>
+                No
+              </button>
+              <button
+                onClick={() => doMarcar(confirm.id, false)}
+                style={{ padding: "8px 20px", border: "none", borderRadius: "8px", background: "#3D1C1E", color: "#C8FF00", fontSize: "13px", fontWeight: "600", cursor: "pointer" }}
+              >
+                Sí, pagado
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      {/* Modal crear / editar pago                                         */}
+      {/* ══════════════════════════════════════════════════════════════════ */}
+      {showForm && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ background: "#FFF", borderRadius: "16px", padding: "28px", width: "480px", maxHeight: "90vh", overflowY: "auto", animation: "fadeIn 0.18s ease both" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
+              <h2 style={{ margin: 0, fontSize: "16px", fontWeight: "700", color: "#111827" }}>
+                {editId ? "Editar pago" : "Nuevo pago recurrente"}
+              </h2>
+              <button onClick={() => setShowForm(false)} style={{ background: "none", border: "none", cursor: "pointer", color: "#6B7280" }}>
+                <X style={{ width: "18px", height: "18px" }} />
+              </button>
+            </div>
+
+            <div style={{ display: "grid", gap: "14px" }}>
+              {/* Concepto */}
+              <div>
+                <label style={{ fontSize: "12px", fontWeight: "600", color: "#374151", display: "block", marginBottom: "4px" }}>Concepto *</label>
+                <input type="text" value={form.concepto} onChange={(e) => setForm((f) => ({ ...f, concepto: e.target.value }))}
+                  placeholder="Ej: Renta local"
+                  style={{ width: "100%", padding: "8px 12px", border: "1px solid #E5E7EB", borderRadius: "8px", fontSize: "13px", boxSizing: "border-box" as const }} />
+              </div>
+
+              {/* Proveedor */}
+              <div>
+                <label style={{ fontSize: "12px", fontWeight: "600", color: "#374151", display: "block", marginBottom: "4px" }}>Proveedor *</label>
+                <input type="text" value={form.proveedor} onChange={(e) => setForm((f) => ({ ...f, proveedor: e.target.value }))}
+                  placeholder="Ej: Pabellón"
+                  style={{ width: "100%", padding: "8px 12px", border: "1px solid #E5E7EB", borderRadius: "8px", fontSize: "13px", boxSizing: "border-box" as const }} />
+              </div>
+
+              {/* Categoría + Frecuencia */}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
                 <div>
                   <label style={{ fontSize: "12px", fontWeight: "600", color: "#374151", display: "block", marginBottom: "4px" }}>Categoría</label>
@@ -614,10 +551,12 @@ export const Tesoreria = () => {
                   </select>
                 </div>
               </div>
+
+              {/* Deadline + Día límite */}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
                 <div>
-                  <label style={{ fontSize: "12px", fontWeight: "600", color: "#374151", display: "block", marginBottom: "4px" }}>Deadline (texto)</label>
-                  <input type="text" placeholder="Ej: Día 1-10" value={form.deadline_texto} onChange={(e) => setForm((f) => ({ ...f, deadline_texto: e.target.value }))}
+                  <label style={{ fontSize: "12px", fontWeight: "600", color: "#374151", display: "block", marginBottom: "4px" }}>Deadline *</label>
+                  <input type="text" placeholder="Ej: Día 10, Cierre mes" value={form.deadline_texto} onChange={(e) => setForm((f) => ({ ...f, deadline_texto: e.target.value }))}
                     style={{ width: "100%", padding: "8px 12px", border: "1px solid #E5E7EB", borderRadius: "8px", fontSize: "13px", boxSizing: "border-box" as const }} />
                 </div>
                 <div>
@@ -626,25 +565,25 @@ export const Tesoreria = () => {
                     style={{ width: "100%", padding: "8px 12px", border: "1px solid #E5E7EB", borderRadius: "8px", fontSize: "13px", boxSizing: "border-box" as const }} />
                 </div>
               </div>
+
+              {/* Monto */}
               <div>
-                <label style={{ fontSize: "12px", fontWeight: "600", color: "#374151", display: "block", marginBottom: "4px" }}>Monto estimado (MXN)</label>
-                <input type="number" min="0" step="0.01" value={form.monto_estimado} onChange={(e) => setForm((f) => ({ ...f, monto_estimado: e.target.value }))}
+                <label style={{ fontSize: "12px", fontWeight: "600", color: "#374151", display: "block", marginBottom: "4px" }}>Monto estimado (MXN) — opcional</label>
+                <input type="number" min="0" step="1" placeholder="Dejar en blanco si es variable" value={form.monto_estimado} onChange={(e) => setForm((f) => ({ ...f, monto_estimado: e.target.value }))}
                   style={{ width: "100%", padding: "8px 12px", border: "1px solid #E5E7EB", borderRadius: "8px", fontSize: "13px", boxSizing: "border-box" as const }} />
               </div>
-              <div>
-                <label style={{ fontSize: "12px", fontWeight: "600", color: "#374151", display: "block", marginBottom: "4px" }}>Notas</label>
-                <textarea value={form.notas} onChange={(e) => setForm((f) => ({ ...f, notas: e.target.value }))} rows={2}
-                  style={{ width: "100%", padding: "8px 12px", border: "1px solid #E5E7EB", borderRadius: "8px", fontSize: "13px", boxSizing: "border-box" as const, resize: "vertical" as const }} />
-              </div>
             </div>
-            <div style={{ display: "flex", gap: "10px", marginTop: "20px", justifyContent: "flex-end" }}>
-              <button onClick={() => setShowForm(false)} style={{ padding: "9px 18px", border: "1px solid #E5E7EB", borderRadius: "8px", background: "#FFF", fontSize: "13px", cursor: "pointer", color: "#374151" }}>Cancelar</button>
+
+            <div style={{ display: "flex", gap: "10px", marginTop: "22px", justifyContent: "flex-end" }}>
+              <button onClick={() => setShowForm(false)} style={{ padding: "9px 18px", border: "1px solid #E5E7EB", borderRadius: "8px", background: "#FFF", fontSize: "13px", cursor: "pointer", color: "#374151" }}>
+                Cancelar
+              </button>
               <button
                 onClick={handleSave}
-                disabled={saving || !form.concepto || !form.proveedor || !form.deadline_texto}
-                style={{ padding: "9px 18px", border: "none", borderRadius: "8px", background: "#3D1C1E", color: "#C8FF00", fontSize: "13px", fontWeight: "600", cursor: "pointer", opacity: saving ? 0.6 : 1 }}
+                disabled={saving || !form.concepto.trim() || !form.proveedor.trim() || !form.deadline_texto.trim()}
+                style={{ padding: "9px 20px", border: "none", borderRadius: "8px", background: "#3D1C1E", color: "#C8FF00", fontSize: "13px", fontWeight: "600", cursor: "pointer", opacity: saving ? 0.6 : 1 }}
               >
-                {saving ? "Guardando..." : editId ? "Guardar cambios" : "Crear pago"}
+                {saving ? "Guardando…" : editId ? "Guardar cambios" : "Crear pago"}
               </button>
             </div>
           </div>
