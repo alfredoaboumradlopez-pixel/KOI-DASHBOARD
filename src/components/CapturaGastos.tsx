@@ -210,7 +210,12 @@ export const CapturaGastos: React.FC = () => {
 
   // ── Calendar popover state ──
   const [showCalPopover, setShowCalPopover] = useState(false);
+  const [calPopoverMes, setCalPopoverMes] = useState(0);
+  const [calPopoverAnio, setCalPopoverAnio] = useState(0);
   const calContainerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (showCalPopover) { setCalPopoverMes(cajaMes); setCalPopoverAnio(cajaAnio); }
+  }, [showCalPopover]);
   useEffect(() => {
     if (!showCalPopover) return;
     const handler = (e: MouseEvent) => {
@@ -358,6 +363,14 @@ export const CapturaGastos: React.FC = () => {
 
   const mesLabel = `${MESES_LARGO[cajaMes - 1]} ${cajaAnio}`;
 
+  const calPopoverDays = useMemo(() => {
+    if (!calPopoverMes || !calPopoverAnio) return [];
+    const n = new Date(calPopoverAnio, calPopoverMes, 0).getDate();
+    return Array.from({ length: n }, (_, i) =>
+      `${calPopoverAnio}-${String(calPopoverMes).padStart(2, "0")}-${String(i + 1).padStart(2, "0")}`
+    );
+  }, [calPopoverMes, calPopoverAnio]);
+
   return (
     <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
       {/* ── Header ── */}
@@ -422,32 +435,62 @@ export const CapturaGastos: React.FC = () => {
             {cajaLoading && <Loader2 style={{ width: "16px", height: "16px", color: "#9CA3AF", animation: "spin 1s linear infinite" }} />}
 
             {/* Calendar popover */}
-            {showCalPopover && (
-              <div style={{ position: "absolute", top: "calc(100% + 6px)", left: "50%", transform: "translateX(-50%)", width: "280px", background: "#FFF", borderRadius: "14px", boxShadow: "0 8px 32px rgba(0,0,0,0.14)", border: "1px solid #E5E7EB", zIndex: 50, padding: "14px" }}>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: "2px", marginBottom: "6px" }}>
+            {showCalPopover && calPopoverDays.length > 0 && (
+              <div style={{ position: "absolute", top: "calc(100% + 6px)", left: "50%", transform: "translateX(-50%)", width: "300px", background: "#FFF", borderRadius: "14px", boxShadow: "0 8px 32px rgba(0,0,0,0.14)", border: "1px solid #E5E7EB", zIndex: 50, padding: "14px" }}>
+                {/* Month nav header */}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
+                  <button
+                    onClick={() => { const d = new Date(calPopoverAnio, calPopoverMes - 2, 1); setCalPopoverMes(d.getMonth() + 1); setCalPopoverAnio(d.getFullYear()); }}
+                    style={{ width: "26px", height: "26px", borderRadius: "6px", border: "1px solid #E5E7EB", background: "#FFF", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+                  >
+                    <ChevronLeft style={{ width: "12px", height: "12px", color: "#6B7280" }} />
+                  </button>
+                  <span style={{ fontSize: "13px", fontWeight: "700", color: "#111827" }}>
+                    {MESES_LARGO[calPopoverMes - 1]} {calPopoverAnio}
+                  </span>
+                  <button
+                    onClick={() => { const d = new Date(calPopoverAnio, calPopoverMes, 1); setCalPopoverMes(d.getMonth() + 1); setCalPopoverAnio(d.getFullYear()); }}
+                    style={{ width: "26px", height: "26px", borderRadius: "6px", border: "1px solid #E5E7EB", background: "#FFF", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+                  >
+                    <ChevronRight style={{ width: "12px", height: "12px", color: "#6B7280" }} />
+                  </button>
+                </div>
+                {/* Day headers */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: "2px", marginBottom: "4px" }}>
                   {["L", "M", "X", "J", "V", "S", "D"].map(d => (
                     <div key={d} style={{ textAlign: "center", fontSize: "9px", fontWeight: "700", color: "#9CA3AF", padding: "2px 0" }}>{d}</div>
                   ))}
                 </div>
+                {/* Day cells */}
                 {(() => {
-                  const firstDay = parseDateStr(allDaysOfMonth[0]);
+                  const firstDay = parseDateStr(calPopoverDays[0]);
                   const offsetDay = (firstDay.getDay() + 6) % 7;
-                  const cells: (string | null)[] = Array(offsetDay).fill(null).concat(allDaysOfMonth);
+                  const cells: (string | null)[] = Array(offsetDay).fill(null).concat(calPopoverDays);
                   while (cells.length % 7 !== 0) cells.push(null);
                   const weeks: (string | null)[][] = [];
                   for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
                   return weeks.map((week, wi) => (
                     <div key={wi} style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: "2px", marginBottom: "2px" }}>
                       {week.map((dateStr, ci) => {
-                        if (!dateStr) return <div key={ci} />;
+                        if (!dateStr) return <div key={ci} style={{ height: "34px" }} />;
                         const d = parseDateStr(dateStr);
                         const isSelected = dateStr === selectedDay;
                         const hasGastos = !!totalesPorDia[dateStr];
                         return (
                           <button
                             key={ci}
-                            onClick={() => { selectDay(dateStr); setShowCalPopover(false); }}
-                            style={{ position: "relative", width: "32px", height: "32px", borderRadius: "8px", border: "none", background: isSelected ? "#3D1C1E" : "transparent", color: isSelected ? "#C8FF00" : "#374151", fontSize: "11px", fontWeight: isSelected ? "800" : "600", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "1px" }}
+                            onClick={() => {
+                              if (calPopoverMes !== cajaMes || calPopoverAnio !== cajaAnio) {
+                                setCajaMes(calPopoverMes);
+                                setCajaAnio(calPopoverAnio);
+                                setSelectedDay(dateStr);
+                                setViewMode("dia");
+                              } else {
+                                selectDay(dateStr);
+                              }
+                              setShowCalPopover(false);
+                            }}
+                            style={{ height: "34px", borderRadius: "8px", border: "none", background: isSelected ? "#3D1C1E" : hasGastos ? "#F0FDF4" : "transparent", color: isSelected ? "#C8FF00" : hasGastos ? "#111827" : "#9CA3AF", fontSize: "11px", fontWeight: isSelected ? "800" : hasGastos ? "700" : "400", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "1px" }}
                           >
                             {d.getDate()}
                             {hasGastos && (
