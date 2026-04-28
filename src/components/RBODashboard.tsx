@@ -189,14 +189,10 @@ export const RBODashboard = () => {
     const hasCritical = alertas.some(
       (a) => (a.severidad || "WARNING") === "CRITICAL"
     );
+    // ROJO: solo si hay alertas CRITICAL reales en alertas_log
+    if (hasCritical) return "rojo";
     if (!pl) return "amarillo";
-    if (
-      pl.margen_neto_pct < 10 ||
-      pl.food_cost_pct > 38 ||
-      alertas.length > 3 ||
-      hasCritical
-    )
-      return "rojo";
+    // AMARILLO: métricas fuera de zona, alertas WARNING, o días sin cierre
     if (
       pl.margen_neto_pct < 20 ||
       pl.food_cost_pct > 32 ||
@@ -204,6 +200,7 @@ export const RBODashboard = () => {
       diasSinCierre > 0
     )
       return "amarillo";
+    // VERDE: margen >= 20%, food_cost <= 32%, sin alertas ni días perdidos
     return "verde";
   };
 

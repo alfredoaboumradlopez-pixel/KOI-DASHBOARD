@@ -120,6 +120,10 @@ class AlertasJob:
 
         # ── MARGEN_BAJO ──────────────────────────────────────────────────
         elif tipo == "MARGEN_BAJO":
+            # Sin ventas reales esta semana el margen es 0% por ausencia de datos,
+            # no por bajo rendimiento — omitir para evitar falsos positivos.
+            if pl_semana.ventas_netas <= 0:
+                return None
             val = pl_semana.margen_neto_pct
             if val < umbral:
                 sev = "CRITICAL" if val <= 5.0 else "WARNING"
