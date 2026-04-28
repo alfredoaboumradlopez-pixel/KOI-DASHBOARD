@@ -151,6 +151,7 @@ class EmpleadoCreate(BaseModel):
     curp: Optional[str] = None
     numero_imss: Optional[str] = None
     cuenta_banco: Optional[str] = None
+    restaurante_id: Optional[int] = None
 
 class DocumentoEmpleadoResponse(BaseModel):
     id: int
@@ -167,7 +168,38 @@ class EmpleadoResponse(EmpleadoCreate):
     curp: Optional[str] = None
     numero_imss: Optional[str] = None
     cuenta_banco: Optional[str] = None
+    restaurante_id: Optional[int] = None
     documentos: List[DocumentoEmpleadoResponse] = []
+    model_config = ConfigDict(from_attributes=True)
+
+class NominaSemanaItem(BaseModel):
+    empleado_id: int
+    salario_base_semanal: float
+    dias_trabajados: float = 6.0
+    propinas: float = 0.0
+    deducciones: float = 0.0
+    neto_pagado: float
+
+class NominaSemanaCreate(BaseModel):
+    restaurante_id: int
+    periodo_inicio: date
+    periodo_fin: date
+    fecha_pago: date
+    items: List[NominaSemanaItem]
+
+class NominaPagoDetalleResponse(BaseModel):
+    id: int
+    empleado_id: int
+    empleado_nombre: Optional[str] = None
+    empleado_puesto: Optional[str] = None
+    periodo_inicio: date
+    periodo_fin: date
+    salario_base: float
+    horas_extra: float
+    deducciones: float
+    neto_pagado: float
+    fecha_pago: date
+    restaurante_id: Optional[int] = None
     model_config = ConfigDict(from_attributes=True)
 
 class NominaPagoCreate(BaseModel):

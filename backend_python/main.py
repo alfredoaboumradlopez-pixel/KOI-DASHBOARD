@@ -104,6 +104,17 @@ try:
 except Exception as _e:
     print(f"Migracion restaurante_id: {_e}")
 
+# Migracion: agregar contenido_base64 a documentos_empleado
+try:
+    _insp3 = _inspect(engine)
+    _cols_doc = [c['name'] for c in _insp3.get_columns('documentos_empleado')]
+    if 'contenido_base64' not in _cols_doc:
+        with engine.begin() as _conn3:
+            _conn3.execute(_text("ALTER TABLE documentos_empleado ADD COLUMN contenido_base64 TEXT"))
+            print("Columna contenido_base64 agregada a documentos_empleado")
+except Exception as e:
+    print(f"Migracion documentos_empleado: {e}")
+
 # Auto-seed categorias si tabla vacia
 try:
     from sqlalchemy.orm import Session as _Session
@@ -1028,6 +1039,54 @@ def registrar_pago_nomina(pago: schemas.NominaPagoCreate, db: Session = Depends(
     db.refresh(db_pago)
     return db_pago
 
+@app.get("/api/nomina")
+def listar_nomina(restaurante_id: Optional[int] = None, meses: int = 3, db: Session = Depends(get_db)):
+    from datetime import date as _dt, timedelta as _td
+    cutoff = _dt.today() - _td(days=meses * 31)
+    q = db.query(models.NominaPago).filter(models.NominaPago.fecha_pago >= cutoff)
+    if restaurante_id is not None:
+        q = q.filter(models.NominaPago.restaurante_id == restaurante_id)
+    pagos = q.order_by(models.NominaPago.fecha_pago.desc()).all()
+    result = []
+    for p in pagos:
+        emp = db.query(models.Empleado).filter(models.Empleado.id == p.empleado_id).first()
+        result.append({
+            "id": p.id,
+            "empleado_id": p.empleado_id,
+            "empleado_nombre": emp.nombre if emp else None,
+            "empleado_puesto": emp.puesto if emp else None,
+            "periodo_inicio": str(p.periodo_inicio),
+            "periodo_fin": str(p.periodo_fin),
+            "salario_base": p.salario_base,
+            "horas_extra": p.horas_extra,
+            "deducciones": p.deducciones,
+            "neto_pagado": p.neto_pagado,
+            "fecha_pago": str(p.fecha_pago),
+            "restaurante_id": p.restaurante_id,
+        })
+    return result
+
+@app.post("/api/nomina/semana", status_code=201)
+def registrar_nomina_semana(data: schemas.NominaSemanaCreate, db: Session = Depends(get_db)):
+    creados = []
+    for item in data.items:
+        pago = models.NominaPago(
+            empleado_id=item.empleado_id,
+            periodo_inicio=data.periodo_inicio,
+            periodo_fin=data.periodo_fin,
+            salario_base=item.salario_base_semanal,
+            horas_extra=item.propinas,
+            deducciones=item.deducciones,
+            neto_pagado=item.neto_pagado,
+            fecha_pago=data.fecha_pago,
+            restaurante_id=data.restaurante_id,
+        )
+        db.add(pago)
+        creados.append(pago)
+    db.commit()
+    total = sum(i.neto_pagado for i in data.items)
+    return {"ok": True, "registros": len(creados), "total_nomina": round(total, 2)}
+
 @app.post("/api/insumos", response_model=schemas.InsumoResponse, status_code=201)
 def crear_insumo(insumo: schemas.InsumoCreate, db: Session = Depends(get_db)):
     db_insumo = models.Insumo(**insumo.model_dump())
@@ -1070,17 +1129,24 @@ def editar_empleado(emp_id: int, emp: schemas.EmpleadoCreate, db: Session = Depe
 
 @app.post("/api/empleados/{emp_id}/documentos", response_model=schemas.DocumentoEmpleadoResponse, status_code=201)
 async def subir_documento(emp_id: int, file: UploadFile = File(...), db: Session = Depends(get_db)):
+    import base64 as _b64
     emp = db.query(models.Empleado).filter(models.Empleado.id == emp_id).first()
     if not emp:
         raise HTTPException(status_code=404, detail="Empleado no encontrado")
-    ext = os.path.splitext(file.filename or "")[1].lower()
-    filename = f"emp_{emp_id}_{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}{ext}"
-    filepath = os.path.join(UPLOADS_DIR, "documentos", filename)
     content = await file.read()
-    with open(filepath, "wb") as f:
-        f.write(content)
+    if len(content) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Archivo demasiado grande (máximo 5MB)")
+    ext = os.path.splitext(file.filename or "")[1].lower()
     tipo = "PDF" if ext == ".pdf" else "Imagen" if ext in [".jpg", ".jpeg", ".png"] else "Documento"
-    doc = models.DocumentoEmpleado(empleado_id=emp_id, nombre=file.filename or filename, tipo=tipo, ruta=filepath)
+    b64_content = _b64.b64encode(content).decode("utf-8")
+    doc = models.DocumentoEmpleado(
+        empleado_id=emp_id,
+        nombre=file.filename or "archivo",
+        tipo=tipo,
+        ruta=f"base64:{file.filename}",
+        contenido_base64=b64_content,
+        restaurante_id=emp.restaurante_id,
+    )
     db.add(doc)
     db.commit()
     db.refresh(doc)
@@ -1092,10 +1158,21 @@ def listar_documentos_empleado(emp_id: int, db: Session = Depends(get_db)):
 
 @app.get("/api/empleados/documentos/{doc_id}/archivo")
 def descargar_documento(doc_id: int, db: Session = Depends(get_db)):
+    import base64 as _b64
+    from fastapi.responses import Response as _Resp
     doc = db.query(models.DocumentoEmpleado).filter(models.DocumentoEmpleado.id == doc_id).first()
-    if not doc or not os.path.exists(doc.ruta):
+    if not doc:
         raise HTTPException(status_code=404, detail="Archivo no encontrado")
-    return FileResponse(doc.ruta, filename=doc.nombre)
+    # Base64 storage (new path)
+    if doc.contenido_base64:
+        content = _b64.b64decode(doc.contenido_base64)
+        ext = os.path.splitext(doc.nombre)[1].lower()
+        media_type = "application/pdf" if ext == ".pdf" else "image/jpeg" if ext in [".jpg", ".jpeg"] else "image/png" if ext == ".png" else "application/octet-stream"
+        return _Resp(content=content, media_type=media_type, headers={"Content-Disposition": f'inline; filename="{doc.nombre}"'})
+    # Legacy filesystem path
+    if doc.ruta and not doc.ruta.startswith("base64:") and os.path.exists(doc.ruta):
+        return FileResponse(doc.ruta, filename=doc.nombre)
+    raise HTTPException(status_code=404, detail="Archivo no encontrado")
 
 @app.delete("/api/empleados/documentos/{doc_id}")
 def eliminar_documento(doc_id: int, db: Session = Depends(get_db)):

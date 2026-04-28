@@ -239,6 +239,7 @@ class DocumentoEmpleado(Base):
     nombre = Column(String(255), nullable=False)
     tipo = Column(String(50), nullable=False)
     ruta = Column(String(500), nullable=False)
+    contenido_base64 = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     restaurante_id = Column(Integer, ForeignKey("restaurantes.id"), nullable=True)
     empleado = relationship("Empleado", back_populates="documentos")
