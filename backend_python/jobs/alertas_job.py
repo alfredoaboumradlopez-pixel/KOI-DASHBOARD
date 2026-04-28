@@ -37,6 +37,9 @@ class AlertasJob:
                 if alerta:
                     alertas_creadas.append(alerta)
 
+            # Alertas D-3: pagos próximos a vencer (sin depender de alertas_config)
+            alertas_creadas.extend(self._evaluar_pagos_proximos(db, restaurante_id, hoy))
+
             if alertas_creadas:
                 db.commit()
 
@@ -226,6 +229,76 @@ class AlertasJob:
                 )
 
         return None
+
+    def _evaluar_pagos_proximos(
+        self, db: Session, restaurante_id: int, hoy: date
+    ) -> List[models.AlertaLog]:
+        """Crea alertas PAGO_PROXIMO para pagos que vencen en los próximos 3 días."""
+        import calendar as _cal
+        dias_umbral = 3
+        creadas: List[models.AlertaLog] = []
+
+        pagos = db.query(models.PagoRecurrente).filter(
+            models.PagoRecurrente.restaurante_id == restaurante_id,
+            models.PagoRecurrente.activo == True,
+            models.PagoRecurrente.dia_limite != None,
+            models.PagoRecurrente.monto_estimado > 0,
+        ).all()
+
+        for pago in pagos:
+            # Saltar si ya está marcado como pagado este mes
+            if pago.pagado_mes == hoy.month and pago.pagado_anio == hoy.year:
+                continue
+
+            dia = pago.dia_limite
+            mes_actual, anio_actual = hoy.month, hoy.year
+            last_day = _cal.monthrange(anio_actual, mes_actual)[1]
+            try:
+                fecha_venc = hoy.replace(day=min(dia, last_day))
+            except ValueError:
+                continue
+
+            if fecha_venc < hoy:
+                continue  # Ya venció este mes
+
+            dias_restantes = (fecha_venc - hoy).days
+            if 0 <= dias_restantes <= dias_umbral:
+                sev = "CRITICAL" if dias_restantes <= 1 else "WARNING"
+                tipo_key = f"PAGO_PROXIMO_{pago.id}"
+                alerta = self._crear_alerta(
+                    db, restaurante_id, "PAGO_PROXIMO",
+                    f"{pago.concepto} vence {'hoy' if dias_restantes == 0 else f'en {dias_restantes} día(s)'} — ${pago.monto_estimado:,.0f}",
+                    float(dias_restantes), float(dias_umbral), sev,
+                )
+                # Anti-duplicado por concepto: verificar si ya existe en 24h
+                if alerta is None:
+                    # Puede haberse bloqueado por anti-duplicado de tipo "PAGO_PROXIMO"
+                    # genérico. Verificar específicamente.
+                    hace_24h = datetime.utcnow() - timedelta(hours=24)
+                    existe = db.query(models.AlertaLog).filter(
+                        models.AlertaLog.restaurante_id == restaurante_id,
+                        models.AlertaLog.tipo == "PAGO_PROXIMO",
+                        models.AlertaLog.mensaje.contains(pago.concepto),
+                        models.AlertaLog.revisada == False,
+                        models.AlertaLog.created_at >= hace_24h,
+                    ).first()
+                    if existe:
+                        continue
+                    # No existe duplicado específico — crear sin anti-duplicado genérico
+                    alerta = models.AlertaLog(
+                        restaurante_id=restaurante_id,
+                        tipo="PAGO_PROXIMO",
+                        mensaje=f"{pago.concepto} vence {'hoy' if dias_restantes == 0 else f'en {dias_restantes} día(s)'} — ${pago.monto_estimado:,.0f}",
+                        valor_detectado=float(dias_restantes),
+                        umbral_config=float(dias_umbral),
+                        revisada=False,
+                        severidad=sev,
+                    )
+                    db.add(alerta)
+                if alerta:
+                    creadas.append(alerta)
+
+        return creadas
 
 
 alertas_job = AlertasJob()

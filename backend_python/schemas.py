@@ -290,6 +290,8 @@ class PagoRecurrenteUpdate(BaseModel):
 class PagoRecurrenteResponse(PagoRecurrenteCreate):
     id: int
     activo: bool
+    pagado_mes: Optional[int] = None
+    pagado_anio: Optional[int] = None
     model_config = ConfigDict(from_attributes=True)
 
 class DashboardResumen(BaseModel):

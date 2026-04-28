@@ -1456,6 +1456,169 @@ def seed_pagos_recurrentes(db: Session = Depends(get_db)):
     return {"message": f"{len(PAGOS_FIJOS_SEED)} pagos creados"}
 
 
+_MESES_CORTOS = {1:"ene",2:"feb",3:"mar",4:"abr",5:"may",6:"jun",
+                 7:"jul",8:"ago",9:"sep",10:"oct",11:"nov",12:"dic"}
+
+
+@app.get("/api/pagos/flujo-caja/{restaurante_id}")
+def get_flujo_caja(restaurante_id: int, dias: int = 30, db: Session = Depends(get_db)):
+    import calendar as _cal
+    hoy = date.today()
+    hace_n = hoy - timedelta(days=dias)
+
+    # ── Ventas promedio diario ───────────────────────────────────────────
+    cierres = db.query(models.CierreTurno).filter(
+        models.CierreTurno.restaurante_id == restaurante_id,
+        models.CierreTurno.fecha >= hace_n,
+        models.CierreTurno.fecha <= hoy,
+    ).all()
+
+    if len(cierres) < 7:
+        return {
+            "datos_insuficientes": True,
+            "mensaje": "Se necesitan al menos 7 días de cierres para proyectar el flujo de caja",
+            "cierres_disponibles": len(cierres),
+        }
+
+    ventas_totales = sum(float(c.total_venta or 0) for c in cierres)
+    ventas_promedio_diario = ventas_totales / len(cierres)
+
+    # ── Pagos comprometidos ──────────────────────────────────────────────
+    pagos_db = db.query(models.PagoRecurrente).filter(
+        models.PagoRecurrente.restaurante_id == restaurante_id,
+        models.PagoRecurrente.activo == True,
+        models.PagoRecurrente.monto_estimado > 0,
+        models.PagoRecurrente.dia_limite != None,
+    ).all()
+
+    pagos_comprometidos = []
+    for pago in pagos_db:
+        dia = pago.dia_limite
+        mes_actual = hoy.month
+        anio_actual = hoy.year
+
+        # Ya pagado este mes
+        if pago.pagado_mes == mes_actual and pago.pagado_anio == anio_actual:
+            continue
+
+        # Calcular próxima fecha de vencimiento dentro de los próximos `dias` días
+        try:
+            fecha_venc = hoy.replace(day=dia)
+        except ValueError:
+            last_day = _cal.monthrange(anio_actual, mes_actual)[1]
+            fecha_venc = hoy.replace(day=min(dia, last_day))
+
+        if fecha_venc < hoy:
+            # Pasó este mes → calcular para el mes siguiente
+            if mes_actual == 12:
+                next_mes, next_anio = 1, anio_actual + 1
+            else:
+                next_mes, next_anio = mes_actual + 1, anio_actual
+            last_day_next = _cal.monthrange(next_anio, next_mes)[1]
+            try:
+                fecha_venc = date(next_anio, next_mes, min(dia, last_day_next))
+            except ValueError:
+                continue
+
+        dias_para_vencer = (fecha_venc - hoy).days
+        if 0 <= dias_para_vencer <= dias:
+            pagos_comprometidos.append({
+                "concepto": pago.concepto,
+                "proveedor": pago.proveedor,
+                "monto": round(pago.monto_estimado, 2),
+                "fecha_vencimiento": str(fecha_venc),
+                "dias_para_vencer": dias_para_vencer,
+                "estado": "pendiente",
+            })
+
+    total_comprometido = sum(p["monto"] for p in pagos_comprometidos)
+    ingresos_proyectados = round(ventas_promedio_diario * dias, 2)
+
+    # ── Semanas ──────────────────────────────────────────────────────────
+    semanas = []
+    for i in range(4):
+        sem_inicio = hoy + timedelta(weeks=i)
+        sem_fin = sem_inicio + timedelta(days=6)
+        ingr_sem = round(ventas_promedio_diario * 7, 2)
+
+        pagos_sem = [
+            p for p in pagos_comprometidos
+            if sem_inicio <= date.fromisoformat(p["fecha_vencimiento"]) <= sem_fin
+        ]
+        egr_sem = round(sum(p["monto"] for p in pagos_sem), 2)
+        balance = round(ingr_sem - egr_sem, 2)
+
+        ratio = egr_sem / ingr_sem if ingr_sem > 0 else 0
+        if ratio >= 0.9:
+            semaforo = "rojo"
+        elif ratio >= 0.6:
+            semaforo = "amarillo"
+        else:
+            semaforo = "verde"
+
+        label_ini = f"{sem_inicio.day} {_MESES_CORTOS[sem_inicio.month]}"
+        label_fin = f"{sem_fin.day} {_MESES_CORTOS[sem_fin.month]}"
+        semanas.append({
+            "semana": f"{label_ini} - {label_fin}",
+            "inicio": str(sem_inicio),
+            "fin": str(sem_fin),
+            "ingresos_estimados": ingr_sem,
+            "egresos_comprometidos": egr_sem,
+            "balance": balance,
+            "semaforo": semaforo,
+            "pagos": pagos_sem,
+        })
+
+    alertas_flujo = [s for s in semanas if s["semaforo"] != "verde"]
+    semaforo_general = "verde"
+    for s in semanas:
+        if s["semaforo"] == "rojo":
+            semaforo_general = "rojo"
+            break
+        if s["semaforo"] == "amarillo":
+            semaforo_general = "amarillo"
+
+    return {
+        "datos_insuficientes": False,
+        "periodo_dias": dias,
+        "ventas_promedio_diario": round(ventas_promedio_diario, 2),
+        "ingresos_proyectados_30d": ingresos_proyectados,
+        "pagos_comprometidos": pagos_comprometidos,
+        "total_comprometido_30d": round(total_comprometido, 2),
+        "semanas": semanas,
+        "alertas_flujo": alertas_flujo,
+        "resumen": {
+            "semaforo_general": semaforo_general,
+            "semanas_en_riesgo": len(alertas_flujo),
+            "superavit_estimado_30d": round(ingresos_proyectados - total_comprometido, 2),
+        },
+    }
+
+
+@app.post("/api/pagos-recurrentes/{pago_id}/marcar-pagado")
+def marcar_pago_pagado(pago_id: int, db: Session = Depends(get_db)):
+    pago = db.query(models.PagoRecurrente).filter(models.PagoRecurrente.id == pago_id).first()
+    if not pago:
+        raise HTTPException(status_code=404, detail="Pago no encontrado")
+    hoy = date.today()
+    pago.pagado_mes = hoy.month
+    pago.pagado_anio = hoy.year
+    db.commit()
+    db.refresh(pago)
+    return {"ok": True, "pagado_mes": pago.pagado_mes, "pagado_anio": pago.pagado_anio}
+
+
+@app.post("/api/pagos-recurrentes/{pago_id}/desmarcar-pagado")
+def desmarcar_pago_pagado(pago_id: int, db: Session = Depends(get_db)):
+    pago = db.query(models.PagoRecurrente).filter(models.PagoRecurrente.id == pago_id).first()
+    if not pago:
+        raise HTTPException(status_code=404, detail="Pago no encontrado")
+    pago.pagado_mes = None
+    pago.pagado_anio = None
+    db.commit()
+    return {"ok": True}
+
+
 @app.get("/api/catalogo-cuentas/{restaurante_id}")
 def listar_catalogo_cuentas(restaurante_id: int, db: Session = Depends(get_db)):
     cuentas = db.query(models.CatalogoCuenta).filter(

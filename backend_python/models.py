@@ -326,6 +326,8 @@ class PagoRecurrente(Base):
     activo = Column(Boolean, default=True)
     notas = Column(Text, nullable=True)
     restaurante_id = Column(Integer, ForeignKey("restaurantes.id"), nullable=True)
+    pagado_mes = Column(Integer, nullable=True)
+    pagado_anio = Column(Integer, nullable=True)
 
 
 SOCIOS_CONFIG = [
