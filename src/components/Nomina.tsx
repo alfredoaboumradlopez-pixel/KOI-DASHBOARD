@@ -190,8 +190,8 @@ export const Nomina = () => {
   const handleFileUpload = async (files: FileList | null, empId?: number) => {
     if (!files) return;
     const arr = Array.from(files);
-    const tooBig = arr.find(f => f.size > 5 * 1024 * 1024);
-    if (tooBig) { alert(`"${tooBig.name}" supera el límite de 5MB`); return; }
+    const tooBig = arr.find(f => f.size > 10 * 1024 * 1024);
+    if (tooBig) { alert(`"${tooBig.name}" supera el límite de 10MB`); return; }
     if (empId) {
       for (const file of arr) {
         try {
@@ -397,7 +397,7 @@ export const Nomina = () => {
                 <input type="file" accept=".pdf,.jpg,.jpeg,.png" multiple onChange={e => handleFileUpload(e.target.files)} style={{ display: "none" }} />
               </label>
             </div>
-            <p style={{ fontSize: "11px", color: "#9CA3AF", margin: "0 0 8px" }}>Contrato, INE, CURP, constancia IMSS, etc. Máx 5MB por archivo.</p>
+            <p style={{ fontSize: "11px", color: "#9CA3AF", margin: "0 0 8px" }}>Contrato, INE, CURP, constancia IMSS, etc. Máx 10MB por archivo.</p>
             {pendingFiles.length > 0 && (
               <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
                 {pendingFiles.map((f, i) => (

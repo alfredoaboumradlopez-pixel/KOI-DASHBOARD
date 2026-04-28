@@ -1134,8 +1134,8 @@ async def subir_documento(emp_id: int, file: UploadFile = File(...), db: Session
     if not emp:
         raise HTTPException(status_code=404, detail="Empleado no encontrado")
     content = await file.read()
-    if len(content) > 5 * 1024 * 1024:
-        raise HTTPException(status_code=413, detail="Archivo demasiado grande (máximo 5MB)")
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Archivo demasiado grande (máximo 10MB)")
     ext = os.path.splitext(file.filename or "")[1].lower()
     tipo = "PDF" if ext == ".pdf" else "Imagen" if ext in [".jpg", ".jpeg", ".png"] else "Documento"
     b64_content = _b64.b64encode(content).decode("utf-8")
