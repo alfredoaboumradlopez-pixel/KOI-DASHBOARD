@@ -1,11 +1,14 @@
 /**
- * DashboardGastos
- * ═══════════════
- * Módulo analítico de gastos por período: tarjetas por categoría expandibles,
- * tendencia semanal, alertas de variación, resumen MP/NMP, proveedor top.
- *
- * Props:
- *   restauranteIdOverride  — ID del restaurante (requerido desde RestauranteDashboard)
+ * DashboardGastos — Rediseño completo
+ * ════════════════════════════════════
+ * Layout (de arriba a abajo):
+ *   1. Header + selector período
+ *   2. 4 cards resumen
+ *   3. Alertas colapsables (si hay)
+ *   4. Tendencia semanal (barras verticales)
+ *   5. Grid 3×N de tarjetas por categoría
+ *   6. Panel de desglose (si hay categoría activa)
+ *   7. Footer 3 chips
  */
 import { useState, useEffect, useMemo } from "react";
 import {
@@ -21,7 +24,6 @@ import {
   ShoppingBag,
   Receipt,
   FileX,
-  Users,
 } from "lucide-react";
 import { api } from "../services/api";
 
@@ -42,12 +44,12 @@ const $dec = (n: number) =>
     maximumFractionDigits: 2,
   }).format(n);
 
-// ── Colores por tipo de cuenta ────────────────────────────────────────────────
-const COLOR_MAP: Record<string, { border: string; badge: string; text: string }> = {
-  costo:     { border: "#F97316", badge: "#FFF7ED", text: "#EA580C" },
-  nomina:    { border: "#3B82F6", badge: "#EFF6FF", text: "#2563EB" },
-  impuesto:  { border: "#EAB308", badge: "#FEFCE8", text: "#CA8A04" },
-  operativo: { border: "#9CA3AF", badge: "#F9FAFB", text: "#6B7280" },
+// ── Colores borde izquierdo por tipo de cuenta ────────────────────────────────
+const BORDER_COLOR: Record<string, string> = {
+  costo:     "#E8593C",
+  nomina:    "#378ADD",
+  impuesto:  "#639922",
+  operativo: "#888780",
 };
 
 const MESES = [
@@ -97,9 +99,30 @@ interface DashData {
   alertas_gastos: { categoria: string; variacion_pct: number; mes_actual: number; mes_anterior: number }[];
 }
 
-// ── Props ─────────────────────────────────────────────────────────────────────
 interface Props {
   restauranteIdOverride?: number;
+}
+
+// ── Helper: fecha corta "15 abr" ──────────────────────────────────────────────
+function fechaCorta(f: string) {
+  if (!f) return "—";
+  const [, m, d] = f.split("-");
+  const mNom = ["","ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
+  return `${parseInt(d)} ${mNom[parseInt(m)] ?? m}`;
+}
+
+// ── Helper: color y icono de variación ───────────────────────────────────────
+function vsInfo(cat: CategoriaData) {
+  if (cat.mes_anterior_monto === 0) {
+    return { color: "#9CA3AF", bg: "#F9FAFB", Icon: Minus };
+  }
+  if (cat.vs_mes_anterior > 5) {
+    return { color: "#DC2626", bg: "#FEF2F2", Icon: TrendingUp };
+  }
+  if (cat.vs_mes_anterior < -5) {
+    return { color: "#059669", bg: "#ECFDF5", Icon: TrendingDown };
+  }
+  return { color: "#9CA3AF", bg: "#F9FAFB", Icon: Minus };
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
@@ -110,8 +133,8 @@ export const DashboardGastos = ({ restauranteIdOverride }: Props) => {
   const [data, setData] = useState<DashData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [expandidos, setExpandidos] = useState<Set<string>>(new Set());
-  const [verTodosMap, setVerTodosMap] = useState<Record<string, boolean>>({});
+  const [alertasAbiertas, setAlertasAbiertas] = useState(false);
+  const [categoriaActiva, setCategoriaActiva] = useState<string | null>(null);
 
   const restauranteId = restauranteIdOverride ?? 6;
 
@@ -119,8 +142,8 @@ export const DashboardGastos = ({ restauranteIdOverride }: Props) => {
   useEffect(() => {
     setLoading(true);
     setError("");
-    setExpandidos(new Set());
-    setVerTodosMap({});
+    setCategoriaActiva(null);
+    setAlertasAbiertas(false);
     api
       .get(`/api/gastos/dashboard/${restauranteId}?mes=${mes}&anio=${anio}`)
       .then((d: any) => {
@@ -133,44 +156,36 @@ export const DashboardGastos = ({ restauranteIdOverride }: Props) => {
       });
   }, [mes, anio, restauranteId]);
 
-  // ── Tendencia max para escala ─────────────────────────────────────────────
+  // ── Escala para barras verticales de tendencia ────────────────────────────
   const maxTendencia = useMemo(
-    () =>
-      data
-        ? Math.max(...data.tendencia_semanal.map((s) => s.monto), 1)
-        : 1,
+    () => (data ? Math.max(...data.tendencia_semanal.map((s) => s.monto), 1) : 1),
     [data]
   );
 
-  // ── Toggle expandir tarjeta ───────────────────────────────────────────────
-  const toggleExpandido = (cat: string) => {
-    setExpandidos((prev) => {
-      const next = new Set(prev);
-      next.has(cat) ? next.delete(cat) : next.add(cat);
-      return next;
-    });
+  // ── Toggle categoría activa ───────────────────────────────────────────────
+  const toggleCategoria = (cat: string) => {
+    setCategoriaActiva((prev) => (prev === cat ? null : cat));
   };
 
-  // ── Fecha legible "15 abr" ────────────────────────────────────────────────
-  const fechaCorta = (f: string) => {
-    if (!f) return "—";
-    const [, m, d] = f.split("-");
-    const mNom = ["","ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
-    return `${parseInt(d)} ${mNom[parseInt(m)] ?? m}`;
-  };
+  // ── Datos del panel de desglose ───────────────────────────────────────────
+  const catActiva = data?.por_categoria.find((c) => c.categoria === categoriaActiva) ?? null;
 
   // ─────────────────────────────────────────────────────────────────────────────
   return (
     <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
       <style>{`
         @keyframes fadeUp {
-          from { opacity:0; transform:translateY(10px); }
+          from { opacity:0; transform:translateY(8px); }
+          to   { opacity:1; transform:translateY(0); }
+        }
+        @keyframes panelSlide {
+          from { opacity:0; transform:translateY(-6px); }
           to   { opacity:1; transform:translateY(0); }
         }
         @keyframes spin { 100% { transform:rotate(360deg); } }
-        .dg-card { transition: box-shadow 0.18s; }
-        .dg-card:hover { box-shadow: 0 6px 20px rgba(0,0,0,0.09) !important; }
-        .dg-cat-row:hover { background: #FAFAFA !important; }
+        .dg-card-cat { transition: box-shadow 0.18s, outline 0.15s; cursor: pointer; }
+        .dg-card-cat:hover { box-shadow: 0 6px 20px rgba(0,0,0,0.09) !important; }
+        .dg-row:hover { background: #FAFAFA !important; }
       `}</style>
 
       {/* ── Header ──────────────────────────────────────────────────────── */}
@@ -179,7 +194,7 @@ export const DashboardGastos = ({ restauranteIdOverride }: Props) => {
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          marginBottom: "24px",
+          marginBottom: "28px",
           flexWrap: "wrap",
           gap: "12px",
         }}
@@ -283,13 +298,13 @@ export const DashboardGastos = ({ restauranteIdOverride }: Props) => {
 
       {!loading && !error && data && data.resumen.num_transacciones > 0 && (
         <>
-          {/* ── Cards de resumen ──────────────────────────────────────────── */}
+          {/* ── 1. Cards de resumen ───────────────────────────────────────── */}
           <div
             style={{
               display: "grid",
               gridTemplateColumns: "repeat(4,1fr)",
               gap: "14px",
-              marginBottom: "20px",
+              marginBottom: "24px",
             }}
           >
             {[
@@ -330,7 +345,6 @@ export const DashboardGastos = ({ restauranteIdOverride }: Props) => {
               return (
                 <div
                   key={i}
-                  className="dg-card"
                   style={{
                     background: "#FFF",
                     borderRadius: "14px",
@@ -358,364 +372,401 @@ export const DashboardGastos = ({ restauranteIdOverride }: Props) => {
             })}
           </div>
 
-          {/* ── Alertas ──────────────────────────────────────────────────── */}
+          {/* ── 2. Alertas colapsables ────────────────────────────────────── */}
           {data.alertas_gastos.length > 0 && (
+            <div style={{ marginBottom: "24px", animation: "fadeUp 0.3s ease 0.15s both" }}>
+              <button
+                onClick={() => setAlertasAbiertas((v) => !v)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "10px",
+                  width: "100%",
+                  padding: "11px 16px",
+                  borderRadius: alertasAbiertas ? "12px 12px 0 0" : "12px",
+                  border: "1px solid #FDE68A",
+                  background: "#FFFBEB",
+                  cursor: "pointer",
+                  textAlign: "left" as const,
+                }}
+              >
+                <AlertTriangle style={{ width: "15px", height: "15px", color: "#D97706", flexShrink: 0 }} />
+                <span style={{ flex: 1, fontSize: "13px", fontWeight: "700", color: "#92400E" }}>
+                  ⚠️ {data.alertas_gastos.length} {data.alertas_gastos.length === 1 ? "categoría con variación" : "categorías con variación"} significativa vs mes anterior
+                </span>
+                {alertasAbiertas
+                  ? <ChevronUp style={{ width: "15px", height: "15px", color: "#D97706", flexShrink: 0 }} />
+                  : <ChevronDown style={{ width: "15px", height: "15px", color: "#D97706", flexShrink: 0 }} />
+                }
+              </button>
+              {alertasAbiertas && (
+                <div
+                  style={{
+                    background: "#FFFBEB",
+                    border: "1px solid #FDE68A",
+                    borderTop: "none",
+                    borderRadius: "0 0 12px 12px",
+                    padding: "12px 16px",
+                    display: "flex",
+                    flexDirection: "column" as const,
+                    gap: "8px",
+                  }}
+                >
+                  {data.alertas_gastos.map((a) => (
+                    <div
+                      key={a.categoria}
+                      style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "12px", color: "#78350F" }}
+                    >
+                      <TrendingUp style={{ width: "12px", height: "12px", color: "#D97706", flexShrink: 0 }} />
+                      <span style={{ fontWeight: "700" }}>{a.categoria}</span>
+                      <span>subió {a.variacion_pct.toFixed(1)}% vs mes anterior</span>
+                      <span style={{ color: "#A16207" }}>({$(a.mes_actual)} vs {$(a.mes_anterior)})</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── 3. Tendencia semanal (barras verticales) ──────────────────── */}
+          {data.tendencia_semanal.length > 0 && (
             <div
               style={{
-                background: "#FFFBEB",
-                border: "1px solid #FDE68A",
-                borderRadius: "12px",
-                padding: "14px 18px",
-                marginBottom: "20px",
-                animation: "fadeUp 0.3s ease 0.15s both",
+                background: "#FFF",
+                borderRadius: "14px",
+                padding: "20px 24px",
+                boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+                marginBottom: "24px",
+                animation: "fadeUp 0.3s ease 0.2s both",
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "10px" }}>
-                <AlertTriangle style={{ width: "16px", height: "16px", color: "#D97706", flexShrink: 0 }} />
-                <span style={{ fontSize: "12px", fontWeight: "700", color: "#92400E" }}>
-                  Categorías con aumento &gt;15% vs mes anterior
-                </span>
+              <div style={{ fontSize: "13px", fontWeight: "700", color: "#111827", marginBottom: "20px", display: "flex", alignItems: "center", gap: "8px" }}>
+                <BarChart2 style={{ width: "14px", height: "14px", color: "#9CA3AF" }} />
+                Tendencia semanal — {MESES[mes]} {anio}
               </div>
-              <div style={{ display: "flex", flexDirection: "column" as const, gap: "6px" }}>
-                {data.alertas_gastos.map((a) => (
-                  <div
-                    key={a.categoria}
-                    style={{
-                      display: "flex", alignItems: "center", gap: "8px",
-                      fontSize: "12px", color: "#78350F",
-                    }}
-                  >
-                    <TrendingUp style={{ width: "12px", height: "12px", color: "#D97706", flexShrink: 0 }} />
-                    <span style={{ fontWeight: "700" }}>{a.categoria}</span>
-                    <span>subió {a.variacion_pct.toFixed(1)}% vs mes anterior</span>
-                    <span style={{ color: "#A16207" }}>
-                      ({$(a.mes_actual)} vs {$(a.mes_anterior)})
-                    </span>
-                  </div>
-                ))}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "flex-end",
+                  gap: "16px",
+                  height: "120px",
+                }}
+              >
+                {data.tendencia_semanal.map((s, i) => {
+                  const pct = maxTendencia > 0 ? (s.monto / maxTendencia) * 100 : 0;
+                  const barH = Math.max(pct * 1.0, pct > 0 ? 4 : 0);
+                  return (
+                    <div
+                      key={i}
+                      style={{
+                        flex: 1,
+                        display: "flex",
+                        flexDirection: "column" as const,
+                        alignItems: "center",
+                        gap: "6px",
+                        height: "100%",
+                        justifyContent: "flex-end",
+                      }}
+                    >
+                      <span style={{ fontSize: "10px", fontWeight: "700", color: "#374151", whiteSpace: "nowrap" as const }}>
+                        {$(s.monto)}
+                      </span>
+                      <div
+                        style={{
+                          width: "100%",
+                          height: `${barH}%`,
+                          minHeight: pct > 0 ? "4px" : "0",
+                          background: "linear-gradient(180deg,#3D1C1E,#7C3D40)",
+                          borderRadius: "5px 5px 0 0",
+                          transition: "height 0.6s ease",
+                        }}
+                      />
+                      <span
+                        style={{
+                          fontSize: "9px",
+                          color: "#9CA3AF",
+                          textAlign: "center" as const,
+                          lineHeight: "1.3",
+                          whiteSpace: "nowrap" as const,
+                          overflow: "hidden",
+                          maxWidth: "100%",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
+                        {s.semana.replace("Sem ", "S")}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
 
-          {/* ── Tendencia semanal ─────────────────────────────────────────── */}
+          {/* ── 4. Grid de tarjetas por categoría ────────────────────────── */}
           <div
             style={{
-              background: "#FFF",
-              borderRadius: "14px",
-              padding: "20px 24px",
-              boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
-              marginBottom: "20px",
-              animation: "fadeUp 0.3s ease 0.2s both",
+              fontSize: "12px", fontWeight: "600", color: "#9CA3AF",
+              textTransform: "uppercase" as const, letterSpacing: "0.5px",
+              marginBottom: "14px",
             }}
           >
-            <div style={{ fontSize: "13px", fontWeight: "700", color: "#111827", marginBottom: "16px", display: "flex", alignItems: "center", gap: "8px" }}>
-              <BarChart2 style={{ width: "14px", height: "14px", color: "#9CA3AF" }} />
-              Tendencia semanal — {MESES[mes]} {anio}
-            </div>
-            <div style={{ display: "flex", flexDirection: "column" as const, gap: "10px" }}>
-              {data.tendencia_semanal.map((s, i) => {
-                const pct = maxTendencia > 0 ? (s.monto / maxTendencia) * 100 : 0;
-                return (
-                  <div key={i} style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                    <span style={{ fontSize: "11px", color: "#9CA3AF", width: "130px", flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>
-                      {s.semana}
-                    </span>
-                    <div style={{ flex: 1, height: "22px", background: "#F3F4F6", borderRadius: "6px", overflow: "hidden", position: "relative" as const }}>
-                      <div
-                        style={{
-                          height: "100%",
-                          width: `${pct}%`,
-                          background: "linear-gradient(90deg,#3D1C1E,#7C3D40)",
-                          borderRadius: "6px",
-                          transition: "width 0.6s ease",
-                          minWidth: pct > 0 ? "4px" : "0",
-                        }}
-                      />
-                    </div>
-                    <span style={{ fontSize: "12px", fontWeight: "700", color: "#374151", width: "80px", textAlign: "right" as const, flexShrink: 0 }}>
-                      {$(s.monto)}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
+            Desglose por categoría · {data.por_categoria.length} categorías
           </div>
 
-          {/* ── Tarjetas por categoría ────────────────────────────────────── */}
-          <div style={{ fontSize: "13px", fontWeight: "700", color: "#111827", marginBottom: "12px", display: "flex", alignItems: "center", gap: "8px" }}>
-            <Users style={{ width: "14px", height: "14px", color: "#9CA3AF" }} />
-            Desglose por categoría ({data.por_categoria.length})
-          </div>
-
-          <div style={{ display: "flex", flexDirection: "column" as const, gap: "10px", marginBottom: "24px" }}>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(3, 1fr)",
+              gap: "14px",
+              marginBottom: "24px",
+            }}
+          >
             {data.por_categoria.map((cat, i) => {
-              const colors = COLOR_MAP[cat.tipo_cuenta] ?? COLOR_MAP.operativo;
-              const expanded = expandidos.has(cat.categoria);
-              const verTodos = verTodosMap[cat.categoria] ?? false;
-              const itemsVisible = verTodos ? cat.gastos : cat.gastos.slice(0, 10);
-
-              const VsTrend =
-                cat.vs_mes_anterior > 5
-                  ? TrendingUp
-                  : cat.vs_mes_anterior < -5
-                  ? TrendingDown
-                  : Minus;
-              const vsColor =
-                cat.vs_mes_anterior > 5
-                  ? "#DC2626"
-                  : cat.vs_mes_anterior < -5
-                  ? "#059669"
-                  : "#9CA3AF";
+              const borderColor = BORDER_COLOR[cat.tipo_cuenta] ?? "#888780";
+              const activa = categoriaActiva === cat.categoria;
+              const { color: vsColor, bg: vsBg, Icon: VsIcon } = vsInfo(cat);
+              const esPrimera = cat.mes_anterior_monto === 0;
 
               return (
                 <div
                   key={cat.categoria}
-                  className="dg-card"
+                  className="dg-card-cat"
+                  onClick={() => toggleCategoria(cat.categoria)}
                   style={{
                     background: "#FFF",
                     borderRadius: "14px",
-                    boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
-                    borderLeft: `4px solid ${colors.border}`,
-                    overflow: "hidden",
+                    borderLeft: `${activa ? "5px" : "4px"} solid ${borderColor}`,
+                    boxShadow: activa
+                      ? `0 0 0 2px ${borderColor}33, 0 4px 16px rgba(0,0,0,0.08)`
+                      : "0 1px 3px rgba(0,0,0,0.05), 0 2px 8px rgba(0,0,0,0.03)",
+                    padding: "18px 18px 16px",
                     animation: `fadeUp 0.25s ease ${i * 0.03}s both`,
+                    userSelect: "none" as const,
                   }}
                 >
-                  {/* Cabecera de la tarjeta (siempre visible) */}
-                  <button
-                    onClick={() => toggleExpandido(cat.categoria)}
-                    style={{
-                      width: "100%",
-                      display: "grid",
-                      gridTemplateColumns: "1fr auto auto auto auto",
-                      gap: "12px",
-                      alignItems: "center",
-                      padding: "16px 20px",
-                      border: "none",
-                      background: "transparent",
-                      cursor: "pointer",
-                      textAlign: "left" as const,
-                    }}
-                  >
-                    {/* Nombre */}
-                    <div>
-                      <div style={{ fontSize: "14px", fontWeight: "800", color: "#111827" }}>
-                        {cat.categoria}
-                      </div>
-                      <div style={{ fontSize: "11px", color: "#9CA3AF", marginTop: "1px" }}>
-                        {cat.cuenta_contable}
-                      </div>
+                  {/* Nombre + cuenta */}
+                  <div style={{ marginBottom: "14px" }}>
+                    <div style={{ fontSize: "13px", fontWeight: "800", color: "#111827", letterSpacing: "0.2px" }}>
+                      {cat.categoria.toUpperCase()}
                     </div>
-
-                    {/* Monto */}
-                    <div style={{ textAlign: "right" as const }}>
-                      <div style={{ fontSize: "16px", fontWeight: "800", color: "#111827" }}>
-                        {$(cat.monto_total)}
-                      </div>
-                      <div style={{ fontSize: "11px", color: "#9CA3AF", marginTop: "1px" }}>
-                        {cat.porcentaje.toFixed(1)}% del total
-                      </div>
+                    <div style={{ fontSize: "11px", color: "#9CA3AF", marginTop: "2px" }}>
+                      {cat.cuenta_contable}
                     </div>
+                  </div>
 
-                    {/* vs mes anterior */}
-                    <div
+                  {/* Monto */}
+                  <div style={{ marginBottom: "14px" }}>
+                    <div style={{ fontSize: "22px", fontWeight: "800", color: "#111827", lineHeight: "1" }}>
+                      {$(cat.monto_total)}
+                    </div>
+                    <div style={{ fontSize: "11px", color: "#9CA3AF", marginTop: "4px" }}>
+                      {cat.porcentaje.toFixed(1)}% del total
+                    </div>
+                  </div>
+
+                  {/* Transacciones + variación */}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
+                    <span style={{ fontSize: "11px", color: "#9CA3AF" }}>
+                      {cat.num_transacciones} transacciones
+                    </span>
+                    <span
                       style={{
                         display: "inline-flex", alignItems: "center", gap: "3px",
                         padding: "3px 8px", borderRadius: "20px",
-                        background: cat.vs_mes_anterior > 5 ? "#FEF2F2" : cat.vs_mes_anterior < -5 ? "#ECFDF5" : "#F9FAFB",
-                        fontSize: "11px", fontWeight: "700", color: vsColor,
+                        background: esPrimera ? "#F9FAFB" : vsBg,
+                        fontSize: "11px", fontWeight: "700",
+                        color: esPrimera ? "#9CA3AF" : vsColor,
                         flexShrink: 0,
                       }}
                     >
-                      <VsTrend style={{ width: "11px", height: "11px" }} />
-                      {cat.vs_mes_anterior > 0 ? "+" : ""}{cat.vs_mes_anterior.toFixed(1)}%
-                    </div>
-
-                    {/* Num transacciones */}
-                    <div
-                      style={{
-                        fontSize: "11px", color: "#9CA3AF",
-                        whiteSpace: "nowrap" as const,
-                        flexShrink: 0,
-                      }}
-                    >
-                      {cat.num_transacciones} transacc.
-                    </div>
-
-                    {/* Chevron */}
-                    <div style={{ color: "#9CA3AF", flexShrink: 0 }}>
-                      {expanded
-                        ? <ChevronUp style={{ width: "16px", height: "16px" }} />
-                        : <ChevronDown style={{ width: "16px", height: "16px" }} />
+                      <VsIcon style={{ width: "10px", height: "10px" }} />
+                      {esPrimera
+                        ? "Nuevo"
+                        : `${cat.vs_mes_anterior > 0 ? "+" : ""}${cat.vs_mes_anterior.toFixed(1)}%`
                       }
-                    </div>
-                  </button>
-
-                  {/* Detalle expandido */}
-                  {expanded && (
-                    <div style={{ borderTop: "1px solid #F3F4F6" }}>
-                      {/* Métricas secundarias */}
-                      <div
-                        style={{
-                          display: "flex", gap: "24px", padding: "12px 20px",
-                          background: "#FAFAFA", flexWrap: "wrap" as const,
-                        }}
-                      >
-                        <div>
-                          <span style={{ fontSize: "11px", color: "#9CA3AF" }}>vs mes anterior </span>
-                          <span style={{ fontSize: "12px", fontWeight: "700", color: vsColor }}>
-                            {cat.vs_mes_anterior > 0 ? "+" : ""}{cat.vs_mes_anterior.toFixed(1)}%
-                          </span>
-                          {cat.mes_anterior_monto > 0 && (
-                            <span style={{ fontSize: "11px", color: "#9CA3AF" }}>
-                              {" "}({$(cat.mes_anterior_monto)} mes ant.)
-                            </span>
-                          )}
-                        </div>
-                        <div>
-                          <span style={{ fontSize: "11px", color: "#9CA3AF" }}>Promedio/transacción </span>
-                          <span style={{ fontSize: "12px", fontWeight: "700", color: "#374151" }}>
-                            {$(cat.promedio_transaccion)}
-                          </span>
-                        </div>
-                        <div>
-                          <span
-                            style={{
-                              fontSize: "10px", fontWeight: "700",
-                              padding: "2px 8px", borderRadius: "6px",
-                              background: colors.badge, color: colors.text,
-                            }}
-                          >
-                            {cat.cuenta_contable}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Tabla de transacciones */}
-                      <div>
-                        {/* Header tabla */}
-                        <div
-                          style={{
-                            display: "grid",
-                            gridTemplateColumns: "90px 160px 1fr 90px",
-                            padding: "8px 20px",
-                            background: "#F9FAFB",
-                            borderBottom: "1px solid #F3F4F6",
-                          }}
-                        >
-                          {["Fecha", "Proveedor", "Descripción", "Monto"].map((h) => (
-                            <span
-                              key={h}
-                              style={{
-                                fontSize: "10px", fontWeight: "700",
-                                color: "#9CA3AF", textTransform: "uppercase" as const,
-                                letterSpacing: "0.4px",
-                              }}
-                            >
-                              {h}
-                            </span>
-                          ))}
-                        </div>
-
-                        {/* Filas */}
-                        {itemsVisible.map((item, j) => (
-                          <div
-                            key={`${item.tabla}-${item.id}`}
-                            className="dg-cat-row"
-                            style={{
-                              display: "grid",
-                              gridTemplateColumns: "90px 160px 1fr 90px",
-                              padding: "10px 20px",
-                              borderBottom: j < itemsVisible.length - 1 ? "1px solid #F9FAFB" : "none",
-                              alignItems: "start",
-                              background: "#FFF",
-                            }}
-                          >
-                            <span style={{ fontSize: "12px", color: "#6B7280", paddingTop: "1px" }}>
-                              {fechaCorta(item.fecha)}
-                            </span>
-                            <span style={{ fontSize: "13px", fontWeight: "600", color: "#111827" }}>
-                              {item.proveedor || "—"}
-                            </span>
-                            <span style={{ fontSize: "12px", color: "#6B7280", paddingRight: "8px" }}>
-                              {item.descripcion || "—"}
-                            </span>
-                            <span style={{ fontSize: "13px", fontWeight: "700", color: "#111827", textAlign: "right" as const }}>
-                              {$dec(item.monto)}
-                            </span>
-                          </div>
-                        ))}
-
-                        {/* Ver todos */}
-                        {cat.gastos.length > 10 && (
-                          <div style={{ padding: "10px 20px", borderTop: "1px solid #F3F4F6", textAlign: "center" as const }}>
-                            <button
-                              onClick={() =>
-                                setVerTodosMap((prev) => ({
-                                  ...prev,
-                                  [cat.categoria]: !verTodos,
-                                }))
-                              }
-                              style={{
-                                border: "none",
-                                background: "transparent",
-                                fontSize: "12px",
-                                fontWeight: "700",
-                                color: "#3D1C1E",
-                                cursor: "pointer",
-                                textDecoration: "underline",
-                              }}
-                            >
-                              {verTodos
-                                ? "Ver menos"
-                                : `Ver todos (${cat.gastos.length})`}
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
+                    </span>
+                  </div>
                 </div>
               );
             })}
           </div>
 
-          {/* ── Footer ────────────────────────────────────────────────────── */}
+          {/* ── 5. Panel de desglose ─────────────────────────────────────── */}
+          {catActiva && (
+            <div
+              style={{
+                background: "#FFF",
+                borderRadius: "14px",
+                boxShadow: "0 4px 24px rgba(0,0,0,0.08)",
+                marginBottom: "24px",
+                overflow: "hidden",
+                animation: "panelSlide 0.3s ease both",
+                borderLeft: `5px solid ${BORDER_COLOR[catActiva.tipo_cuenta] ?? "#888780"}`,
+              }}
+            >
+              {/* Panel header */}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "16px 20px",
+                  borderBottom: "1px solid #F3F4F6",
+                  background: "#FAFAFA",
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: "14px", fontWeight: "800", color: "#111827" }}>
+                    {catActiva.categoria}
+                  </div>
+                  <div style={{ fontSize: "11px", color: "#9CA3AF", marginTop: "2px" }}>
+                    {catActiva.cuenta_contable} · {catActiva.num_transacciones} transacciones
+                  </div>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: "20px" }}>
+                  {/* Métricas rápidas */}
+                  <div style={{ textAlign: "right" as const }}>
+                    <div style={{ fontSize: "10px", color: "#9CA3AF", fontWeight: "600", textTransform: "uppercase" as const, letterSpacing: "0.4px" }}>Total</div>
+                    <div style={{ fontSize: "16px", fontWeight: "800", color: "#111827" }}>{$(catActiva.monto_total)}</div>
+                  </div>
+                  <div style={{ textAlign: "right" as const }}>
+                    <div style={{ fontSize: "10px", color: "#9CA3AF", fontWeight: "600", textTransform: "uppercase" as const, letterSpacing: "0.4px" }}>Prom./transacc.</div>
+                    <div style={{ fontSize: "16px", fontWeight: "800", color: "#111827" }}>{$(catActiva.promedio_transaccion)}</div>
+                  </div>
+                  {catActiva.mes_anterior_monto > 0 && (
+                    <div style={{ textAlign: "right" as const }}>
+                      <div style={{ fontSize: "10px", color: "#9CA3AF", fontWeight: "600", textTransform: "uppercase" as const, letterSpacing: "0.4px" }}>Mes anterior</div>
+                      <div style={{ fontSize: "16px", fontWeight: "800", color: "#111827" }}>{$(catActiva.mes_anterior_monto)}</div>
+                    </div>
+                  )}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setCategoriaActiva(null); }}
+                    style={{
+                      border: "none", background: "#F3F4F6", cursor: "pointer",
+                      borderRadius: "8px", padding: "6px", display: "flex",
+                      alignItems: "center", justifyContent: "center",
+                      color: "#6B7280",
+                    }}
+                  >
+                    <ChevronUp style={{ width: "16px", height: "16px" }} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Tabla de transacciones */}
+              <div>
+                {/* Header tabla */}
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "90px 160px 1fr 100px",
+                    padding: "8px 20px",
+                    background: "#F9FAFB",
+                    borderBottom: "1px solid #F3F4F6",
+                  }}
+                >
+                  {["Fecha", "Proveedor", "Descripción", "Monto"].map((h) => (
+                    <span
+                      key={h}
+                      style={{
+                        fontSize: "10px", fontWeight: "700",
+                        color: "#9CA3AF", textTransform: "uppercase" as const,
+                        letterSpacing: "0.4px",
+                      }}
+                    >
+                      {h}
+                    </span>
+                  ))}
+                </div>
+
+                {/* Filas con scroll */}
+                <div style={{ maxHeight: "360px", overflowY: "auto" as const }}>
+                  {catActiva.gastos.slice(0, 15).map((item, j) => (
+                    <div
+                      key={`${item.tabla}-${item.id}`}
+                      className="dg-row"
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "90px 160px 1fr 100px",
+                        padding: "10px 20px",
+                        borderBottom: j < Math.min(catActiva.gastos.length, 15) - 1 ? "1px solid #F9FAFB" : "none",
+                        alignItems: "start",
+                        background: "#FFF",
+                      }}
+                    >
+                      <span style={{ fontSize: "12px", color: "#6B7280" }}>
+                        {fechaCorta(item.fecha)}
+                      </span>
+                      <span style={{ fontSize: "13px", fontWeight: "600", color: "#111827" }}>
+                        {item.proveedor || "—"}
+                      </span>
+                      <span style={{ fontSize: "12px", color: "#6B7280", paddingRight: "8px" }}>
+                        {item.descripcion || "—"}
+                      </span>
+                      <span style={{ fontSize: "13px", fontWeight: "700", color: "#111827", textAlign: "right" as const }}>
+                        {$dec(item.monto)}
+                      </span>
+                    </div>
+                  ))}
+                  {catActiva.gastos.length > 15 && (
+                    <div style={{ padding: "10px 20px", background: "#F9FAFB", fontSize: "11px", color: "#9CA3AF", textAlign: "center" as const }}>
+                      Mostrando 15 de {catActiva.gastos.length} transacciones
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── 6. Footer chips ───────────────────────────────────────────── */}
           <div
             style={{
-              background: "#3D1C1E",
-              borderRadius: "14px",
-              padding: "20px 28px",
-              display: "grid",
-              gridTemplateColumns: "repeat(3,1fr)",
-              gap: "20px",
+              display: "flex",
+              gap: "10px",
+              flexWrap: "wrap" as const,
               animation: "fadeUp 0.3s ease 0.25s both",
+              marginBottom: "8px",
             }}
           >
             {[
               {
-                label: "Día más costoso",
+                emoji: "📅",
+                label: "Día más caro",
                 value: data.resumen.dia_mas_caro.fecha
-                  ? `${fechaCorta(data.resumen.dia_mas_caro.fecha)} — ${$(data.resumen.dia_mas_caro.monto)}`
+                  ? `${fechaCorta(data.resumen.dia_mas_caro.fecha)} · ${$(data.resumen.dia_mas_caro.monto)}`
                   : "—",
               },
               {
+                emoji: "🏪",
                 label: "Proveedor top",
                 value: data.resumen.proveedor_top.nombre
                   ? `${data.resumen.proveedor_top.nombre} · ${$(data.resumen.proveedor_top.monto)}`
                   : "—",
               },
               {
+                emoji: "📊",
                 label: "Promedio diario",
                 value: $(data.resumen.promedio_diario),
               },
-            ].map((f, i) => (
-              <div key={i}>
-                <div style={{ fontSize: "10px", fontWeight: "600", color: "rgba(255,255,255,0.4)", textTransform: "uppercase" as const, letterSpacing: "0.5px", marginBottom: "6px" }}>
-                  {f.label}
-                </div>
-                <div style={{ fontSize: "14px", fontWeight: "700", color: "#FFF" }}>
-                  {f.value}
-                </div>
+            ].map((chip, i) => (
+              <div
+                key={i}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  padding: "8px 14px",
+                  background: "#FFF",
+                  border: "1px solid #E5E7EB",
+                  borderRadius: "100px",
+                  fontSize: "12px",
+                  color: "#374151",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+                }}
+              >
+                <span>{chip.emoji}</span>
+                <span style={{ color: "#9CA3AF", fontWeight: "600" }}>{chip.label}:</span>
+                <span style={{ fontWeight: "700" }}>{chip.value}</span>
               </div>
             ))}
           </div>
