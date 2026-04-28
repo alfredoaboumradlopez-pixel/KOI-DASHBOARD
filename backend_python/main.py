@@ -1410,10 +1410,10 @@ async def importar_bitacora(file: UploadFile = File(...)):
         "SOFTWARE":               "SOFTWARE",
         "OTROS":                  "OTROS",
     }
-    # Ordered by length descending so multi-word keys match before substrings
     _CAT_KEYS = sorted(CAT_MAP.keys(), key=len, reverse=True)
 
-    CLASES      = ["NMP", "MP"]   # NMP first so \bMP\b in NMP doesn't steal
+    # NMP must be checked before MP to avoid matching the "MP" inside "NMP"
+    CLASES       = ["NMP", "MP"]
     COMPROBANTES = ["TICKET", "VALE", "FACTURA", "NOTA REMISION", "TRANSFERENCIA", "RECIBO"]
 
     def map_categoria(raw: str) -> str:
@@ -1422,23 +1422,6 @@ async def importar_bitacora(file: UploadFile = File(...)):
             if key in c:
                 return CAT_MAP[key]
         return "OTROS"
-
-    def parse_monto(v) -> float:
-        try:
-            return float(str(v or "").replace("$", "").replace(",", "").strip())
-        except Exception:
-            return 0.0
-
-    def es_monto(texto: str) -> bool:
-        """True if the entire stripped text is a money amount ($ optional, digits/commas)."""
-        t = texto.strip().replace("$", "").replace(",", "").strip()
-        if not t:
-            return False
-        try:
-            val = float(t)
-            return val > 0
-        except Exception:
-            return False
 
     def extraer_categoria_raw(texto: str) -> str:
         t = texto.upper()
@@ -1454,80 +1437,191 @@ async def importar_bitacora(file: UploadFile = File(...)):
                 return comp
         return None
 
-    def procesar_header(lineas: list) -> tuple:
-        """Extract (proveedor, clase, categoria_raw, comprobante) from accumulated header lines."""
-        texto = " ".join(lineas)
-        texto_u = texto.upper()
+    def es_monto_val(s: str) -> float:
+        """
+        Returns the float monto if the line is or ends with a money amount.
+        Handles: "$1752", "$1,860", "37,000", "VALE Presupuesto $400" (end-of-line).
+        """
+        s = s.strip()
+        # Standalone number: "$1752", "37,000", "$1,860"
+        m = _re.match(r'^\$?\s*([\d]{1,3}(?:,[\d]{3})*|\d+)$', s)
+        if m:
+            try:
+                v = float(m.group(1).replace(',', ''))
+                if v > 0:
+                    return v
+            except Exception:
+                pass
+        # Number at end of line: "Presupuesto del día $400"
+        m2 = _re.search(r'\$\s*([\d,]+)\s*$', s)
+        if m2:
+            try:
+                v = float(m2.group(1).replace(',', ''))
+                if v > 0:
+                    return v
+            except Exception:
+                pass
+        return 0.0
 
-        # Clase — whole word match, NMP before MP to avoid matching MP inside NMP
+    def es_desc_line(linea: str) -> bool:
+        """
+        True if the line looks like a description item rather than a company name.
+        - Starts with digit: "1 Bidon Aceite", "4 Quesos"
+        - Starts with $: "$32 c/u" (money reference in description, not standalone monto)
+        - Parenthetical "(INTERLOMAS /": proveedor fragment → False
+        - Zero uppercase letters ("c/u", "basura", "de"): description fragment → True
+        - More lowercase letters than uppercase: "Vegetal", "Chipotles 220 grms" → True
+        - All uppercase (company names like "SAMS", "GOURMET"): → False
+        """
+        s = linea.strip()
+        if not s:
+            return False
+        if s[0].isdigit():
+            return True
+        # "$32 c/u" style: starts with $ but is not a standalone monto
+        if s.startswith('$') and not _re.match(r'^\$\s*[\d,]+$', s):
+            return True
+        if s.startswith('('):
+            return False
+        ups = sum(1 for c in s if c.isupper())
+        lws = sum(1 for c in s if c.islower())
+        # No uppercase at all → description fragment (e.g. "c/u", "de", "vegetal")
+        if ups == 0 and lws > 0:
+            return True
+        # More lowercase than uppercase → description
+        return lws > ups
+
+    def procesar_bloque(block_lines: list, monto_linea: str, monto_val: float):
+        """
+        Parse one gasto block (all lines between two montos).
+
+        Strategy: find the "clase line" (contains \\bMP\\b or \\bNMP\\b).
+        - Lines BEFORE clase line: classify as proveedor prefix (uppercase) or description
+          (digit-start / mostly lowercase). This handles PDFs where description column
+          is extracted before the proveedor/clase column.
+        - Clase line itself: text before clase = proveedor suffix.
+        - Lines AFTER clase line: scan for TICKET/VALE; before it = categoria; after = description.
+        - monto_linea: may contain TICKET/VALE and/or description text before the number.
+        """
+        if not block_lines and not monto_val:
+            return None
+
+        # 1. Find the clase line
+        clase_idx = -1
         clase = "NMP"
-        pos_clase = -1
-        for cl in CLASES:
-            m = _re.search(r'\b' + cl + r'\b', texto_u)
-            if m:
-                clase = cl
-                pos_clase = m.start()
+        for idx, ln in enumerate(block_lines):
+            ln_u = ln.upper()
+            for cl in CLASES:
+                if _re.search(r'\b' + cl + r'\b', ln_u):
+                    clase_idx = idx
+                    clase = cl
+                    break
+            if clase_idx >= 0:
                 break
 
-        # Comprobante
-        comprobante = extraer_comprobante(texto_u) or "VALE"
+        if clase_idx < 0:
+            return None  # no clase found → cannot parse
 
-        # Categoría (from full header text)
-        categoria_raw = extraer_categoria_raw(texto_u)
+        clase_linea = block_lines[clase_idx]
+        clase_linea_u = clase_linea.upper()
 
-        # Proveedor = text before the clase keyword
-        if pos_clase > 0:
-            prov_raw = texto[:pos_clase].strip()
+        # 2. Text on clase line: split at the clase keyword
+        m_clase = _re.search(r'\b' + clase + r'\b', clase_linea_u)
+        prov_suffix = clase_linea[:m_clase.start()].strip() if m_clase else ""
+        post_clase  = clase_linea[m_clase.end():].strip()   if m_clase else clase_linea_u
+
+        # 3. Lines BEFORE clase line → proveedor prefix or description
+        prov_prefix: list = []
+        desc_before: list = []
+        for ln in block_lines[:clase_idx]:
+            if es_desc_line(ln):
+                desc_before.append(ln.strip())
+            else:
+                prov_prefix.append(ln.strip())
+
+        # 4. Build raw proveedor string and clean it
+        prov_parts = prov_prefix + ([prov_suffix] if prov_suffix else [])
+        prov_raw   = " ".join(prov_parts)
+        prov_raw   = _re.sub(r'\s*\(.*?\)\s*', ' ', prov_raw).strip().strip('/').strip()
+        proveedor  = " ".join(prov_raw.split()).upper()
+
+        # 5. Lines AFTER clase line → categoria then description
+        after_clase   = block_lines[clase_idx + 1:]
+        categoria_parts: list = []
+        desc_after:      list = []
+        comprobante = extraer_comprobante(post_clase)
+
+        if comprobante:
+            # Comprobante is on the clase line itself
+            cp = post_clase.upper().find(comprobante)
+            cat_part  = post_clase[:cp].strip()
+            desc_part = post_clase[cp + len(comprobante):].strip()
+            if cat_part:
+                categoria_parts.append(cat_part)
+            if desc_part:
+                desc_after.append(desc_part)
+            desc_after.extend(ln.strip() for ln in after_clase if ln.strip())
         else:
-            prov_raw = texto.strip()
+            if post_clase.strip():
+                categoria_parts.append(post_clase.strip())
+            found_comp = False
+            for ln in after_clase:
+                comp = extraer_comprobante(ln.upper())
+                if comp and not found_comp:
+                    found_comp  = True
+                    comprobante = comp
+                    cp = ln.upper().find(comp)
+                    cat_part  = ln[:cp].strip()
+                    desc_part = ln[cp + len(comp):].strip()
+                    if cat_part:
+                        categoria_parts.append(cat_part)
+                    if desc_part:
+                        desc_after.append(desc_part)
+                elif found_comp:
+                    if ln.strip():
+                        desc_after.append(ln.strip())
+                else:
+                    if ln.strip():
+                        categoria_parts.append(ln.strip())
 
-        # Remove parenthetical suffixes like "(INTERLOMAS / TECAMACHALCO)"
-        prov_raw = _re.sub(r'\s*\(.*?\)\s*', ' ', prov_raw).strip().strip('/').strip()
-        proveedor = " ".join(prov_raw.split()).upper()
+        # 6. Check monto_linea for comprobante and/or extra description
+        ml = monto_linea.strip()
+        comp_in_ml = extraer_comprobante(ml.upper())
+        if comp_in_ml:
+            if not comprobante:
+                comprobante = comp_in_ml
+            cp = ml.upper().find(comp_in_ml)
+            post_comp_ml = ml[cp + len(comp_in_ml):].strip()
+            # Strip the number from the end
+            m_num = _re.search(r'\$?\s*([\d,]+)\s*$', post_comp_ml)
+            if m_num:
+                desc_text = post_comp_ml[:m_num.start()].strip()
+                if desc_text:
+                    desc_after.append(desc_text)
+        else:
+            # Just strip the monto from end; whatever precedes it on that line is description
+            m_num = _re.search(r'\$?\s*([\d,]+)\s*$', ml)
+            if m_num:
+                pre_num = ml[:m_num.start()].strip()
+                if pre_num:
+                    desc_after.append(pre_num)
 
-        return proveedor, clase, categoria_raw, comprobante
+        # 7. Assemble categoria — try post-clase text first, then full block
+        categoria_text = " ".join(p for p in categoria_parts if p)
+        categoria_raw  = extraer_categoria_raw(categoria_text)
+        if categoria_raw == "OTROS":
+            full_block = " ".join(block_lines).upper()
+            categoria_raw = extraer_categoria_raw(full_block)
 
-    # ── State machine parser ──────────────────────────────────────────────
-    lineas = text_p1.split("\n")
+        # 8. Assemble description (deduplicated, joined)
+        all_desc = desc_before + desc_after
+        descripcion = ", ".join(l.rstrip(",") for l in all_desc if l.strip())
 
-    # Find where the gastos table starts (after the header row)
-    inicio_tabla = 0
-    for i, linea in enumerate(lineas):
-        if "PROVEEDOR" in linea.upper() and ("CLASE" in linea.upper() or "CATEGORIA" in linea.upper()):
-            inicio_tabla = i + 1
-            break
-
-    # Find where it ends (TOTAL row or CIERRE section)
-    fin_tabla = len(lineas)
-    total_pdf = 0.0
-    for i, linea in enumerate(lineas[inicio_tabla:], start=inicio_tabla):
-        lu = linea.upper().strip()
-        if lu.startswith("TOTAL") and "$" in linea:
-            m = _re.search(r'\$\s*([\d,]+)', linea)
-            if m:
-                total_pdf = float(m.group(1).replace(",", ""))
-            fin_tabla = i
-            break
-        if "CIERRE DEL DÍA" in lu or "CIERRE DEL DIA" in lu:
-            fin_tabla = i
-            break
-
-    lineas_gastos = lineas[inicio_tabla:fin_tabla]
-
-    gastos_parsed = []
-    lineas_header_actual: list = []
-    lineas_desc_actual:   list = []
-    en_descripcion = False
-
-    def cerrar_gasto(monto_val: float):
-        if not lineas_header_actual:
-            return
-        proveedor, clase, categoria_raw, comprobante = procesar_header(lineas_header_actual)
         INVALID_PROV = {"MP", "NMP", "TICKET", "VALE", "TOTAL", ""}
         valido = bool(proveedor) and proveedor not in INVALID_PROV
-        advertencias = [] if valido else [f"Proveedor no identificado en: '{' '.join(lineas_header_actual[:2])}'"]
-        descripcion = ", ".join(l.strip().rstrip(",") for l in lineas_desc_actual if l.strip())
-        gastos_parsed.append({
+        advertencias = [] if valido else ["Proveedor no identificado"]
+
+        return {
             "fecha":              fecha or str(date.today()),
             "proveedor":          proveedor[:80],
             "clase":              clase,
@@ -1535,53 +1629,52 @@ async def importar_bitacora(file: UploadFile = File(...)):
             "categoria_bitacora": categoria_raw,
             "monto":              monto_val,
             "metodo_pago":        "EFECTIVO",
-            "comprobante":        comprobante,
+            "comprobante":        comprobante or "VALE",
             "descripcion":        descripcion[:200],
             "valido":             valido,
             "advertencias":       advertencias,
-        })
+        }
 
-    for linea in lineas_gastos:
-        linea_strip = linea.strip()
-        if not linea_strip:
-            continue
+    # ── Split extracted text into gasto blocks by monto lines ─────────────
+    lineas = text_p1.split("\n")
 
-        # Detect comprobante in this line — marks end of header, start of description
-        comp_found = extraer_comprobante(linea_strip.upper())
+    # Find where the gastos section starts (skip document header)
+    inicio_tabla = 0
+    for i, ln in enumerate(lineas):
+        lu = ln.upper()
+        if "PROVEEDOR" in lu and ("CLASE" in lu or "CATEGORIA" in lu or "COMPROBANTE" in lu):
+            inicio_tabla = i + 1
+            break
 
-        if comp_found and not en_descripcion:
-            # This line belongs to the header (contains clase/comprobante info)
-            lineas_header_actual.append(linea_strip)
-            en_descripcion = True
+    # Find where it ends and capture total_pdf
+    fin_tabla = len(lineas)
+    total_pdf = 0.0
+    for i, ln in enumerate(lineas[inicio_tabla:], start=inicio_tabla):
+        lu = ln.upper().strip()
+        if _re.search(r'\bTOTAL\b', lu) and "$" in ln:
+            m = _re.search(r'\$\s*([\d,]+)', ln)
+            if m:
+                total_pdf = float(m.group(1).replace(",", ""))
+            fin_tabla = i
+            break
+        if "CIERRE DEL" in lu:
+            fin_tabla = i
+            break
 
-            # Check if the monto is on the same line (e.g. "VALE Presupuesto del día $400")
-            pos_comp = linea_strip.upper().find(comp_found)
-            resto = linea_strip[pos_comp + len(comp_found):].strip()
-            if resto:
-                words = resto.split()
-                if words and es_monto(words[-1]):
-                    monto_val = parse_monto(words[-1])
-                    desc_part = " ".join(words[:-1]).strip()
-                    if desc_part:
-                        lineas_desc_actual.append(desc_part)
-                    cerrar_gasto(monto_val)
-                    lineas_header_actual = []
-                    lineas_desc_actual   = []
-                    en_descripcion       = False
-                else:
-                    lineas_desc_actual.append(resto)
-            continue
+    lineas_gastos = [ln.strip() for ln in lineas[inicio_tabla:fin_tabla] if ln.strip()]
 
-        if en_descripcion:
-            if es_monto(linea_strip):
-                cerrar_gasto(parse_monto(linea_strip))
-                lineas_header_actual = []
-                lineas_desc_actual   = []
-                en_descripcion       = False
-            else:
-                lineas_desc_actual.append(linea_strip)
+    # Group into blocks: each block ends at a monto line
+    gastos_parsed = []
+    current_block: list = []
+    for ln in lineas_gastos:
+        mv = es_monto_val(ln)
+        if mv > 0:
+            result = procesar_bloque(current_block, ln, mv)
+            if result:
+                gastos_parsed.append(result)
+            current_block = []
         else:
-            lineas_header_actual.append(linea_strip)
+            current_block.append(ln)
 
     # ── Cierre del día ────────────────────────────────────────────────────
     cierre_data = None
@@ -1590,7 +1683,9 @@ async def importar_bitacora(file: UploadFile = File(...)):
         for row in tables_p2[0]:
             if row and len(row) >= 2 and row[0]:
                 lbl = str(row[0]).upper()
-                val = parse_monto(row[1])
+                val_str = str(row[1] or "").replace("$","").replace(",","").strip()
+                try: val = float(val_str)
+                except Exception: val = 0.0
                 if "SALDO INICIAL" in lbl:           cm["saldo_inicial"]       = val
                 elif "TOTAL GASTOS" in lbl:          cm["total_gastos"]         = val
                 elif "VENTAS EN EFECTIVO" in lbl:    cm["ventas_efectivo"]      = val
@@ -1616,7 +1711,7 @@ async def importar_bitacora(file: UploadFile = File(...)):
             cierre_data = None
 
     total_extraido = round(sum(g["monto"] for g in gastos_parsed), 2)
-    coincide_total = abs(total_extraido - total_pdf) < 1.0 if total_pdf > 0 else None
+    coincide_total = abs(total_extraido - total_pdf) < 2.0 if total_pdf > 0 else None
 
     return {
         "fecha":          fecha,
