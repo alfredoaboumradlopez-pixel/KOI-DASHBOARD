@@ -59,6 +59,9 @@ class PLResult:
     food_cost_pct: float = 0.0
     nomina_pct: float = 0.0
 
+    # Desglose por categoría operativa (para vista detallada)
+    gastos_por_categoria: list = field(default_factory=list)
+
     # Metadata
     tiene_datos_incompletos: bool = False
     gastos_sin_categorizar: int = 0
@@ -267,6 +270,14 @@ class PLService:
     ) -> PLResult:
         result = PLResult(fecha_inicio=fecha_inicio, fecha_fin=fecha_fin)
         catalogo_map = _get_catalogo_map(db, restaurante_id)
+        # Acumulador interno: {categoria_texto: {monto, categoria_pl}}
+        _cat_raw: dict[str, dict] = {}
+
+        def _track(cat_texto: str, cat_pl: str, monto: float):
+            key = (cat_texto or "OTROS").upper().strip()
+            if key not in _cat_raw:
+                _cat_raw[key] = {"monto": 0.0, "categoria_pl": cat_pl}
+            _cat_raw[key]["monto"] += monto
 
         # 1. INGRESOS desde cierres_turno
         cierres = db.query(models.CierreTurno).filter(
@@ -307,10 +318,11 @@ class PLService:
                 if g.catalogo_cuenta_id and g.catalogo_cuenta_id in catalogo_map:
                     cat_pl = catalogo_map[g.catalogo_cuenta_id]
                     _accumulate_gasto(result, cat_pl, monto)
+                    _track(g.categoria or g.catalogo_cuenta_id and str(g.catalogo_cuenta_id), cat_pl, monto)
                 else:
-                    # Fallback por texto
                     cat_pl = _map_categoria_texto(g.categoria)
                     _accumulate_gasto(result, cat_pl, monto)
+                    _track(g.categoria, cat_pl, monto)
                     if not g.catalogo_cuenta_id:
                         result.gastos_sin_categorizar += 1
 
@@ -325,9 +337,11 @@ class PLService:
             if g.catalogo_cuenta_id and g.catalogo_cuenta_id in catalogo_map:
                 cat_pl = catalogo_map[g.catalogo_cuenta_id]
                 _accumulate_gasto(result, cat_pl, monto)
+                _track(g.categoria or str(g.catalogo_cuenta_id), cat_pl, monto)
             else:
                 cat_pl = _map_categoria_texto(g.categoria)
                 _accumulate_gasto(result, cat_pl, monto)
+                _track(g.categoria, cat_pl, monto)
                 if not g.catalogo_cuenta_id:
                     result.gastos_sin_categorizar += 1
 
@@ -338,6 +352,8 @@ class PLService:
             models.NominaPago.fecha_pago <= fecha_fin,
         ).scalar() or 0.0
         result.gastos_nomina += nomina_total
+        if nomina_total > 0:
+            _track("NOMINA", "nomina", nomina_total)
 
         # 5. CÁLCULOS DERIVADOS
         result.total_costo_ventas = result.costo_alimentos + result.costo_bebidas
@@ -358,7 +374,23 @@ class PLService:
         result.food_cost_pct = _safe_pct(result.total_costo_ventas, result.ventas_netas)
         result.nomina_pct = _safe_pct(result.gastos_nomina, result.ventas_netas)
 
-        # 6. METADATA / ADVERTENCIAS
+        # 6. DESGLOSE POR CATEGORÍA
+        ventas = result.ventas_netas
+        result.gastos_por_categoria = sorted(
+            [
+                {
+                    "categoria": cat,
+                    "categoria_pl": info["categoria_pl"],
+                    "monto": round(info["monto"], 2),
+                    "pct_ventas": round(info["monto"] / ventas * 100, 1) if ventas > 0 else 0,
+                }
+                for cat, info in _cat_raw.items()
+                if info["monto"] > 0
+            ],
+            key=lambda x: -x["monto"],
+        )
+
+        # 7. METADATA / ADVERTENCIAS
         result.tiene_datos_incompletos = result.gastos_sin_categorizar > 0
         if result.gastos_sin_categorizar > 0:
             result.advertencias.append(

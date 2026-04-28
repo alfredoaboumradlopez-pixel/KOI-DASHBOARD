@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { FileText, ChevronRight, ChevronDown } from "lucide-react";
 import { api } from "../services/api";
-import { useStore } from "../store/useStore";
 
 const fmt = (n: number) => n.toLocaleString("es-MX", { style: "currency", currency: "MXN" });
 const MESES = ["","Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
@@ -11,6 +10,8 @@ const COSTO_PL = new Set(["costo_alimentos", "costo_bebidas"]);
 const NOMINA_PL = new Set(["nomina"]);
 // everything else → opex
 
+const RESTAURANTE_ID = 6;
+
 export const EstadoResultados = () => {
   const [mes, setMes] = useState(new Date().getMonth() + 1);
   const [anio] = useState(2026);
@@ -18,15 +19,15 @@ export const EstadoResultados = () => {
   const [loading, setLoading] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
-  const { authUser } = useStore();
-  const isRBO = authUser?.rol === "SUPER_ADMIN";
+  const isRBO = localStorage.getItem("user_role") === "SUPER_ADMIN";
 
   useEffect(() => {
     const f = async () => {
       setLoading(true);
       try {
-        const d = await api.get("/api/pl/" + mes + "/" + anio);
-        setData(d);
+        const resp = await api.get(`/api/pl/${RESTAURANTE_ID}/mes/${anio}/${mes}`);
+        // pl_router wraps response in {data, generado_en, periodo}
+        setData(resp.data ?? resp);
       } catch(e) { setData(null); }
       setLoading(false);
     };
@@ -34,7 +35,8 @@ export const EstadoResultados = () => {
   }, [mes, anio]);
 
   const pct = (n: number, total: number) => total > 0 ? (n / total * 100).toFixed(1) + "%" : "--";
-  const v = data?.ventas_totales || 0;
+  // PLResult field names (pl_service) — different from legacy endpoint
+  const v = data?.ventas_netas || 0;
 
   const toggleGroup = (key: string) => {
     setExpandedGroups(prev => {
@@ -124,7 +126,7 @@ export const EstadoResultados = () => {
         <div style={{background:"#FFF",borderRadius:"14px",overflow:"hidden",boxShadow:"0 1px 3px rgba(0,0,0,0.04),0 4px 12px rgba(0,0,0,0.02)"}}>
           <div style={{padding:"16px 24px",background:"#FAFBFC",borderBottom:"1px solid #F3F4F6",display:"flex",justifyContent:"space-between"}}>
             <span style={{fontSize:"15px",fontWeight:"700",color:"#111827"}}>P&L {MESES[mes]} {anio}</span>
-            <span style={{fontSize:"12px",color:"#9CA3AF"}}>{data.dias_registrados} días registrados</span>
+            <span style={{fontSize:"12px",color:"#9CA3AF"}}>{data.dias_con_datos} días registrados</span>
           </div>
 
           {/* Ventas netas */}
@@ -135,14 +137,14 @@ export const EstadoResultados = () => {
           </div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 150px 80px",padding:"10px 24px",paddingLeft:"48px",borderBottom:"1px solid #F9FAFB",alignItems:"center"}}>
             <span style={{fontSize:"13px",color:"#374151"}}>Propinas recibidas</span>
-            <span style={{fontSize:"13px",fontWeight:"600",color:"#6B7280",textAlign:"right",fontFeatureSettings:"'tnum'"}}>{fmt(data.total_propinas||0)}</span>
-            <span style={{fontSize:"11px",color:"#6B7280",textAlign:"right"}}>{pct(data.total_propinas||0,v)}</span>
+            <span style={{fontSize:"13px",fontWeight:"600",color:"#6B7280",textAlign:"right",fontFeatureSettings:"'tnum'"}}>{fmt(data.propinas_totales||0)}</span>
+            <span style={{fontSize:"11px",color:"#6B7280",textAlign:"right"}}>{pct(data.propinas_totales||0,v)}</span>
           </div>
 
           {/* Costo de ventas */}
           <ParentRow
             label="↳ Costo de ventas"
-            value={data.costo_materia_prima||0}
+            value={data.total_costo_ventas||0}
             groupKey="costo"
             cats={catBuckets.costo}
             color="#DC2626"
@@ -164,10 +166,10 @@ export const EstadoResultados = () => {
             color="#DC2626"
           />
 
-          {/* Gastos operativos (todos los demás: operativos + fijos + comisiones + otros) */}
+          {/* Gastos operativos (renta + servicios + mantto + limpieza + marketing + admin + otros) */}
           <ParentRow
             label="↳ Gastos operativos"
-            value={(data.gastos_operativos||0)+(data.gastos_fijos||0)+(data.comisiones||0)+(data.propinas_pagadas||0)+(data.otros||0)}
+            value={(data.gastos_renta||0)+(data.gastos_servicios||0)+(data.gastos_mantenimiento||0)+(data.gastos_limpieza||0)+(data.gastos_marketing||0)+(data.gastos_admin||0)+(data.gastos_otros||0)}
             groupKey="opex"
             cats={catBuckets.opex}
             color="#DC2626"
@@ -175,16 +177,16 @@ export const EstadoResultados = () => {
 
           {/* EBITDA */}
           <div style={{display:"grid",gridTemplateColumns:"1fr 150px 80px",padding:"14px 24px",borderBottom:"1px solid #F9FAFB",background:"#F9FAFB",alignItems:"center"}}>
-            <span style={{fontSize:"14px",fontWeight:"800",color:data.utilidad_operativa>=0?"#059669":"#DC2626"}}>EBITDA</span>
-            <span style={{fontSize:"15px",fontWeight:"800",color:data.utilidad_operativa>=0?"#059669":"#DC2626",textAlign:"right",fontFeatureSettings:"'tnum'"}}>{fmt(data.utilidad_operativa||0)}</span>
-            <span style={{fontSize:"11px",fontWeight:"600",color:data.utilidad_operativa>=0?"#059669":"#DC2626",textAlign:"right"}}>{pct(data.utilidad_operativa||0,v)}</span>
+            <span style={{fontSize:"14px",fontWeight:"800",color:data.ebitda>=0?"#059669":"#DC2626"}}>EBITDA</span>
+            <span style={{fontSize:"15px",fontWeight:"800",color:data.ebitda>=0?"#059669":"#DC2626",textAlign:"right",fontFeatureSettings:"'tnum'"}}>{fmt(data.ebitda||0)}</span>
+            <span style={{fontSize:"11px",fontWeight:"600",color:data.ebitda>=0?"#059669":"#DC2626",textAlign:"right"}}>{pct(data.ebitda||0,v)}</span>
           </div>
 
           {/* Impuestos */}
           <div style={{display:"grid",gridTemplateColumns:"1fr 150px 80px",padding:"10px 24px",borderBottom:"1px solid #F9FAFB",alignItems:"center"}}>
             <span style={{fontSize:"13px",fontWeight:"500",color:"#374151",paddingLeft:"20px"}}>(-) Impuestos</span>
-            <span style={{fontSize:"13px",fontWeight:"600",color:"#DC2626",textAlign:"right",fontFeatureSettings:"'tnum'"}}>{fmt(-(data.impuestos||0))}</span>
-            <span style={{fontSize:"11px",fontWeight:"600",color:"#DC2626",textAlign:"right"}}>{pct(data.impuestos||0,v)}</span>
+            <span style={{fontSize:"13px",fontWeight:"600",color:"#DC2626",textAlign:"right",fontFeatureSettings:"'tnum'"}}>{fmt(-(data.impuestos_estimados||0))}</span>
+            <span style={{fontSize:"11px",fontWeight:"600",color:"#DC2626",textAlign:"right"}}>{pct(data.impuestos_estimados||0,v)}</span>
           </div>
 
           {/* Utilidad neta */}
@@ -204,7 +206,7 @@ export const EstadoResultados = () => {
           </div>
           <div style={{textAlign:"right"}}>
             <span style={{fontSize:"12px",color:"rgba(255,255,255,0.5)"}}>MARGEN NETO</span>
-            <div style={{fontSize:"28px",fontWeight:"900",color:"#FFF",marginTop:"4px"}}>{data.pct_utilidad_neta?.toFixed(1)||"--"}%</div>
+            <div style={{fontSize:"28px",fontWeight:"900",color:"#FFF",marginTop:"4px"}}>{data.margen_neto_pct?.toFixed(1)||"--"}%</div>
           </div>
         </div>
       )}
