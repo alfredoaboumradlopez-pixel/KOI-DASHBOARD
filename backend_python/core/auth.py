@@ -14,7 +14,7 @@ from .. import models
 
 SECRET_KEY = os.environ.get("SECRET_KEY", "koi-rbo-dev-secret-change-in-prod-2026")
 ALGORITHM = os.environ.get("ALGORITHM", "HS256")
-ACCESS_TOKEN_EXPIRE_HOURS = int(os.environ.get("ACCESS_TOKEN_EXPIRE_HOURS", "8"))
+ACCESS_TOKEN_EXPIRE_HOURS = int(os.environ.get("ACCESS_TOKEN_EXPIRE_HOURS", "168"))  # 7 días
 
 bearer_scheme = HTTPBearer(auto_error=False)
 _token_blacklist: set = set()

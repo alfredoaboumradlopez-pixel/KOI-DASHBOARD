@@ -13,9 +13,12 @@ function authHeaders(): Record<string, string> {
 
 function handleUnauth(res: Response) {
   if (res.status === 401) {
-    localStorage.removeItem('rbo_token');
-    localStorage.removeItem('rbo_user');
-    window.location.href = '/#/login';
+    // Lazy import to avoid circular dependency — Zustand store is safe to call outside React
+    import('../store/useStore').then(({ useStore }) => {
+      const { clearAuth, setCurrentRoute } = useStore.getState();
+      clearAuth();
+      setCurrentRoute('/login');
+    });
   }
 }
 
