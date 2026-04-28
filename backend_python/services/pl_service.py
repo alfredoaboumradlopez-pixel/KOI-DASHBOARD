@@ -232,6 +232,15 @@ def _get_catalogo_map(db: Session, restaurante_id: int) -> dict[int, str]:
     return {c.id: c.categoria_pl for c in cuentas}
 
 
+def _get_catalogo_nombre_map(db: Session, restaurante_id: int) -> dict[int, str]:
+    """Retorna {catalogo_cuenta_id: nombre} para usar como etiqueta de categoría."""
+    cuentas = db.query(models.CatalogoCuenta).filter(
+        models.CatalogoCuenta.restaurante_id == restaurante_id,
+        models.CatalogoCuenta.activo == True,
+    ).all()
+    return {c.id: c.nombre for c in cuentas}
+
+
 def _accumulate_gasto(result: PLResult, categoria_pl: str, monto: float):
     """Acumula el monto en la línea correcta del PLResult."""
     cat = categoria_pl or "otros_gastos"
@@ -270,11 +279,20 @@ class PLService:
     ) -> PLResult:
         result = PLResult(fecha_inicio=fecha_inicio, fecha_fin=fecha_fin)
         catalogo_map = _get_catalogo_map(db, restaurante_id)
+        catalogo_nombre_map = _get_catalogo_nombre_map(db, restaurante_id)
         # Acumulador interno: {categoria_texto: {monto, categoria_pl}}
         _cat_raw: dict[str, dict] = {}
 
-        def _track(cat_texto: str, cat_pl: str, monto: float):
-            key = (cat_texto or "OTROS").upper().strip()
+        def _track(cat_texto: str | None, cat_pl: str, monto: float, catalogo_id: int | None = None):
+            # Use categoria text first, then catalog name, then catalog ID, then fallback
+            if cat_texto:
+                key = cat_texto.upper().strip()
+            elif catalogo_id and catalogo_id in catalogo_nombre_map:
+                key = catalogo_nombre_map[catalogo_id].upper().strip()
+            elif catalogo_id:
+                key = f"CTA-{catalogo_id}"
+            else:
+                key = "OTROS"
             if key not in _cat_raw:
                 _cat_raw[key] = {"monto": 0.0, "categoria_pl": cat_pl}
             _cat_raw[key]["monto"] += monto
@@ -318,7 +336,7 @@ class PLService:
                 if g.catalogo_cuenta_id and g.catalogo_cuenta_id in catalogo_map:
                     cat_pl = catalogo_map[g.catalogo_cuenta_id]
                     _accumulate_gasto(result, cat_pl, monto)
-                    _track(g.categoria or g.catalogo_cuenta_id and str(g.catalogo_cuenta_id), cat_pl, monto)
+                    _track(g.categoria, cat_pl, monto, g.catalogo_cuenta_id)
                 else:
                     cat_pl = _map_categoria_texto(g.categoria)
                     _accumulate_gasto(result, cat_pl, monto)
@@ -337,7 +355,7 @@ class PLService:
             if g.catalogo_cuenta_id and g.catalogo_cuenta_id in catalogo_map:
                 cat_pl = catalogo_map[g.catalogo_cuenta_id]
                 _accumulate_gasto(result, cat_pl, monto)
-                _track(g.categoria or str(g.catalogo_cuenta_id), cat_pl, monto)
+                _track(g.categoria, cat_pl, monto, g.catalogo_cuenta_id)
             else:
                 cat_pl = _map_categoria_texto(g.categoria)
                 _accumulate_gasto(result, cat_pl, monto)

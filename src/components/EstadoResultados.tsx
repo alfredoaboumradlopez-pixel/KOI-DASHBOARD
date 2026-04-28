@@ -17,7 +17,8 @@ export const EstadoResultados = () => {
   const [anio] = useState(2026);
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  // Default all groups open so categories are always visible
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(["costo", "nomina", "opex"]));
 
   const isRBO = localStorage.getItem("user_role") === "SUPER_ADMIN";
 
@@ -27,7 +28,10 @@ export const EstadoResultados = () => {
       try {
         const resp = await api.get(`/api/pl/${RESTAURANTE_ID}/mes/${anio}/${mes}`);
         // pl_router wraps response in {data, generado_en, periodo}
-        setData(resp.data ?? resp);
+        const d = resp.data ?? resp;
+        console.log("[P&L] raw response:", resp);
+        console.log("[P&L] gastos_por_categoria:", d?.gastos_por_categoria);
+        setData(d);
       } catch(e) { setData(null); }
       setLoading(false);
     };
