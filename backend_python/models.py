@@ -510,6 +510,21 @@ class ConfigFlujoCaja(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class VentaPorPlatillo(Base):
+    __tablename__ = "ventas_por_platillo"
+    id = Column(Integer, primary_key=True, index=True)
+    restaurante_id = Column(Integer, ForeignKey("restaurantes.id"), nullable=True)
+    mes = Column(Integer, nullable=False)
+    anio = Column(Integer, nullable=False)
+    nombre_parrot = Column(String(200), nullable=False)
+    platillo_id = Column(Integer, ForeignKey("platillos.id"), nullable=True)
+    cantidad_vendida = Column(Integer, nullable=False, default=0)
+    precio_promedio = Column(Float, default=0.0)
+    venta_total = Column(Float, default=0.0)
+    venta_neta = Column(Float, default=0.0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class PlatilloIngrediente(Base):
     __tablename__ = "platillo_ingredientes"
     id = Column(Integer, primary_key=True, index=True)

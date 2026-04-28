@@ -108,6 +108,128 @@ _PLATILLOS_SEED = [
 ]
 
 
+# ── Ventas Parrot — Datos reales abril 2026 ──────────────────────────────────
+
+_VENTAS_PARROT_SEED = [
+    # (nombre_parrot, cantidad, precio_promedio, venta_total)
+    ("temaki kanikama",        362, 124.10, 44924),
+    ("kusiagues de queso",     299,  94.93, 28385),
+    ("poke salmón",            311, 309.14, 96144),
+    ("hosomaki crunch spicy",  272, 146.18, 39760),
+    ("butter rice con ribeye", 180, 325.17, 58530),
+    ("poke atún",              163, 310.79, 50658),
+    ("nigiri de salmón",       219, 102.12, 22365),
+    ("baby roll",              135, 111.81, 15095),
+    ("temaki spicy salmon",    126, 109.05, 13740),
+    ("temaki salmon",          125,  94.48, 11810),
+    ("edamames",               145,  71.66, 10390),
+    ("hosomaki especial",      119, 194.71, 23170),
+    ("Spicy Yuzu Tostada",     152, 150.00, 22800),
+    ("hosomaki spicy roll",    147, 149.63, 21995),
+    ("Ribeye Crunch",          115, 180.00, 20700),
+    ("plato nigiris 6pz",       54, 369.44, 19950),
+    ("camarones roca",          76, 257.96, 19605),
+    ("temaki spicy tuna",      153, 121.47, 18585),
+    ("tuna crispy rice",        89, 206.80, 18405),
+    ("salmon crispy rice",      94, 179.57, 16880),
+    ("kanikama roll",          109, 153.67, 16750),
+    ("Crispy Rice de Rib Eye",  58, 285.17, 16540),
+    ("Tiradito de kampachi",    67, 240.36, 16104),
+    ("Plato de Nigris 9pz",     29, 515.69, 14955),
+    ("temaki especial",         88, 148.92, 13105),
+    ("temaki ribeye",           85, 150.82, 12820),
+    ("poke kanikama",           33, 302.55,  9984),
+    ("poke camarón",            31, 303.03,  9394),
+    ("nigiri ribeye",           53, 170.94,  9060),
+    ("nigiri de atún",          76, 116.84,  8880),
+    ("seaweed salad",           56, 128.29,  7184),
+    ("sashimi salmon",          47, 137.45,  6460),
+    ("temaki camarón",          62,  98.55,  6110),
+    ("nigiri de kampachi",      42, 138.93,  5835),
+    ("plato nigiris 3pz",       30, 190.00,  5700),
+    ("Tiradito de atún",        27, 177.04,  4780),
+    ("hosomaki camaron tempura",43, 110.81,  4765),
+    ("temaki kampachi",         35, 133.43,  4670),
+    ("Tiradito de salmón",      27, 165.37,  4465),
+    ("sashimi de atun",         27, 139.26,  3760),
+    ("temaki atún",             33, 110.61,  3650),
+    ("sashimi mixto",            7, 287.14,  2010),
+    ("sashimi de kampachi",      6, 240.00,  1440),
+]
+
+# Parrot name (lowercase) → DB platillo nombre exacto
+_PARROT_NOMBRE_MAP: dict = {
+    "kusiagues de queso":       "KUSHIAGUES DE QUESO",
+    "nigiri de salmón":         "NIGIRIS DE SALMÓN 2PZ",
+    "nigiri de atún":           "NIGIRIS DE ATÚN 2PZ",
+    "nigiri de kampachi":       "NIGIRIS DE KAMPACHI 2PZ",
+    "nigiri ribeye":            "NIGIRIS DE RIBEYE 2PZ",
+    "plato nigiris 6pz":        "PLATO 6PZ NIGIRIS MIXTO",
+    "plato de nigris 9pz":      "PLATO 9PZ NIGIRIS MIXTO",
+    "plato nigiris 3pz":        "PLATO 3PZ NIGIRIS MIXTO",
+    "tuna crispy rice":         "CRISPY RICE ATÚN",
+    "salmon crispy rice":       "CRISPY RICE SALMON",
+    "crispy rice de rib eye":   "CRISPY RICE DE RIBEYE",
+    "tiradito de kampachi":     "TIRADITO DE KAMPACHI",
+    "tiradito de atún":         "TIRADITO DE ATÚN",
+    "tiradito de salmón":       "TIRADITO DE SALMÓN",
+    "sashimi salmon":           "SASHIMI SALMÓN",
+    "sashimi de atun":          "SASHIMI ATÚN",
+    "sashimi de kampachi":      "SASHIMI KAMPACHI",
+    "temaki camarón":           "TEMAKI CAMARÓN TEMPURA",
+    "temaki ribeye":            "TEMAKI RIB EYE",
+    "edamames":                 "EDAMAMES AL VAPOR",
+    "seaweed salad":            "SEAWEED SALAD",
+    "camarones roca":           "CAMARONES ROCA",
+    "temaki salmon":            "TEMAKI SALMÓN",
+    "temaki atún":              "TEMAKI ATÚN",
+    "temaki kampachi":          "TEMAKI KAMPACHI",
+    "temaki spicy salmon":      "TEMAKI SPICY SALMON",
+    "temaki spicy tuna":        "TEMAKI SPICY TUNA",
+    "temaki kanikama":          "TEMAKI KANIKAMA",
+}
+
+
+def seed_ventas_parrot(db: Session, restaurante_id: int, mes: int = 4, anio: int = 2026) -> None:
+    """Seed datos Parrot abril 2026 — idempotente (update si ya existe)."""
+    platillos = db.query(models.Platillo).filter(
+        models.Platillo.restaurante_id == restaurante_id
+    ).all()
+    nombre_to_id = {p.nombre.upper(): p.id for p in platillos}
+
+    for nombre_parrot, cantidad, precio_promedio, venta_total in _VENTAS_PARROT_SEED:
+        mapped = _PARROT_NOMBRE_MAP.get(nombre_parrot.lower())
+        platillo_id = nombre_to_id.get((mapped or nombre_parrot).upper())
+
+        existing = db.query(models.VentaPorPlatillo).filter(
+            models.VentaPorPlatillo.restaurante_id == restaurante_id,
+            models.VentaPorPlatillo.mes == mes,
+            models.VentaPorPlatillo.anio == anio,
+            models.VentaPorPlatillo.nombre_parrot == nombre_parrot,
+        ).first()
+
+        if existing:
+            existing.cantidad_vendida = cantidad
+            existing.precio_promedio = precio_promedio
+            existing.venta_total = venta_total
+            existing.venta_neta = venta_total
+            existing.platillo_id = platillo_id
+        else:
+            db.add(models.VentaPorPlatillo(
+                restaurante_id=restaurante_id,
+                mes=mes,
+                anio=anio,
+                nombre_parrot=nombre_parrot,
+                platillo_id=platillo_id,
+                cantidad_vendida=cantidad,
+                precio_promedio=precio_promedio,
+                venta_total=venta_total,
+                venta_neta=venta_total,
+            ))
+
+    db.commit()
+
+
 def seed_costeo(db: Session, restaurante_id: int = 6) -> None:
     """Idempotent seed — solo inserta si las tablas están vacías para este restaurante."""
     count = db.query(models.InsumoCosteo).filter(
@@ -289,32 +411,165 @@ def detalle_platillo(restaurante_id: int, platillo_id: int, db: Session = Depend
 
 @router.get("/{restaurante_id}/ingenieria-menu")
 def ingenieria_menu(restaurante_id: int, db: Session = Depends(get_db)):
-    platillos = _platillos_con_clasificacion(db, restaurante_id)
-    if not platillos:
-        return {"platillos": [], "resumen": {}, "por_categoria": {}}
+    platillos_orm = db.query(models.Platillo).filter(
+        models.Platillo.restaurante_id == restaurante_id,
+        models.Platillo.activo == True,
+    ).order_by(models.Platillo.numero).all()
 
+    if not platillos_orm:
+        return {"platillos": [], "resumen": {}, "por_categoria": {},
+                "tiene_datos_ventas": False, "mes_ventas": 0, "anio_ventas": 0}
+
+    # ── Buscar ventas más recientes ──────────────────────────────────────────
+    anio_v = db.query(func.max(models.VentaPorPlatillo.anio)).filter(
+        models.VentaPorPlatillo.restaurante_id == restaurante_id,
+        models.VentaPorPlatillo.platillo_id.isnot(None),
+    ).scalar()
+
+    ventas_map: dict = {}
+    mes_v = 0
+    tiene_ventas = False
+
+    if anio_v:
+        mes_v = db.query(func.max(models.VentaPorPlatillo.mes)).filter(
+            models.VentaPorPlatillo.restaurante_id == restaurante_id,
+            models.VentaPorPlatillo.anio == anio_v,
+            models.VentaPorPlatillo.platillo_id.isnot(None),
+        ).scalar() or 0
+
+        if mes_v:
+            for v in db.query(models.VentaPorPlatillo).filter(
+                models.VentaPorPlatillo.restaurante_id == restaurante_id,
+                models.VentaPorPlatillo.mes == mes_v,
+                models.VentaPorPlatillo.anio == anio_v,
+                models.VentaPorPlatillo.platillo_id.isnot(None),
+            ).all():
+                ventas_map[v.platillo_id] = v.cantidad_vendida
+            tiene_ventas = bool(ventas_map)
+
+    # ── Construir lista base ─────────────────────────────────────────────────
+    platillos_data = []
+    for p in platillos_orm:
+        food_cost_pct = round(p.costo_receta / p.precio_venta * 100, 1) if p.precio_venta else 0
+        platillos_data.append({
+            "id": p.id,
+            "numero": p.numero,
+            "nombre": p.nombre,
+            "categoria": p.categoria,
+            "costo_receta": round(p.costo_receta, 2),
+            "markup": p.markup,
+            "precio_venta": round(p.precio_venta, 2),
+            "precio_venta_con_iva": round(p.precio_venta_con_iva, 2),
+            "margen_contribucion_pesos": round(p.margen_contribucion_pesos, 2),
+            "margen_contribucion_pct": round(p.margen_contribucion_pct * 100, 1),
+            "food_cost_pct": food_cost_pct,
+            "cantidad_vendida": ventas_map.get(p.id, 0) if tiene_ventas else 0,
+        })
+
+    # ── Clasificación Kasavana-Smith (con ventas) o fallback (solo margen) ───
+    if tiene_ventas:
+        total_vendidos = sum(p["cantidad_vendida"] for p in platillos_data)
+        n = len(platillos_data)
+        umbral_pop = round((1 / n) * 0.70 * 100, 2) if n > 0 else 0
+
+        if total_vendidos > 0:
+            margen_ponderado = round(
+                sum(p["margen_contribucion_pesos"] * p["cantidad_vendida"] for p in platillos_data)
+                / total_vendidos, 2
+            )
+        else:
+            margen_ponderado = round(
+                sum(p["margen_contribucion_pesos"] for p in platillos_data) / n, 2
+            )
+
+        for p in platillos_data:
+            pct_pop = round((p["cantidad_vendida"] / total_vendidos) * 100, 2) if total_vendidos > 0 else 0
+            es_popular = pct_pop >= umbral_pop
+            es_rentable = p["margen_contribucion_pesos"] >= margen_ponderado
+
+            if es_popular and es_rentable:
+                clasif = "ESTRELLA"
+            elif es_popular and not es_rentable:
+                clasif = "CABALLO"
+            elif not es_popular and es_rentable:
+                clasif = "ROMPECABEZAS"
+            else:
+                clasif = "PERRO"
+
+            gap = round(margen_ponderado - p["margen_contribucion_pesos"], 0)
+            if clasif == "CABALLO":
+                rec = f"Alta demanda pero bajo margen. Considera subir el precio ${gap:,.0f} para alcanzar el margen promedio del menú."
+            elif clasif == "ESTRELLA":
+                rec = "Mantener y promover. Destacar en el menú."
+            elif clasif == "ROMPECABEZAS":
+                rec = "Buen margen pero poca visibilidad. Reposicionar en el menú o incluir en recomendaciones del equipo."
+            else:
+                rec = "Evaluar eliminación o rediseño completo del platillo."
+
+            p.update({
+                "clasificacion": clasif,
+                "pct_popularidad": pct_pop,
+                "umbral_popularidad": umbral_pop,
+                "margen_promedio_menu": margen_ponderado,
+                "margen_vs_promedio": round(p["margen_contribucion_pesos"] - margen_ponderado, 2),
+                "recomendacion": rec,
+            })
+    else:
+        # Fallback: clasificación solo por margen (método anterior)
+        avg_pesos = sum(p["margen_contribucion_pesos"] for p in platillos_data) / len(platillos_data)
+        avg_pct = sum(p["margen_contribucion_pct"] for p in platillos_data) / len(platillos_data)
+        umbral_pop = round(100 / len(platillos_data) * 0.70, 2)
+
+        _RECS = {
+            "ESTRELLA":     "Alto margen y alta rentabilidad. Mantener en carta, destacar en menú.",
+            "CABALLO":      "Genera buen margen en pesos pero el porcentaje de contribución es bajo. Revisar precio de venta o reducir costo de receta.",
+            "ROMPECABEZAS": "Buen porcentaje de margen pero contribución en pesos menor al promedio. Promover más activamente.",
+            "PERRO":        "Margen bajo en pesos y porcentaje. Evaluar si se mantiene por razones estratégicas o se elimina de carta.",
+        }
+
+        for p in platillos_data:
+            clasif = _clasificar(
+                p["margen_contribucion_pesos"], p["margen_contribucion_pct"] / 100, avg_pesos, avg_pct
+            )
+            p.update({
+                "clasificacion": clasif,
+                "pct_popularidad": None,
+                "umbral_popularidad": umbral_pop,
+                "margen_promedio_menu": round(avg_pesos, 2),
+                "margen_vs_promedio": round(p["margen_contribucion_pesos"] - avg_pesos, 2),
+                "recomendacion": _RECS.get(clasif, ""),
+            })
+
+    # ── Resumen ──────────────────────────────────────────────────────────────
     conteo = {"ESTRELLA": 0, "CABALLO": 0, "ROMPECABEZAS": 0, "PERRO": 0}
-    for p in platillos:
+    for p in platillos_data:
         conteo[p["clasificacion"]] = conteo.get(p["clasificacion"], 0) + 1
 
-    avg_food_cost = round(sum(p["food_cost_pct"] for p in platillos) / len(platillos), 1)
-    mejor = max(platillos, key=lambda p: p["margen_contribucion_pesos"])
-    peor = min(platillos, key=lambda p: p["margen_contribucion_pct"])
+    avg_food_cost = round(sum(p["food_cost_pct"] for p in platillos_data) / len(platillos_data), 1)
+    mejor = max(platillos_data, key=lambda p: p["margen_contribucion_pesos"])
+    peor = min(platillos_data, key=lambda p: p["margen_contribucion_pct"])
+    umbral_res = platillos_data[0]["umbral_popularidad"] if platillos_data else 0
+    margen_res = platillos_data[0]["margen_promedio_menu"] if platillos_data else 0
 
     categorias: dict = {}
-    for p in platillos:
-        cat = p["categoria"]
-        categorias.setdefault(cat, []).append(p)
+    for p in platillos_data:
+        categorias.setdefault(p["categoria"], []).append(p)
 
     return {
-        "platillos": platillos,
+        "platillos": platillos_data,
+        "tiene_datos_ventas": tiene_ventas,
+        "mes_ventas": mes_v,
+        "anio_ventas": anio_v or 0,
         "resumen": {
-            "total_platillos": len(platillos),
+            "total_platillos": len(platillos_data),
             "food_cost_promedio": avg_food_cost,
             "markup_promedio": 3.0,
             "mejor_margen_pesos": {"nombre": mejor["nombre"], "margen": mejor["margen_contribucion_pesos"]},
             "peor_margen_pct": {"nombre": peor["nombre"], "margen_pct": peor["margen_contribucion_pct"]},
             "clasificacion_conteo": conteo,
+            "umbral_popularidad": umbral_res,
+            "margen_promedio_ponderado": margen_res,
+            "tiene_datos_ventas": tiene_ventas,
         },
         "por_categoria": {
             cat: {"platillos": items, "count": len(items)}

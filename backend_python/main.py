@@ -47,7 +47,7 @@ from .routers.pl_router import router as pl_router
 from .routers.gastos_categorizacion_router import router as gastos_cat_router
 from .routers.alertas_router import router as alertas_router
 from .routers.gastos_dashboard_router import router as gastos_dashboard_router
-from .routers.costeo_router import router as costeo_router, seed_costeo
+from .routers.costeo_router import router as costeo_router, seed_costeo, seed_ventas_parrot
 from .routers.proveedores_analytics_router import router as proveedores_analytics_router
 from .routers.flujo_caja_router import router as flujo_caja_router
 
@@ -256,6 +256,40 @@ try:
             print(f"  (skip pl_mensual cols: {_e3})")
 except Exception as _e:
     print(f"Migracion catalogo_cuenta_id: {_e}")
+
+# Migracion: crear tabla ventas_por_platillo y seed datos Parrot abril 2026
+try:
+    with engine.begin() as _conn_vp:
+        if _USE_PG:
+            _conn_vp.execute(_text("""
+                CREATE TABLE IF NOT EXISTS ventas_por_platillo (
+                    id SERIAL PRIMARY KEY,
+                    restaurante_id INTEGER REFERENCES restaurantes(id),
+                    mes INTEGER NOT NULL,
+                    anio INTEGER NOT NULL,
+                    nombre_parrot VARCHAR(200) NOT NULL,
+                    platillo_id INTEGER REFERENCES platillos(id),
+                    cantidad_vendida INTEGER NOT NULL DEFAULT 0,
+                    precio_promedio DOUBLE PRECISION DEFAULT 0,
+                    venta_total DOUBLE PRECISION DEFAULT 0,
+                    venta_neta DOUBLE PRECISION DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT now(),
+                    UNIQUE(restaurante_id, mes, anio, nombre_parrot)
+                )
+            """))
+    print("Tabla ventas_por_platillo OK")
+except Exception as _e_vp:
+    print(f"Migracion ventas_por_platillo: {_e_vp}")
+
+try:
+    from sqlalchemy.orm import Session as _Session4
+    with _Session4(engine) as _s4:
+        _koi4 = _s4.query(models.Restaurante).filter(models.Restaurante.slug == 'koi').first()
+        if _koi4:
+            seed_ventas_parrot(_s4, restaurante_id=_koi4.id, mes=4, anio=2026)
+            print("Seed ventas Parrot abril 2026 OK")
+except Exception as _e_sv:
+    print(f"Seed ventas_parrot: {_e_sv}")
 
 # Migracion: crear tabla config_flujo_caja e insertar default para KOI
 try:

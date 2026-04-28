@@ -21,6 +21,12 @@ interface Platillo {
   margen_contribucion_pct: number;
   food_cost_pct: number;
   clasificacion: "ESTRELLA" | "CABALLO" | "ROMPECABEZAS" | "PERRO";
+  cantidad_vendida: number;
+  pct_popularidad: number | null;
+  umbral_popularidad: number | null;
+  margen_promedio_menu: number | null;
+  margen_vs_promedio: number | null;
+  recomendacion: string;
 }
 
 interface IngredienteDetalle {
@@ -67,6 +73,9 @@ interface ResumenIngenieria {
   mejor_margen_pesos: { nombre: string; margen: number };
   peor_margen_pct: { nombre: string; margen_pct: number };
   clasificacion_conteo: Record<string, number>;
+  umbral_popularidad: number;
+  margen_promedio_ponderado: number;
+  tiene_datos_ventas: boolean;
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -411,16 +420,46 @@ export const Costeo = ({ restauranteIdOverride }: { restauranteIdOverride?: numb
         </div>
       )}
 
-      {/* ── Clasificación badges ── */}
-      {resumen?.clasificacion_conteo && (
-        <div style={{ display: "flex", gap: "8px", marginBottom: "20px", flexWrap: "wrap" as const }}>
-          {Object.entries(CLASIF_META).map(([key, meta]) => (
-            <div key={key} style={{ display: "flex", alignItems: "center", gap: "6px", padding: "6px 12px", borderRadius: "20px", background: meta.bg, border: `1px solid ${meta.color}22` }}>
-              <span style={{ fontSize: "14px" }}>{meta.emoji}</span>
-              <span style={{ fontSize: "12px", fontWeight: "700", color: meta.color }}>{meta.label}</span>
-              <span style={{ fontSize: "13px", fontWeight: "800", color: meta.color }}>{resumen.clasificacion_conteo[key] ?? 0}</span>
+      {/* ── Resumen del Menú (Kasavana-Smith) ── */}
+      {resumen && (
+        <div style={{ background: "#FFF", borderRadius: "14px", padding: "18px 20px", marginBottom: "20px", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "14px" }}>
+            <span style={{ fontSize: "11px", fontWeight: "700", color: "#9CA3AF", textTransform: "uppercase" as const, letterSpacing: "0.5px" }}>
+              Resumen del Menú
+            </span>
+            {resumen.tiene_datos_ventas ? (
+              <span style={{ fontSize: "11px", fontWeight: "700", color: "#059669", background: "#ECFDF5", padding: "2px 8px", borderRadius: "20px" }}>
+                ✓ Metodología Kasavana-Smith · Abr 2026
+              </span>
+            ) : (
+              <span style={{ fontSize: "11px", color: "#9CA3AF" }}>Sin datos de ventas — clasificación por margen</span>
+            )}
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "10px", marginBottom: resumen.tiene_datos_ventas ? "14px" : "0" }}>
+            {Object.entries(CLASIF_META).map(([key, meta]) => (
+              <div key={key} style={{ padding: "12px 10px", borderRadius: "10px", background: meta.bg, border: `1px solid ${meta.color}22`, textAlign: "center" as const }}>
+                <div style={{ fontSize: "20px", marginBottom: "4px" }}>{meta.emoji}</div>
+                <div style={{ fontSize: "11px", fontWeight: "700", color: meta.color }}>{meta.label}</div>
+                <div style={{ fontSize: "26px", fontWeight: "900", color: meta.color, lineHeight: 1 }}>{resumen.clasificacion_conteo[key] ?? 0}</div>
+                <div style={{ fontSize: "10px", color: "#9CA3AF" }}>platillos</div>
+              </div>
+            ))}
+          </div>
+
+          {resumen.tiene_datos_ventas && (
+            <div style={{ display: "flex", gap: "20px", padding: "10px 14px", background: "#F9FAFB", borderRadius: "8px", fontSize: "12px", flexWrap: "wrap" as const }}>
+              <div>
+                <span style={{ color: "#9CA3AF" }}>Umbral popularidad: </span>
+                <strong style={{ color: "#374151" }}>{fmtPct(resumen.umbral_popularidad)}</strong>
+                <span style={{ color: "#9CA3AF" }}> ({resumen.total_platillos} platillos × 70%)</span>
+              </div>
+              <div>
+                <span style={{ color: "#9CA3AF" }}>Margen promedio ponderado: </span>
+                <strong style={{ color: "#374151" }}>{fmt(resumen.margen_promedio_ponderado)}</strong>
+              </div>
             </div>
-          ))}
+          )}
         </div>
       )}
 
@@ -481,10 +520,26 @@ export const Costeo = ({ restauranteIdOverride }: { restauranteIdOverride?: numb
                         </div>
                       ))}
                     </div>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: p.cantidad_vendida > 0 ? "8px" : "0" }}>
                       <div style={{ padding: "3px 8px", borderRadius: "6px", background: meta.bg, fontSize: "10px", fontWeight: "700", color: meta.color }}>{meta.label}</div>
                       <div style={{ fontSize: "11px", color: p.food_cost_pct > 30 ? "#DC2626" : "#9CA3AF", fontWeight: "600" }}>FC: {fmtPct(p.food_cost_pct)}</div>
                     </div>
+                    {p.cantidad_vendida > 0 && (
+                      <div>
+                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "10px", color: "#9CA3AF", marginBottom: "3px" }}>
+                          <span>{p.cantidad_vendida} vendidos · {p.pct_popularidad?.toFixed(1)}% pop</span>
+                          <span>umbral {p.umbral_popularidad?.toFixed(1)}%</span>
+                        </div>
+                        <div style={{ height: "3px", background: "#F3F4F6", borderRadius: "2px", overflow: "hidden" }}>
+                          <div style={{
+                            height: "100%",
+                            width: `${Math.min(100, ((p.pct_popularidad ?? 0) / (p.umbral_popularidad || 1)) * 100)}%`,
+                            background: (p.pct_popularidad ?? 0) >= (p.umbral_popularidad ?? 0) ? "#059669" : "#D97706",
+                            borderRadius: "2px",
+                          }} />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -517,13 +572,38 @@ export const Costeo = ({ restauranteIdOverride }: { restauranteIdOverride?: numb
                 return (
                   <>
                     {/* Clasificación */}
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "10px 12px", borderRadius: "10px", background: meta.bg, marginBottom: "14px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "10px 12px", borderRadius: "10px", background: meta.bg, marginBottom: "10px" }}>
                       <span style={{ fontSize: "20px" }}>{meta.emoji}</span>
                       <div>
                         <div style={{ fontSize: "12px", fontWeight: "700", color: meta.color }}>{meta.label}</div>
                         <div style={{ fontSize: "10px", color: "#6B7280", marginTop: "2px", lineHeight: 1.3 }}>{meta.desc}</div>
                       </div>
                     </div>
+
+                    {/* Kasavana-Smith reasoning */}
+                    {selectedPlatillo && selectedPlatillo.pct_popularidad != null && (
+                      <div style={{ background: "#F9FAFB", borderRadius: "8px", padding: "10px 12px", marginBottom: "10px", fontSize: "11px", color: "#6B7280", lineHeight: 1.6 }}>
+                        <div>
+                          <strong style={{ color: "#374151" }}>{selectedPlatillo.cantidad_vendida}</strong> vendidos
+                          {" "}({fmtPct(selectedPlatillo.pct_popularidad)} del total) — umbral {fmtPct(selectedPlatillo.umbral_popularidad ?? 0)}
+                        </div>
+                        <div>
+                          Margen <strong style={{ color: "#374151" }}>{fmt(selectedPlatillo.margen_contribucion_pesos)}</strong>
+                          {" "}— promedio del menú {fmt(selectedPlatillo.margen_promedio_menu ?? 0)}
+                          {" "}
+                          <span style={{ color: (selectedPlatillo.margen_vs_promedio ?? 0) >= 0 ? "#059669" : "#DC2626", fontWeight: "700" }}>
+                            ({(selectedPlatillo.margen_vs_promedio ?? 0) >= 0 ? "+" : ""}{fmt(selectedPlatillo.margen_vs_promedio ?? 0)})
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Recomendación */}
+                    {selectedPlatillo?.recomendacion && (
+                      <div style={{ padding: "10px 12px", background: meta.bg, borderRadius: "8px", marginBottom: "10px", fontSize: "11px", color: meta.color, fontWeight: "600", lineHeight: 1.5, border: `1px solid ${meta.color}22` }}>
+                        💡 {selectedPlatillo.recomendacion}
+                      </div>
+                    )}
 
                     {/* Editar receta */}
                     <button onClick={() => openModalEdit(detalle)}
