@@ -111,6 +111,39 @@ export const CierreTurno: React.FC = () => {
     return { bg: "#FEF2F2", color: "#DC2626", label: `✗ ${diferencia > 0 ? "+" : ""}${fmt(diferencia)}` };
   }, [efectivoFisico, diferencia]);
 
+  // ── Historial callbacks ──
+  const handleEditCierre = (c: any) => {
+    setFecha(c.fecha || new Date().toISOString().split("T")[0]);
+    setElaboradoPor(c.elaborado_por || c.responsable || "");
+    setResponsable(c.elaborado_por || c.responsable || "");
+    setVentas({
+      efectivo: c.ventas_efectivo ? String(c.ventas_efectivo) : "",
+      parrot: c.ventas_parrot ? String(c.ventas_parrot) : "",
+      terminales: c.ventas_terminales ? String(c.ventas_terminales) : "",
+      uber: c.ventas_uber ? String(c.ventas_uber) : "",
+      rappi: c.ventas_rappi ? String(c.ventas_rappi) : "",
+      cortesias: c.cortesias ? String(c.cortesias) : "",
+      otros: c.otros_ingresos ? String(c.otros_ingresos) : "",
+    });
+    setPropinas({
+      efectivo: c.propinas_efectivo ? String(c.propinas_efectivo) : "",
+      parrot: c.propinas_parrot ? String(c.propinas_parrot) : "",
+      terminales: c.propinas_terminales ? String(c.propinas_terminales) : "",
+    });
+    setSaldoInicial(c.saldo_inicial ? String(c.saldo_inicial) : "");
+    setEfectivoFisico(c.efectivo_fisico ? String(c.efectivo_fisico) : "");
+    if (c.notas) { setNotas(c.notas); setNotasOpen(true); } else { setNotas(""); setNotasOpen(false); }
+    setSavedSummary(null);
+    setError(null);
+    setTab("registrar");
+  };
+
+  const handleRegistrarFecha = (f: string) => {
+    setFecha(f);
+    setSavedSummary(null);
+    setTab("registrar");
+  };
+
   // ── Save ──
   const handleSave = async () => {
     if (!elaboradoPor) {
@@ -224,7 +257,7 @@ export const CierreTurno: React.FC = () => {
       </div>
 
       {/* ── HISTORIAL ── */}
-      {tab === "historial" && <ArqueoCaja />}
+      {tab === "historial" && <ArqueoCaja onEditCierre={handleEditCierre} onRegistrarFecha={handleRegistrarFecha} />}
 
       {/* ── REGISTRAR ── */}
       {tab === "registrar" && (
