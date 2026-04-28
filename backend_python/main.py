@@ -809,6 +809,33 @@ def calcular_pl(mes: int, anio: int, db: Session = Depends(get_db)):
         if v > 0:
             desglose[cat] = v
 
+    _CAT_PL_MAP = {
+        "PROTEINA": "costo_alimentos", "VEGETALES_FRUTAS": "costo_alimentos",
+        "ABARROTES": "costo_alimentos", "PRODUCTOS_ASIATICOS": "costo_alimentos",
+        "BEBIDAS": "costo_bebidas",
+        "NOMINA": "nomina", "PERSONAL": "nomina",
+        "DESECHABLES_EMPAQUES": "limpieza", "LIMPIEZA_MANTTO": "limpieza",
+        "UTENSILIOS": "mantenimiento", "EQUIPO": "mantenimiento",
+        "SERVICIOS": "servicios", "LUZ": "servicios",
+        "RENTA": "renta", "MARKETING": "marketing",
+        "PAPELERIA": "otros_gastos", "SOFTWARE": "otros_gastos",
+        "COMISIONES_BANCARIAS": "otros_gastos", "COMISIONES_PLATAFORMAS": "otros_gastos",
+        "PROPINAS": "otros_gastos", "OTROS": "otros_gastos",
+        "IMPUESTOS": "impuestos",
+    }
+    gastos_por_categoria = sorted(
+        [
+            {
+                "categoria": cat,
+                "categoria_pl": _CAT_PL_MAP.get(cat, "otros_gastos"),
+                "monto": round(monto, 2),
+                "pct_ventas": round(monto / ventas_totales * 100, 1) if ventas_totales > 0 else 0,
+            }
+            for cat, monto in desglose.items()
+        ],
+        key=lambda x: -x["monto"],
+    )
+
     return {
         "mes": mes, "anio": anio,
         "ventas_totales": ventas_totales,
@@ -828,6 +855,7 @@ def calcular_pl(mes: int, anio: int, db: Session = Depends(get_db)):
         "pct_utilidad_neta": (utilidad_neta / ventas_totales * 100) if ventas_totales > 0 else 0,
         "dias_registrados": len(cierres),
         "desglose_categorias": desglose,
+        "gastos_por_categoria": gastos_por_categoria,
     }
 
 @app.get("/api/distribucion/{mes}/{anio}", response_model=schemas.DistribucionResumen)

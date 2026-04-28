@@ -222,6 +222,7 @@ class Empleado(Base):
     fecha_ingreso = Column(Date, nullable=False)
     fecha_nacimiento = Column(Date, nullable=True)
     tipo_contrato = Column(String(20), nullable=True)
+    fin_contrato = Column(Date, nullable=True)
     activo = Column(Boolean, default=True)
     rfc = Column(String(20), nullable=True)
     curp = Column(String(20), nullable=True)

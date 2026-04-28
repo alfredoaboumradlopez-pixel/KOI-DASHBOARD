@@ -147,6 +147,7 @@ class EmpleadoCreate(BaseModel):
     fecha_ingreso: date
     fecha_nacimiento: Optional[date] = None
     tipo_contrato: Optional[str] = None
+    fin_contrato: Optional[date] = None
     rfc: Optional[str] = None
     curp: Optional[str] = None
     numero_imss: Optional[str] = None

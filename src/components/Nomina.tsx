@@ -19,6 +19,7 @@ interface Empleado {
   fecha_ingreso: string;
   fecha_nacimiento?: string;
   tipo_contrato: string;
+  fin_contrato?: string;
   activo: boolean;
   rfc?: string;
   curp?: string;
@@ -82,7 +83,7 @@ const emptyForm = {
   fecha_ingreso: new Date().toISOString().slice(0, 10),
   fecha_nacimiento: "", tipo_contrato: "INDEFINIDO",
   rfc: "", curp: "", numero_imss: "", cuenta_banco: "",
-  fecha_fin_contrato: "",
+  fin_contrato: "",
 };
 
 export const Nomina = () => {
@@ -98,6 +99,10 @@ export const Nomina = () => {
   const [toast, setToast] = useState<string | null>(null);
   const [editEmp, setEditEmp] = useState<any>(null);
   const [editEmpId, setEditEmpId] = useState<number | null>(null);
+
+  // Alertas config — días anticipación contrato
+  const [diasAlertaContrato, setDiasAlertaContrato] = useState(7);
+  const [savingAlertaConfig, setSavingAlertaContrato] = useState(false);
 
   // Nómina semanal
   const [nominaItems, setNominaItems] = useState<NominaItem[]>([]);
@@ -134,6 +139,13 @@ export const Nomina = () => {
   useEffect(() => {
     fetchEmpleados();
     fetchHistorial();
+    // Load dias alerta config
+    api.get(`/api/alertas/config/${restauranteId}`)
+      .then((cfgs: any[]) => {
+        const c = cfgs?.find((x: any) => x.tipo === "CONTRATO_POR_VENCER");
+        if (c) setDiasAlertaContrato(Math.round(c.umbral));
+      })
+      .catch(() => {});
   }, [restauranteId]);
 
   // Build nomina items when emps change and nomina panel is opened
@@ -216,9 +228,9 @@ export const Nomina = () => {
       nombre: e.nombre, puesto: e.puesto, salario_base: e.salario_base,
       fecha_ingreso: e.fecha_ingreso, fecha_nacimiento: e.fecha_nacimiento || "",
       tipo_contrato: e.tipo_contrato || "INDEFINIDO",
+      fin_contrato: e.fin_contrato || "",
       rfc: e.rfc || "", curp: e.curp || "",
       numero_imss: e.numero_imss || "", cuenta_banco: e.cuenta_banco || "",
-      fecha_fin_contrato: "",
     });
     setEditEmpId(e.id);
   };
@@ -232,6 +244,7 @@ export const Nomina = () => {
         fecha_ingreso: editEmp.fecha_ingreso,
         fecha_nacimiento: editEmp.fecha_nacimiento || null,
         tipo_contrato: editEmp.tipo_contrato || null,
+        fin_contrato: editEmp.fin_contrato || null,
         rfc: editEmp.rfc || null, curp: editEmp.curp || null,
         numero_imss: editEmp.numero_imss || null,
         cuenta_banco: editEmp.cuenta_banco || null,
@@ -262,6 +275,7 @@ export const Nomina = () => {
         fecha_ingreso: form.fecha_ingreso,
         fecha_nacimiento: form.fecha_nacimiento || null,
         tipo_contrato: form.tipo_contrato || null,
+        fin_contrato: form.fin_contrato || null,
         rfc: form.rfc || null,
         curp: form.curp || null,
         numero_imss: form.numero_imss || null,
@@ -297,9 +311,11 @@ export const Nomina = () => {
       alertas.push({ tipo: "urgente", msg: e.nombre + " sin contrato registrado", det: "Puesto: " + e.puesto });
     if (!e.numero_imss)
       alertas.push({ tipo: "urgente", msg: e.nombre + " sin registro IMSS", det: "Riesgo legal — multas y responsabilidad patronal" });
-    const df = diasFin(undefined);
+    const df = diasFin(e.fin_contrato);
     if (df !== null && df < 0)
-      alertas.push({ tipo: "urgente", msg: "Contrato de " + e.nombre + " VENCIDO", det: "" });
+      alertas.push({ tipo: "urgente", msg: "Contrato de " + e.nombre + " VENCIDO", det: `Venció el ${e.fin_contrato}` });
+    else if (df !== null && df >= 0 && df <= 30)
+      alertas.push({ tipo: df <= 3 ? "urgente" : "aviso", msg: `Contrato de ${e.nombre} vence en ${df} días`, det: `Vence el ${e.fin_contrato}` });
   });
 
   // Group historial by semana
@@ -372,7 +388,7 @@ export const Nomina = () => {
             <div><label style={labelStyle}>Puesto *</label><input value={form.puesto} onChange={e => setForm({ ...form, puesto: e.target.value })} style={inputStyle} placeholder="Ej: Cocinero" /></div>
             <div><label style={labelStyle}>Salario Mensual *</label><input type="number" value={form.salario_base} onChange={e => setForm({ ...form, salario_base: parseFloat(e.target.value) || 0 })} style={inputStyle} /></div>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px", marginBottom: "12px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "12px", marginBottom: "12px" }}>
             <div><label style={labelStyle}>Fecha Ingreso</label><input type="date" value={form.fecha_ingreso} onChange={e => setForm({ ...form, fecha_ingreso: e.target.value })} style={inputStyle} /></div>
             <div><label style={labelStyle}>Fecha Nacimiento</label><input type="date" value={form.fecha_nacimiento} onChange={e => setForm({ ...form, fecha_nacimiento: e.target.value })} style={inputStyle} /></div>
             <div><label style={labelStyle}>Tipo Contrato</label>
@@ -380,6 +396,7 @@ export const Nomina = () => {
                 {contratoOpts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
             </div>
+            <div><label style={labelStyle}>Fin de contrato</label><input type="date" value={form.fin_contrato} onChange={e => setForm({ ...form, fin_contrato: e.target.value })} style={inputStyle} /></div>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "12px", marginBottom: "16px" }}>
             <div><label style={labelStyle}>No. IMSS</label><input value={form.numero_imss} onChange={e => setForm({ ...form, numero_imss: e.target.value })} style={inputStyle} /></div>
@@ -477,6 +494,7 @@ export const Nomina = () => {
                 { label: "Salario Mensual *", key: "salario_base", type: "number" },
                 { label: "Fecha Ingreso", key: "fecha_ingreso", type: "date" },
                 { label: "Fecha Nacimiento", key: "fecha_nacimiento", type: "date" },
+                { label: "Fin de contrato", key: "fin_contrato", type: "date" },
                 { label: "RFC", key: "rfc", type: "text" },
                 { label: "CURP", key: "curp", type: "text" },
                 { label: "No. IMSS", key: "numero_imss", type: "text" },
@@ -679,9 +697,18 @@ export const Nomina = () => {
                   <span style={{ fontSize: "12px", color: "#6B7280" }}>{e.puesto}</span>
                   <span style={{ display: "inline-flex", padding: "3px 8px", borderRadius: "6px", fontSize: "10px", fontWeight: "600", background: cs.bg, color: cs.text, border: "1px solid " + cs.border, width: "fit-content" }}>{cs.label}</span>
                   <span>{e.numero_imss ? <CheckCircle style={{ width: "16px", height: "16px", color: "#059669" }} /> : <AlertTriangle style={{ width: "16px", height: "16px", color: "#DC2626" }} />}</span>
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "3px 8px", borderRadius: "6px", fontSize: "10px", fontWeight: "700", background: semBg, color: semColor, width: "fit-content" }}>
-                    {SEM_DOT[sem]} {semLabel}
-                  </span>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "3px 8px", borderRadius: "6px", fontSize: "10px", fontWeight: "700", background: semBg, color: semColor, width: "fit-content" }}>
+                      {SEM_DOT[sem]} {semLabel}
+                    </span>
+                    {(() => {
+                      const df = diasFin(e.fin_contrato);
+                      if (df === null) return null;
+                      if (df < 0) return <span style={{ fontSize: "10px", fontWeight: "700", color: "#DC2626", background: "#FEF2F2", padding: "2px 6px", borderRadius: "5px" }}>⚠️ Contrato vencido</span>;
+                      if (df <= 30) return <span style={{ fontSize: "10px", fontWeight: "700", color: df <= 3 ? "#DC2626" : "#D97706", background: df <= 3 ? "#FEF2F2" : "#FFFBEB", padding: "2px 6px", borderRadius: "5px" }}>⚠️ Vence en {df}d</span>;
+                      return null;
+                    })()}
+                  </div>
                   <div style={{ display: "flex", alignItems: "center", gap: "6px", justifyContent: "flex-end" }}>
                     <span style={{ fontSize: "13px", fontWeight: "700", color: "#111827" }}>{fmt(e.salario_base)}</span>
                     <button onClick={ev => { ev.stopPropagation(); iniciarEdicion(e); }} style={{ border: "none", background: "none", cursor: "pointer", padding: "2px" }} className="nom-btn"><Edit2 style={{ width: "13px", height: "13px", color: "#6B7280" }} /></button>
@@ -810,6 +837,42 @@ export const Nomina = () => {
                 </div>
               );
             })}
+          </div>
+
+          {/* Configuración de alertas de contratos */}
+          <div style={{ marginTop: "20px", background: "#FFF", borderRadius: "14px", padding: "18px 20px", boxShadow: "0 1px 3px rgba(0,0,0,0.04)", border: "1px solid #F3F4F6" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px" }}>
+              <Bell style={{ width: "16px", height: "16px", color: "#3D1C1E" }} />
+              <span style={{ fontSize: "14px", fontWeight: "700", color: "#111827" }}>⚙️ Alertas de contratos</span>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <span style={{ fontSize: "13px", color: "#374151" }}>Avisar con</span>
+              <input
+                type="number"
+                min={1}
+                max={90}
+                value={diasAlertaContrato}
+                onChange={e => setDiasAlertaContrato(Math.max(1, parseInt(e.target.value) || 7))}
+                style={{ width: "60px", padding: "6px 10px", borderRadius: "8px", border: "1px solid #E5E7EB", fontSize: "13px", fontWeight: "700", textAlign: "center" }}
+              />
+              <span style={{ fontSize: "13px", color: "#374151" }}>días de anticipación al vencimiento</span>
+              <button
+                onClick={async () => {
+                  setSavingAlertaContrato(true);
+                  try {
+                    await api.put(`/api/alertas/config/${restauranteId}`, [
+                      { tipo: "CONTRATO_POR_VENCER", umbral: diasAlertaContrato, activo: true },
+                    ]);
+                    showToast("✓ Configuración guardada");
+                  } catch { alert("Error al guardar"); }
+                  finally { setSavingAlertaContrato(false); }
+                }}
+                disabled={savingAlertaConfig}
+                style={{ marginLeft: "auto", padding: "7px 18px", borderRadius: "8px", border: "none", background: "#3D1C1E", color: "#C8FF00", fontSize: "12px", fontWeight: "700", cursor: "pointer", opacity: savingAlertaConfig ? 0.6 : 1 }}
+              >
+                {savingAlertaConfig ? "..." : "Guardar"}
+              </button>
+            </div>
           </div>
         </div>
       )}

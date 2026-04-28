@@ -137,6 +137,8 @@ export const CuentasPorPagar = () => {
     return { ...p, analytics };
   });
 
+  const totalGastosMes = alertasData.reduce((s: number, a: any) => s + (a.mes_actual || 0), 0);
+
   const alertasCount = alertasData.filter((a: any) => a.alerta).length;
 
   const barColor = (idx: number, tendencia: any[]) => {
@@ -308,19 +310,26 @@ export const CuentasPorPagar = () => {
                     </div>
 
                     {/* Bottom row: amount + badge + actions */}
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
-                        <span style={{ fontSize: "13px", fontWeight: "700", color: "#111827" }}>
-                          {p.analytics ? fmt(p.analytics.mes_actual) : "—"}
-                        </span>
-                        {showVariacion && (
-                          <span style={{
-                            fontSize: "10px", fontWeight: "700", color: "#FFF",
-                            background: v > 10 ? (v >= 25 ? "#DC2626" : "#F97316") : "#059669",
-                            borderRadius: "5px", padding: "1px 6px",
-                          }}>
-                            {v > 0 ? "+" : ""}{v}%
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
+                      <div>
+                        <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                          <span style={{ fontSize: "13px", fontWeight: "700", color: "#111827" }}>
+                            {p.analytics ? fmt(p.analytics.mes_actual) : "—"}
                           </span>
+                          {showVariacion && (
+                            <span style={{
+                              fontSize: "10px", fontWeight: "700", color: "#FFF",
+                              background: v > 10 ? (v >= 25 ? "#DC2626" : "#F97316") : "#059669",
+                              borderRadius: "5px", padding: "1px 6px",
+                            }}>
+                              {v > 0 ? "+" : ""}{v}%
+                            </span>
+                          )}
+                        </div>
+                        {p.analytics && totalGastosMes > 0 && (
+                          <div style={{ fontSize: "10px", color: "#9CA3AF", marginTop: "2px" }}>
+                            {((p.analytics.mes_actual / totalGastosMes) * 100).toFixed(1)}% del total
+                          </div>
                         )}
                       </div>
                       <div style={{ display: "flex", gap: "2px", opacity: isHovered ? 1 : 0, transition: "opacity 0.15s" }}>

@@ -46,6 +46,9 @@ class AlertasJob:
             # Alertas de proveedores con incremento de precio >10%
             alertas_creadas.extend(self._evaluar_proveedor_precio_alto(db, restaurante_id, hoy))
 
+            # Alertas de contratos por vencer
+            alertas_creadas.extend(self._evaluar_contratos_por_vencer(db, restaurante_id, hoy))
+
             if alertas_creadas:
                 db.commit()
 
@@ -464,6 +467,62 @@ class AlertasJob:
                 ),
                 valor_detectado=round(variacion, 2),
                 umbral_config=10.0,
+                revisada=False,
+                severidad=sev,
+            )
+            db.add(alerta)
+            creadas.append(alerta)
+
+        return creadas
+
+
+    def _evaluar_contratos_por_vencer(
+        self, db: Session, restaurante_id: int, hoy: date
+    ) -> List[models.AlertaLog]:
+        """Crea alertas CONTRATO_POR_VENCER para empleados cuyo contrato vence pronto."""
+        # Obtener umbral de días configurado (default 7)
+        config = db.query(models.AlertaConfig).filter(
+            models.AlertaConfig.restaurante_id == restaurante_id,
+            models.AlertaConfig.tipo == "CONTRATO_POR_VENCER",
+            models.AlertaConfig.activo == True,
+        ).first()
+        dias_umbral = int(config.umbral) if config else 7
+
+        empleados = db.query(models.Empleado).filter(
+            models.Empleado.restaurante_id == restaurante_id,
+            models.Empleado.activo == True,
+            models.Empleado.fin_contrato != None,
+        ).all()
+
+        creadas: List[models.AlertaLog] = []
+        hace_24h = datetime.utcnow() - timedelta(hours=24)
+
+        for emp in empleados:
+            if not emp.fin_contrato:
+                continue
+            dias_restantes = (emp.fin_contrato - hoy).days
+            if dias_restantes < 0 or dias_restantes > dias_umbral:
+                continue
+
+            # Anti-duplicado por empleado en mensaje
+            existe = db.query(models.AlertaLog).filter(
+                models.AlertaLog.restaurante_id == restaurante_id,
+                models.AlertaLog.tipo == "CONTRATO_POR_VENCER",
+                models.AlertaLog.mensaje.contains(emp.nombre),
+                models.AlertaLog.revisada == False,
+                models.AlertaLog.created_at >= hace_24h,
+            ).first()
+            if existe:
+                continue
+
+            sev = "CRITICAL" if dias_restantes <= 3 else "WARNING"
+            fecha_str = emp.fin_contrato.strftime("%d/%m/%Y")
+            alerta = models.AlertaLog(
+                restaurante_id=restaurante_id,
+                tipo="CONTRATO_POR_VENCER",
+                mensaje=f"Contrato de {emp.nombre} vence el {fecha_str} ({dias_restantes} días)",
+                valor_detectado=float(dias_restantes),
+                umbral_config=float(dias_umbral),
                 revisada=False,
                 severidad=sev,
             )
