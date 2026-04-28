@@ -1358,160 +1358,275 @@ async def actualizar_propinas(cierre_id: int, request: Request, db: Session = De
 async def importar_bitacora(file: UploadFile = File(...)):
     import pdfplumber, io, re as _re
     contents = await file.read()
-    
+
     try:
         pdf = pdfplumber.open(io.BytesIO(contents))
-        full_text = ""
-        for page in pdf.pages:
-            t = page.extract_text()
-            if t:
-                full_text += t + "\n"
+        pages = list(pdf.pages)
+        text_p1   = pages[0].extract_text() or "" if pages else ""
+        tables_p2 = pages[1].extract_tables() if len(pages) > 1 else []
+        text_p2   = pages[1].extract_text() or "" if len(pages) > 1 else ""
         pdf.close()
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"Error leyendo PDF: {str(e)}")
-    
-    if len(full_text.strip()) < 20:
-        raise HTTPException(status_code=422, detail="El PDF no contiene texto extraible")
-    
-    # Extraer fecha
+
+    # ── Fecha y Responsable ───────────────────────────────────────────────
     fecha = None
-    fecha_match = _re.search(r"FECHA[:\s]*(?:LUNES|MARTES|MIERCOLES|MIÉRCOLES|JUEVES|VIERNES|SABADO|SÁBADO|DOMINGO)?\s*(\d{1,2})\s*(?:DE\s*)?([A-Z]+)\s*(\d{)", full_text.upper())
-    if fecha_match:
-        dia = fecha_match.group(1).zfill(2)
-        mes_txt = fecha_match.group(2)
-        anio = fecha_match.group(3)
-        meses = {"ENERO":"01","FEBRERO":"02","MARZO":"03","ABRIL":"04","MAYO":"05","JUNIO":"06","JULIO":"07","AGOSTO":"08","SEPTIEMBRE":"09","OCTUBRE":"10","NOVIEMBRE":"11","DICIEMBRE":"12"}
-        mes = meses.get(mes_txt, "01")
-        fecha = f"{anio}-{mes}-{dia}"
-    
-    # Extraer responsable
-    resp_match = _re.search(r"RESPONSABLE[:\s]*(.+?)\n", full_text)
-    responsable = resp_match.group(1).strip() if resp_match else "Sin responsable"
-    
-    # Mapeo de categorias de la bitacora a nuestras categorias
+    MESES_NUM = {"ENERO":"01","FEBRERO":"02","MARZO":"03","ABRIL":"04","MAYO":"05",
+                 "JUNIO":"06","JULIO":"07","AGOSTO":"08","SEPTIEMBRE":"09",
+                 "OCTUBRE":"10","NOVIEMBRE":"11","DICIEMBRE":"12"}
+    fm = _re.search(r"FECHA[:\s]*\w+\s+(\d{1,2})\s+(\w+)\s+(\d{4})", text_p1.upper())
+    if fm:
+        dia, mes_txt, anio = fm.group(1).zfill(2), fm.group(2), fm.group(3)
+        fecha = f"{anio}-{MESES_NUM.get(mes_txt, '01')}-{dia}"
+
+    resp_m = _re.search(r"RESPONSABLE[:\s]*(.+)", text_p1)
+    responsable = resp_m.group(1).strip() if resp_m else "Sin responsable"
+
+    # ── Categorías y helpers ──────────────────────────────────────────────
     CAT_MAP = {
-        "COMIDA PERSONAL": "PERSONAL",
-        "ABARROTES": "ABARROTES",
-        "DESECHABLES": "DESECHABLES_EMPAQUES",
-        "ESTACIONAMIENTO": "SERVICIOS",
-        "PROTEINA": "PROTEINA",
-        "VEGETALES": "VEGETALES_FRUTAS",
-        "BEBIDAS": "BEBIDAS",
-        "LIMPIEZA": "LIMPIEZA_MANTTO",
-        "UTENSILIOS": "UTENSILIOS",
-        "EQUIPO": "EQUIPO",
-        "MARKETING": "MARKETING",
-        "PRODUCTOS ASIATICOS": "PRODUCTOS_ASIATICOS",
-        "PERSONAL": "PERSONAL",
-        "SERVICIOS": "SERVICIOS",
-        "RENTA": "RENTA",
-        "LUZ": "LUZ",
-        "SOFTWARE": "SOFTWARE",
+        "COMISIONES PLATAFORMAS": "COMISIONES_PLATAFORMAS",
+        "COMISIONES BANCARIAS":   "COMISIONES_BANCARIAS",
+        "ENTREGA DE UTILIDADES":  "OTROS",
+        "DESECHABLES EMPAQUES":   "DESECHABLES_EMPAQUES",
+        "VEGETALES FRUTAS":       "VEGETALES_FRUTAS",
+        "PRODUCTOS ASIATICOS":    "PRODUCTOS_ASIATICOS",
+        "COMIDA PERSONAL":        "PERSONAL",
+        "LIMPIEZA MANTTO":        "LIMPIEZA_MANTTO",
+        "ESTACIONAMIENTO":        "SERVICIOS",
+        "MANTENIMIENTO":          "LIMPIEZA_MANTTO",
+        "ABARROTES":              "ABARROTES",
+        "PROTEINA":               "PROTEINA",
+        "BEBIDAS":                "BEBIDAS",
+        "PROPINAS":               "PROPINAS",
+        "MARKETING":              "MARKETING",
+        "SERVICIOS":              "SERVICIOS",
+        "PERSONAL":               "PERSONAL",
+        "PAPELERIA":              "PAPELERIA",
+        "EQUIPO":                 "EQUIPO",
+        "NOMINA":                 "NOMINA",
+        "IMPUESTOS":              "IMPUESTOS",
+        "RENTA":                  "RENTA",
+        "LUZ":                    "LUZ",
+        "SOFTWARE":               "SOFTWARE",
+        "OTROS":                  "OTROS",
     }
-    
-    def map_categoria(cat_text):
-        cat_upper = cat_text.upper().strip()
-        for key, val in CAT_MAP.items():
-            if key in cat_upper:
-                return val
+    # Ordered by length descending so multi-word keys match before substrings
+    _CAT_KEYS = sorted(CAT_MAP.keys(), key=len, reverse=True)
+
+    CLASES      = ["NMP", "MP"]   # NMP first so \bMP\b in NMP doesn't steal
+    COMPROBANTES = ["TICKET", "VALE", "FACTURA", "NOTA REMISION", "TRANSFERENCIA", "RECIBO"]
+
+    def map_categoria(raw: str) -> str:
+        c = " ".join(raw.split()).upper()
+        for key in _CAT_KEYS:
+            if key in c:
+                return CAT_MAP[key]
         return "OTROS"
-    
-    # Mapeo comprobantes
-    COMP_MAP = {
-        "VALE": "VALE",
-        "TICKET": "TICKET",
-        "FACTURA": "FACTURA",
-        "CAPTURA": "SIN_COMPROBANTE",
-        "RECIBO": "RECIBO",
-        "TRANSFERENCIA": "TRANSFERENCIA",
-        "NOTA": "NOTA_REMISION",
-    }
-    
-    def map_comprobante(comp_text):
-        comp_upper = comp_text.upper().strip()
-        for key, val in COMP_MAP.items():
-            if key in comp_upper:
-                return val
-        return "SIN_COMPROBANTE"
-    
-    # Parsear lineas de gastos
-    lines = full_text.split("\n")
-    gastos_parsed = []
-    
-    for line in lines:
-        # Buscar lineas con monto al final ($X,XXX o $XXX.XX)
-        monto_match = _re.search(r"\$([\d,]+(?:\.\d{1,2})?)\s*$", line.strip())
-        if not monto_match:
-            continue
-        
-        monto_str = monto_match.group(1).replace(",", "")
+
+    def parse_monto(v) -> float:
         try:
-            monto = float(monto_str)
-        except:
-            continue
-        
-        if monto <= 0:
-            continue
-        
-        # Texto antes del monto
-        text_before = line[:monto_match.start()].strip()
-        
-        # Intentar extraer proveedor (primera palabra/frase antes de MP/NMP)
-        parts = _re.split(r"\s+(MP|NMP)\s+", text_before)
-        proveedor = parts[0].strip() if parts else text_before[:30]
-        
-        # Buscar categoria en el texto
-        categoria = "OTROS"
-        for key in CAT_MAP:
-            if key in text_before.upper():
-                categoria = CAT_MAP[key]
+            return float(str(v or "").replace("$", "").replace(",", "").strip())
+        except Exception:
+            return 0.0
+
+    def es_monto(texto: str) -> bool:
+        """True if the entire stripped text is a money amount ($ optional, digits/commas)."""
+        t = texto.strip().replace("$", "").replace(",", "").strip()
+        if not t:
+            return False
+        try:
+            val = float(t)
+            return val > 0
+        except Exception:
+            return False
+
+    def extraer_categoria_raw(texto: str) -> str:
+        t = texto.upper()
+        for key in _CAT_KEYS:
+            if key in t:
+                return key
+        return "OTROS"
+
+    def extraer_comprobante(texto: str):
+        t = texto.upper()
+        for comp in COMPROBANTES:
+            if comp in t:
+                return comp
+        return None
+
+    def procesar_header(lineas: list) -> tuple:
+        """Extract (proveedor, clase, categoria_raw, comprobante) from accumulated header lines."""
+        texto = " ".join(lineas)
+        texto_u = texto.upper()
+
+        # Clase — whole word match, NMP before MP to avoid matching MP inside NMP
+        clase = "NMP"
+        pos_clase = -1
+        for cl in CLASES:
+            m = _re.search(r'\b' + cl + r'\b', texto_u)
+            if m:
+                clase = cl
+                pos_clase = m.start()
                 break
-        
-        # Buscar comprobante
-        comprobante = "SIN_COMPROBANTE"
-        for key in COMP_MAP:
-            if key in text_before.upper():
-                comprobante = COMP_MAP[key]
-                break
-        
-        # Descripcion: lo que queda despues de proveedor/clase/categoria/comprobante
-        descripcion = text_before
-        
-        # Ignorar lineas de TOTAL, SALDO, etc
-        if any(kw in proveedor.upper() for kw in ["TOTAL", "SALDO", "VENTAS", "DIFERENCIA", "EFECTIVO FISICO", "GASTOS DEL", "ESPERADO", "CIERRE", "CONTADO", "FALTANTE", "SOBRANTE", "ELABORA"]):
-            continue
-        
+
+        # Comprobante
+        comprobante = extraer_comprobante(texto_u) or "VALE"
+
+        # Categoría (from full header text)
+        categoria_raw = extraer_categoria_raw(texto_u)
+
+        # Proveedor = text before the clase keyword
+        if pos_clase > 0:
+            prov_raw = texto[:pos_clase].strip()
+        else:
+            prov_raw = texto.strip()
+
+        # Remove parenthetical suffixes like "(INTERLOMAS / TECAMACHALCO)"
+        prov_raw = _re.sub(r'\s*\(.*?\)\s*', ' ', prov_raw).strip().strip('/').strip()
+        proveedor = " ".join(prov_raw.split()).upper()
+
+        return proveedor, clase, categoria_raw, comprobante
+
+    # ── State machine parser ──────────────────────────────────────────────
+    lineas = text_p1.split("\n")
+
+    # Find where the gastos table starts (after the header row)
+    inicio_tabla = 0
+    for i, linea in enumerate(lineas):
+        if "PROVEEDOR" in linea.upper() and ("CLASE" in linea.upper() or "CATEGORIA" in linea.upper()):
+            inicio_tabla = i + 1
+            break
+
+    # Find where it ends (TOTAL row or CIERRE section)
+    fin_tabla = len(lineas)
+    total_pdf = 0.0
+    for i, linea in enumerate(lineas[inicio_tabla:], start=inicio_tabla):
+        lu = linea.upper().strip()
+        if lu.startswith("TOTAL") and "$" in linea:
+            m = _re.search(r'\$\s*([\d,]+)', linea)
+            if m:
+                total_pdf = float(m.group(1).replace(",", ""))
+            fin_tabla = i
+            break
+        if "CIERRE DEL DÍA" in lu or "CIERRE DEL DIA" in lu:
+            fin_tabla = i
+            break
+
+    lineas_gastos = lineas[inicio_tabla:fin_tabla]
+
+    gastos_parsed = []
+    lineas_header_actual: list = []
+    lineas_desc_actual:   list = []
+    en_descripcion = False
+
+    def cerrar_gasto(monto_val: float):
+        if not lineas_header_actual:
+            return
+        proveedor, clase, categoria_raw, comprobante = procesar_header(lineas_header_actual)
+        INVALID_PROV = {"MP", "NMP", "TICKET", "VALE", "TOTAL", ""}
+        valido = bool(proveedor) and proveedor not in INVALID_PROV
+        advertencias = [] if valido else [f"Proveedor no identificado en: '{' '.join(lineas_header_actual[:2])}'"]
+        descripcion = ", ".join(l.strip().rstrip(",") for l in lineas_desc_actual if l.strip())
         gastos_parsed.append({
-            "fecha": fecha or str(date.today()),
-            "proveedor": proveedor[:50],
-            "categoria": categoria,
-            "monto": monto,
-            "metodo_pago": "EFECTIVO",
-            "comprobante": comprobante,
-            "descripcion": descripcion[:200],
+            "fecha":              fecha or str(date.today()),
+            "proveedor":          proveedor[:80],
+            "clase":              clase,
+            "categoria":          map_categoria(categoria_raw),
+            "categoria_bitacora": categoria_raw,
+            "monto":              monto_val,
+            "metodo_pago":        "EFECTIVO",
+            "comprobante":        comprobante,
+            "descripcion":        descripcion[:200],
+            "valido":             valido,
+            "advertencias":       advertencias,
         })
-    
-    # Extraer datos del cierre si existen
+
+    for linea in lineas_gastos:
+        linea_strip = linea.strip()
+        if not linea_strip:
+            continue
+
+        # Detect comprobante in this line — marks end of header, start of description
+        comp_found = extraer_comprobante(linea_strip.upper())
+
+        if comp_found and not en_descripcion:
+            # This line belongs to the header (contains clase/comprobante info)
+            lineas_header_actual.append(linea_strip)
+            en_descripcion = True
+
+            # Check if the monto is on the same line (e.g. "VALE Presupuesto del día $400")
+            pos_comp = linea_strip.upper().find(comp_found)
+            resto = linea_strip[pos_comp + len(comp_found):].strip()
+            if resto:
+                words = resto.split()
+                if words and es_monto(words[-1]):
+                    monto_val = parse_monto(words[-1])
+                    desc_part = " ".join(words[:-1]).strip()
+                    if desc_part:
+                        lineas_desc_actual.append(desc_part)
+                    cerrar_gasto(monto_val)
+                    lineas_header_actual = []
+                    lineas_desc_actual   = []
+                    en_descripcion       = False
+                else:
+                    lineas_desc_actual.append(resto)
+            continue
+
+        if en_descripcion:
+            if es_monto(linea_strip):
+                cerrar_gasto(parse_monto(linea_strip))
+                lineas_header_actual = []
+                lineas_desc_actual   = []
+                en_descripcion       = False
+            else:
+                lineas_desc_actual.append(linea_strip)
+        else:
+            lineas_header_actual.append(linea_strip)
+
+    # ── Cierre del día ────────────────────────────────────────────────────
     cierre_data = None
-    saldo_match = _re.search(r"Saldo Inicial[:\s]*\$?([\d,]+(?:\.\d{2})?)", full_text)
-    ventas_match = _re.search(r"Ventas en Efectivo[:\s]*\$?([\d,]+(?:\.\d{2})?)", full_text)
-    
-    if saldo_match:
+    if tables_p2:
+        cm: dict = {}
+        for row in tables_p2[0]:
+            if row and len(row) >= 2 and row[0]:
+                lbl = str(row[0]).upper()
+                val = parse_monto(row[1])
+                if "SALDO INICIAL" in lbl:           cm["saldo_inicial"]       = val
+                elif "TOTAL GASTOS" in lbl:          cm["total_gastos"]         = val
+                elif "VENTAS EN EFECTIVO" in lbl:    cm["ventas_efectivo"]      = val
+                elif "SALDO FINAL" in lbl:           cm["saldo_final_esperado"] = val
+                elif "EFECTIVO" in lbl and ("CONTADO" in lbl or "FISICO" in lbl or "FÍSICO" in lbl):
+                    cm["efectivo_fisico"] = val
+                elif "DIFERENCIA" in lbl:            cm["diferencia"]           = val
+        if cm:
+            cierre_data = cm
+    if not cierre_data and text_p2:
+        def _ev(pat):
+            m = _re.search(pat, text_p2, _re.IGNORECASE)
+            return float(m.group(1).replace(",", "")) if m else 0.0
         cierre_data = {
-            "saldo_inicial": float(saldo_match.group(1).replace(",", "")),
-            "ventas_efectivo": float(ventas_match.group(1).replace(",", "")) if ventas_match else 0,
+            "saldo_inicial":       _ev(r"Saldo Inicial[:\s]*\$?([\d,]+)"),
+            "total_gastos":        _ev(r"Total Gastos[:\s]*\$?([\d,]+)"),
+            "ventas_efectivo":     _ev(r"Ventas en Efectivo[:\s]*\$?([\d,]+)"),
+            "saldo_final_esperado":_ev(r"Saldo Final Esperado[:\s]*\$?([\d,]+)"),
+            "efectivo_fisico":     _ev(r"Efectivo F[ií]sico[:\s]*\$?([\d,]+)"),
+            "diferencia":          _ev(r"Diferencia[:\s]*\$?([\d,]+)"),
         }
-    
-    # Filtrar gastos con proveedor vacio o monto muy alto otales)
-    gastos_parsed = [g for g in gastos_parsed if g["proveedor"].strip() and g["monto"] < 50000]
-    
+        if not any(cierre_data.values()):
+            cierre_data = None
+
+    total_extraido = round(sum(g["monto"] for g in gastos_parsed), 2)
+    coincide_total = abs(total_extraido - total_pdf) < 1.0 if total_pdf > 0 else None
+
     return {
-        "fecha": fecha,
-        "responsable": responsable,
-        "gastos": gastos_parsed,
-        "total_gastos": sum(g["monto"] for g in gastos_parsed),
-        "cierre": cierre_data,
-        "gastos_count": len(gastos_parsed),
+        "fecha":          fecha,
+        "responsable":    responsable,
+        "gastos":         gastos_parsed,
+        "total_gastos":   total_extraido,
+        "total_pdf":      total_pdf,
+        "coincide_total": coincide_total,
+        "cierre":         cierre_data,
+        "gastos_count":   len(gastos_parsed),
     }
 
 @app.get("/api/categorias", response_model=List[schemas.CategoriaResponse])
