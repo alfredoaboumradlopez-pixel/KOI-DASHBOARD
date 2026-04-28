@@ -57,7 +57,7 @@ from sqlalchemy import text as _text, inspect as _inspect
 try:
     _insp = _inspect(engine)
     existing_cols = [c['name'] for c in _insp.get_columns('empleados')]
-    new_cols = {"rfc": "VARCHAR(20)", "curp": "VARCHAR(20)", "numero_imss": "VARCHAR(20)", "cuenta_banco": "VARCHAR(50)", "fecha_nacimiento": "DATE", "tipo_contrato": "VARCHAR(20)"}
+    new_cols = {"rfc": "VARCHAR(20)", "curp": "VARCHAR(20)", "numero_imss": "VARCHAR(20)", "cuenta_banco": "VARCHAR(50)", "fecha_nacimiento": "DATE", "tipo_contrato": "VARCHAR(20)", "fin_contrato": "DATE"}
     with engine.begin() as conn:
         for col_name, col_type in new_cols.items():
             if col_name not in existing_cols:
@@ -1061,11 +1061,16 @@ def listar_proveedores(restaurante_id: Optional[int] = None, db: Session = Depen
 
 @app.post("/api/empleados", response_model=schemas.EmpleadoResponse, status_code=201)
 def crear_empleado(emp: schemas.EmpleadoCreate, db: Session = Depends(get_db)):
-    db_emp = models.Empleado(**emp.model_dump())
-    db.add(db_emp)
-    db.commit()
-    db.refresh(db_emp)
-    return db_emp
+    try:
+        db_emp = models.Empleado(**emp.model_dump())
+        db.add(db_emp)
+        db.commit()
+        db.refresh(db_emp)
+        return db_emp
+    except Exception as e:
+        db.rollback()
+        print(f"ERROR creando empleado: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/empleados", response_model=List[schemas.EmpleadoResponse])
 def listar_empleados(restaurante_id: Optional[int] = None, db: Session = Depends(get_db)):
