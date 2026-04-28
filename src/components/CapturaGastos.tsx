@@ -726,7 +726,7 @@ export const CapturaGastos: React.FC = () => {
               </div>
             ) : (
               <div>
-                <div style={{ padding: "12px 14px", borderRadius: "8px", background: "#EFF6FF", marginBottom: "12px" }}>
+                <div style={{ padding: "12px 14px", borderRadius: "8px", background: "#EFF6FF", marginBottom: "8px" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
                     <div><span style={{ fontSize: "13px", fontWeight: "700", color: "#2563EB" }}>Bitácora procesada</span><span style={{ fontSize: "12px", color: "#6B7280", marginLeft: "8px" }}>{bitacoraData.responsable}</span></div>
                     <span style={{ fontSize: "14px", fontWeight: "800", color: "#2563EB" }}>{bitacoraData.gastos_count} gastos | {fmt(bitacoraData.total_gastos)}</span>
@@ -736,17 +736,48 @@ export const CapturaGastos: React.FC = () => {
                     <input type="date" value={bitacoraFecha} onChange={e => setBitacoraFecha(e.target.value)} style={{ padding: "6px 10px", borderRadius: "6px", border: "1px solid #BFDBFE", fontSize: "13px", fontWeight: "600" }} />
                   </div>
                 </div>
+                {/* Total validation banner */}
+                <div style={{ padding: "10px 14px", borderRadius: "8px", background: bitacoraData.coincide_total ? "#F0FDF4" : "#FFFBEB", border: `1px solid ${bitacoraData.coincide_total ? "#BBF7D0" : "#FDE68A"}`, marginBottom: "10px", display: "flex", alignItems: "center", gap: "8px" }}>
+                  <span style={{ fontSize: "15px" }}>{bitacoraData.coincide_total ? "✓" : "⚠️"}</span>
+                  <span style={{ fontSize: "12px", fontWeight: "600", color: bitacoraData.coincide_total ? "#059669" : "#92400E" }}>
+                    {bitacoraData.coincide_total
+                      ? `Total extraído ${fmt(bitacoraData.total_gastos)} coincide con TOTAL del PDF ${fmt(bitacoraData.total_pdf ?? bitacoraData.total_gastos)}`
+                      : `Total extraído ${fmt(bitacoraData.total_gastos)} no coincide con TOTAL del PDF ${fmt(bitacoraData.total_pdf ?? 0)} — revisa las filas marcadas`}
+                  </span>
+                </div>
                 <div style={{ borderRadius: "10px", overflow: "hidden", border: "1px solid #F3F4F6" }}>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 100px 80px 80px 50px", padding: "8px 14px", background: "#FAFBFC", borderBottom: "1px solid #F3F4F6" }}>
-                    {["Proveedor", "Categoría", "Comprobante", "Monto", ""].map(h => <span key={h} style={{ fontSize: "10px", fontWeight: "700", color: "#9CA3AF", textTransform: "uppercase" }}>{h}</span>)}
+                  <div style={{ display: "grid", gridTemplateColumns: "22px 1fr 52px 100px 80px 80px 52px", padding: "8px 14px", background: "#FAFBFC", borderBottom: "1px solid #F3F4F6", gap: "6px" }}>
+                    {["", "Proveedor", "Tipo", "Categoría", "Comprobante", "Monto", ""].map((h, hi) => <span key={hi} style={{ fontSize: "10px", fontWeight: "700", color: "#9CA3AF", textTransform: "uppercase" }}>{h}</span>)}
                   </div>
                   {bitacoraData.gastos.map((g: any, i: number) => (
-                    <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 100px 80px 80px 50px", padding: "8px 14px", borderBottom: "1px solid #F9FAFB", alignItems: "center" }}>
-                      <div><span style={{ fontSize: "13px", fontWeight: "600", color: "#111827" }}>{g.proveedor}</span>{g.descripcion && <div style={{ fontSize: "11px", color: "#9CA3AF" }}>{g.descripcion.slice(0, 60)}</div>}</div>
+                    <div key={i} style={{ display: "grid", gridTemplateColumns: "22px 1fr 52px 100px 80px 80px 52px", padding: "8px 14px", borderBottom: "1px solid #F9FAFB", alignItems: "center", gap: "6px", background: g.valido === false ? "#FFFBEB" : "transparent" }}>
+                      {/* status badge */}
+                      <span title={g.valido === false ? (g.advertencias || []).join(", ") : "Correcto"} style={{ fontSize: "13px", cursor: g.valido === false ? "help" : "default" }}>
+                        {g.valido === false ? "⚠️" : "✓"}
+                      </span>
+                      {/* proveedor: editable if invalid */}
+                      <div>
+                        {g.valido === false ? (
+                          <input
+                            value={g.proveedor}
+                            onChange={e => {
+                              const updated = [...bitacoraData.gastos];
+                              updated[i] = { ...updated[i], proveedor: e.target.value };
+                              setBitacoraData({ ...bitacoraData, gastos: updated });
+                            }}
+                            style={{ width: "100%", padding: "3px 6px", borderRadius: "5px", border: "1px solid #FDE68A", fontSize: "12px", fontWeight: "600", color: "#92400E", background: "#FFFBEB" }}
+                          />
+                        ) : (
+                          <span style={{ fontSize: "13px", fontWeight: "600", color: "#111827" }}>{g.proveedor}</span>
+                        )}
+                        {g.descripcion && <div style={{ fontSize: "11px", color: "#9CA3AF" }}>{g.descripcion.slice(0, 50)}</div>}
+                      </div>
+                      {/* clase MP/NMP badge */}
+                      <span style={{ fontSize: "10px", padding: "2px 5px", borderRadius: "4px", background: g.clase === "MP" ? "#EFF6FF" : "#FFF7ED", color: g.clase === "MP" ? "#2563EB" : "#EA580C", fontWeight: "700", textAlign: "center" }}>{g.clase || "—"}</span>
                       <span style={{ fontSize: "11px", padding: "2px 6px", borderRadius: "4px", background: "#F3F4F6", color: "#374151" }}>{(g.categoria || "").replace(/_/g, " ")}</span>
                       <span style={{ fontSize: "10px", padding: "2px 6px", borderRadius: "4px", background: "#FDF4FF", color: "#7C3AED" }}>{(g.comprobante || "").replace(/_/g, " ")}</span>
                       <span style={{ fontSize: "13px", fontWeight: "700", color: "#111827", textAlign: "right" }}>{fmt(g.monto)}</span>
-                      <button onClick={() => iniciarRomper(i)} style={{ fontSize: "10px", padding: "2px 8px", borderRadius: "4px", border: "1px solid #E5E7EB", background: "#FFF", color: "#6B7280", cursor: "pointer" }}>Romper</button>
+                      <button onClick={() => iniciarRomper(i)} style={{ fontSize: "10px", padding: "2px 6px", borderRadius: "4px", border: "1px solid #E5E7EB", background: "#FFF", color: "#6B7280", cursor: "pointer" }}>Romper</button>
                     </div>
                   ))}
                 </div>
