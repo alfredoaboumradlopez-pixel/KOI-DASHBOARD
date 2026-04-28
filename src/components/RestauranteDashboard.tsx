@@ -22,6 +22,7 @@ import {
   Tag,
   Users,
   Wallet,
+  BarChart2,
   ArrowLeft,
   RefreshCw,
   AlertCircle,
@@ -29,6 +30,7 @@ import {
 
 // Sub-componentes reutilizados
 import { PLDashboard } from "./PLDashboard";
+import { DashboardGastos } from "./DashboardGastos";
 import { CategorizarGastos } from "./CategorizarGastos";
 import { CierreTurno } from "./CierreTurno";
 import { CapturaGastos } from "./CapturaGastos";
@@ -40,17 +42,19 @@ type SubModule =
   | "dashboard"
   | "cierre-turno"
   | "gastos"
+  | "dashboard-gastos"
   | "categorizar"
   | "nomina"
   | "tesoreria";
 
-const MODULOS: { key: SubModule; label: string; icon: any }[] = [
-  { key: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { key: "cierre-turno", label: "Cierre de Turno", icon: ClipboardList },
-  { key: "gastos", label: "Gastos & Proveedores", icon: Receipt },
-  { key: "categorizar", label: "Categorizar gastos", icon: Tag },
-  { key: "nomina", label: "Nómina", icon: Users },
-  { key: "tesoreria", label: "Calendario Pagos", icon: Wallet },
+const MODULOS: { key: SubModule; label: string; icon: any; badgeKey?: string }[] = [
+  { key: "dashboard",         label: "Dashboard",            icon: LayoutDashboard },
+  { key: "cierre-turno",      label: "Cierre de Turno",      icon: ClipboardList },
+  { key: "gastos",            label: "Gastos & Proveedores", icon: Receipt },
+  { key: "dashboard-gastos",  label: "Dashboard Gastos",     icon: BarChart2, badgeKey: "alertas" },
+  { key: "categorizar",       label: "Categorizar gastos",   icon: Tag },
+  { key: "nomina",            label: "Nómina",               icon: Users },
+  { key: "tesoreria",         label: "Calendario Pagos",     icon: Wallet },
 ];
 
 export const RestauranteDashboard = () => {
@@ -63,6 +67,7 @@ export const RestauranteDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [subModule, setSubModule] = useState<SubModule>("dashboard");
+  const [alertasGastos, setAlertasGastos] = useState(0);
 
   useEffect(() => {
     if (!slug) {
@@ -77,6 +82,12 @@ export const RestauranteDashboard = () => {
       .then((r: any) => {
         setRestaurante(r);
         setLoading(false);
+        // Cargar conteo de alertas de gastos para el mes actual
+        const hoy = new Date();
+        api
+          .get(`/api/gastos/dashboard/${r.id}?mes=${hoy.getMonth() + 1}&anio=${hoy.getFullYear()}`)
+          .then((d: any) => setAlertasGastos(d?.alertas_gastos?.length ?? 0))
+          .catch(() => {});
       })
       .catch((e: any) => {
         setError(
@@ -268,6 +279,7 @@ export const RestauranteDashboard = () => {
         {MODULOS.map((m) => {
           const Icon = m.icon;
           const active = subModule === m.key;
+          const badge = m.badgeKey === "alertas" ? alertasGastos : 0;
           return (
             <button
               key={m.key}
@@ -287,6 +299,7 @@ export const RestauranteDashboard = () => {
                 transition: "all 0.15s",
                 whiteSpace: "nowrap" as const,
                 flexShrink: 0,
+                position: "relative" as const,
               }}
               onMouseEnter={(e) => {
                 if (!active) {
@@ -303,6 +316,26 @@ export const RestauranteDashboard = () => {
             >
               <Icon style={{ width: "14px", height: "14px", flexShrink: 0 }} />
               {m.label}
+              {badge > 0 && (
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    minWidth: "16px",
+                    height: "16px",
+                    padding: "0 4px",
+                    borderRadius: "8px",
+                    background: active ? "#F97316" : "#F97316",
+                    color: "#FFF",
+                    fontSize: "9px",
+                    fontWeight: "800",
+                    lineHeight: 1,
+                  }}
+                >
+                  {badge}
+                </span>
+              )}
             </button>
           );
         })}
@@ -317,6 +350,10 @@ export const RestauranteDashboard = () => {
       {subModule === "cierre-turno" && <CierreTurno />}
 
       {subModule === "gastos" && <CapturaGastos />}
+
+      {subModule === "dashboard-gastos" && (
+        <DashboardGastos restauranteIdOverride={restauranteId} />
+      )}
 
       {subModule === "categorizar" && (
         <CategorizarGastos restauranteIdOverride={restauranteId} />

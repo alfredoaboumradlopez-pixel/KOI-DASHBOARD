@@ -46,6 +46,7 @@ from .routers.restaurantes_router import router as restaurantes_router
 from .routers.pl_router import router as pl_router
 from .routers.gastos_categorizacion_router import router as gastos_cat_router
 from .routers.alertas_router import router as alertas_router
+from .routers.gastos_dashboard_router import router as gastos_dashboard_router
 
 models.Base.metadata.create_all(bind=engine)
 
@@ -251,6 +252,7 @@ app.include_router(restaurantes_router)
 app.include_router(pl_router)
 app.include_router(gastos_cat_router)
 app.include_router(alertas_router)
+app.include_router(gastos_dashboard_router)
 
 UPLOADS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
 os.makedirs(os.path.join(UPLOADS_DIR, "documentos"), exist_ok=True)
