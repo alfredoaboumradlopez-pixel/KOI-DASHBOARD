@@ -184,17 +184,7 @@ def gastos_sin_categorizar(
             models.GastoDiario.catalogo_cuenta_id == None,
         ).scalar() or 0
 
-        otros_g = db.query(func.count(models.Gasto.id)).filter(
-            models.Gasto.restaurante_id == restaurante_id,
-            models.Gasto.catalogo_cuenta_id == id_otros,
-        ).scalar() or 0 if id_otros else 0
-
-        otros_gd = db.query(func.count(models.GastoDiario.id)).join(
-            models.CierreTurno, models.GastoDiario.cierre_id == models.CierreTurno.id
-        ).filter(
-            models.CierreTurno.restaurante_id == restaurante_id,
-            models.GastoDiario.catalogo_cuenta_id == id_otros,
-        ).scalar() or 0 if id_otros else 0
+        # "En revisión" = solo gastos sin catalogo_cuenta_id (cuenta 6008 es categoría legítima)
 
         # ── Fetch página de gastos ────────────────────────────────────────
         items: list[dict] = []
@@ -215,7 +205,7 @@ def gastos_sin_categorizar(
                 "categoria_texto": g.categoria, "monto": round(g.monto or 0, 2),
                 "catalogo_cuenta_id": ccid,
                 "cuenta_nombre": _nombre_cuenta(ccid),
-                "es_otros": ccid == id_otros,
+                "es_otros": False,
                 "sugerencia": None,   # omitir en modo todos para performance
             })
 
@@ -242,7 +232,7 @@ def gastos_sin_categorizar(
                     "categoria_texto": gd.categoria, "monto": round(gd.monto or 0, 2),
                     "catalogo_cuenta_id": ccid,
                     "cuenta_nombre": _nombre_cuenta(ccid),
-                    "es_otros": ccid == id_otros,
+                    "es_otros": False,
                     "sugerencia": None,
                 })
 
@@ -253,7 +243,7 @@ def gastos_sin_categorizar(
             "total_gastos": total_g,
             "total_gastos_diarios": total_gd,
             "total_sin_catalogo": null_g + null_gd,
-            "total_en_otros": otros_g + otros_gd,
+            "total_en_otros": 0,
             "monto_total": round(monto_pag, 2),
             "page": page,
             "limit": limit,
