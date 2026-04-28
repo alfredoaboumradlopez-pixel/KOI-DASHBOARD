@@ -6,7 +6,6 @@ import { useRestaurante } from "../context/RestauranteContext";
 const fmt = (n: number) =>
   new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(n);
 
-const MESES_LABEL = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
 
 export const CuentasPorPagar = () => {
   const { restauranteId } = useRestaurante();
@@ -31,8 +30,6 @@ export const CuentasPorPagar = () => {
   const [selectedProv, setSelectedProv] = useState<string | null>(null);
   const [historialData, setHistorialData] = useState<any>(null);
   const [loadingHistorial, setLoadingHistorial] = useState(false);
-  const [showComparativo, setShowComparativo] = useState(false);
-  const [comparativoData, setComparativoData] = useState<any[]>([]);
 
   const fetchCategorias = async () => {
     try {
@@ -71,13 +68,6 @@ export const CuentasPorPagar = () => {
     } finally {
       setLoadingHistorial(false);
     }
-  };
-
-  const fetchComparativo = async () => {
-    try {
-      const data = await api.get(`/api/proveedores-stats/${restauranteId}/comparativo`);
-      setComparativoData(Array.isArray(data) ? data : []);
-    } catch (e) {}
   };
 
   useEffect(() => {
@@ -201,15 +191,6 @@ export const CuentasPorPagar = () => {
     }
   };
 
-  const handleToggleComparativo = () => {
-    if (!showComparativo) {
-      fetchComparativo();
-    }
-    setShowComparativo(!showComparativo);
-  };
-
-  const hoy = new Date();
-  const mesActualLabel = MESES_LABEL[hoy.getMonth()];
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
@@ -310,14 +291,14 @@ export const CuentasPorPagar = () => {
 
       {/* ── PROVEEDORES ── */}
       <div>
-        {/* KPI Cards */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px", marginBottom: "16px" }}>
+        {/* KPI Cards — 2 cards */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "16px" }}>
           {/* Top proveedor */}
           <div style={{ background: "#FFF", borderRadius: "12px", padding: "14px 18px", boxShadow: "0 1px 3px rgba(0,0,0,0.06)", border: "1px solid #F3F4F6" }}>
-            <div style={{ fontSize: "10px", fontWeight: "700", color: "#9CA3AF", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "4px" }}>Top Proveedor</div>
+            <div style={{ fontSize: "10px", fontWeight: "700", color: "#9CA3AF", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "4px" }}>Proveedor Top</div>
             {estadisticas?.top_proveedor ? (
               <>
-                <div style={{ fontSize: "14px", fontWeight: "700", color: "#111827" }}>{estadisticas.top_proveedor.nombre}</div>
+                <div style={{ fontSize: "15px", fontWeight: "700", color: "#111827" }}>{estadisticas.top_proveedor.nombre}</div>
                 <div style={{ fontSize: "13px", color: "#3D1C1E", fontWeight: "600" }}>{fmt(estadisticas.top_proveedor.total)}</div>
               </>
             ) : (
@@ -330,18 +311,13 @@ export const CuentasPorPagar = () => {
             <div style={{ fontSize: "10px", fontWeight: "700", color: "#9CA3AF", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "4px" }}>Mayor Incremento</div>
             {estadisticas?.mayor_incremento ? (
               <>
-                <div style={{ fontSize: "14px", fontWeight: "700", color: "#111827" }}>{estadisticas.mayor_incremento.nombre}</div>
-                <div style={{ fontSize: "13px", color: "#DC2626", fontWeight: "600" }}>+{estadisticas.mayor_incremento.variacion_pct}%</div>
+                <div style={{ fontSize: "15px", fontWeight: "700", color: "#111827" }}>{estadisticas.mayor_incremento.nombre}</div>
+                <div style={{ fontSize: "13px", color: "#DC2626", fontWeight: "600" }}>+{estadisticas.mayor_incremento.variacion_pct}% vs ant.</div>
+                {estadisticas.mayor_incremento.categoria && <div style={{ fontSize: "11px", color: "#9CA3AF" }}>{estadisticas.mayor_incremento.categoria.replace(/_/g, " ")}</div>}
               </>
             ) : (
               <div style={{ fontSize: "13px", color: "#9CA3AF" }}>Sin incrementos</div>
             )}
-          </div>
-
-          {/* Total activos */}
-          <div style={{ background: "#FFF", borderRadius: "12px", padding: "14px 18px", boxShadow: "0 1px 3px rgba(0,0,0,0.06)", border: "1px solid #F3F4F6" }}>
-            <div style={{ fontSize: "10px", fontWeight: "700", color: "#9CA3AF", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "4px" }}>Total Activos</div>
-            <div style={{ fontSize: "24px", fontWeight: "700", color: "#111827" }}>{estadisticas?.proveedores_activos ?? proveedores.length}</div>
           </div>
         </div>
 
@@ -364,20 +340,12 @@ export const CuentasPorPagar = () => {
             </h2>
             <p style={{ fontSize: "12px", color: "#9CA3AF", margin: 0 }}>Alta y gestión de proveedores con categoría default</p>
           </div>
-          <div style={{ display: "flex", gap: "8px" }}>
-            <button
-              onClick={handleToggleComparativo}
-              style={{ display: "flex", alignItems: "center", gap: "6px", padding: "8px 14px", borderRadius: "10px", border: "1px solid #E5E7EB", background: showComparativo ? "#F3F4F6" : "#FFF", color: "#374151", fontSize: "12px", fontWeight: "600", cursor: "pointer" }}
-            >
-              Comparar {showComparativo ? "▲" : "▼"}
-            </button>
-            <button
-              onClick={() => setShowFormProv(!showFormProv)}
-              style={{ display: "flex", alignItems: "center", gap: "6px", padding: "8px 16px", borderRadius: "10px", border: "none", background: showFormProv ? "#E5E7EB" : "#3D1C1E", color: showFormProv ? "#374151" : "#C8FF00", fontSize: "12px", fontWeight: "700", cursor: "pointer" }}
-            >
-              {showFormProv ? "Cancelar" : <><Plus style={{ width: "14px", height: "14px" }} /> Nuevo Proveedor</>}
-            </button>
-          </div>
+          <button
+            onClick={() => setShowFormProv(!showFormProv)}
+            style={{ display: "flex", alignItems: "center", gap: "6px", padding: "8px 16px", borderRadius: "10px", border: "none", background: showFormProv ? "#E5E7EB" : "#3D1C1E", color: showFormProv ? "#374151" : "#C8FF00", fontSize: "12px", fontWeight: "700", cursor: "pointer" }}
+          >
+            {showFormProv ? "Cancelar" : <><Plus style={{ width: "14px", height: "14px" }} /> Nuevo Proveedor</>}
+          </button>
         </div>
 
         {/* New provider form */}
@@ -457,17 +425,24 @@ export const CuentasPorPagar = () => {
                       {p.analytics ? fmt(p.analytics.mes_actual) : "—"}
                     </span>
 
-                    {/* Variación badge */}
+                    {/* Variación badge — solo si hay mes anterior Y variación > 10% */}
                     <span>
-                      {p.analytics?.alerta && p.analytics.variacion_pct !== null ? (
-                        <span style={{ fontSize: "11px", fontWeight: "700", color: "#FFF", background: p.analytics.variacion_pct >= 20 ? "#DC2626" : "#F97316", borderRadius: "6px", padding: "2px 7px" }}>
-                          +{p.analytics.variacion_pct}%
-                        </span>
-                      ) : p.analytics?.variacion_pct !== null && p.analytics?.variacion_pct !== undefined ? (
-                        <span style={{ fontSize: "11px", color: p.analytics.variacion_pct < 0 ? "#059669" : "#6B7280" }}>
-                          {p.analytics.variacion_pct > 0 ? "+" : ""}{p.analytics.variacion_pct}%
-                        </span>
-                      ) : null}
+                      {(() => {
+                        const v = p.analytics?.variacion_pct;
+                        const hasMesAnt = p.analytics?.mes_anterior > 0;
+                        if (!hasMesAnt || v === null || v === undefined) return null;
+                        if (v > 10) return (
+                          <span style={{ fontSize: "11px", fontWeight: "700", color: "#FFF", background: v >= 20 ? "#DC2626" : "#F97316", borderRadius: "6px", padding: "2px 7px" }}>
+                            +{v}% 🔴
+                          </span>
+                        );
+                        if (v < -10) return (
+                          <span style={{ fontSize: "11px", fontWeight: "700", color: "#FFF", background: "#059669", borderRadius: "6px", padding: "2px 7px" }}>
+                            {v}% 🟢
+                          </span>
+                        );
+                        return null;
+                      })()}
                     </span>
 
                     {/* Actions */}
@@ -583,37 +558,6 @@ export const CuentasPorPagar = () => {
           )}
         </div>
 
-        {/* Comparativo section */}
-        {showComparativo && (
-          <div style={{ marginTop: "20px", background: "#FFF", borderRadius: "14px", padding: "20px", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
-            <div style={{ fontSize: "13px", fontWeight: "700", color: "#111827", marginBottom: "16px", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-              Comparativo por Categoría — {mesActualLabel} {hoy.getFullYear()}
-            </div>
-
-            {comparativoData.length === 0 ? (
-              <p style={{ color: "#9CA3AF", fontSize: "13px" }}>Sin datos para este mes.</p>
-            ) : comparativoData.map((cat: any) => (
-              <div key={cat.categoria} style={{ marginBottom: "20px" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-                  <span style={{ fontSize: "12px", fontWeight: "700", color: "#3D1C1E", textTransform: "uppercase" }}>{cat.categoria.replace(/_/g, " ")}</span>
-                  <span style={{ fontSize: "12px", fontWeight: "700", color: "#111827" }}>{fmt(cat.total_categoria)}</span>
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                  {cat.proveedores.map((prov: any) => (
-                    <div key={prov.nombre} style={{ display: "grid", gridTemplateColumns: "140px 1fr 80px 60px", alignItems: "center", gap: "10px" }}>
-                      <span style={{ fontSize: "12px", color: "#374151", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{prov.nombre}</span>
-                      <div style={{ background: "#F3F4F6", borderRadius: "3px", height: "8px", overflow: "hidden" }}>
-                        <div style={{ width: `${prov.pct}%`, height: "100%", background: "#3D1C1E", borderRadius: "3px" }} />
-                      </div>
-                      <span style={{ fontSize: "12px", fontWeight: "600", color: "#111827", textAlign: "right" }}>{fmt(prov.total)}</span>
-                      <span style={{ fontSize: "11px", color: "#9CA3AF", textAlign: "right" }}>{prov.pct}%</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
 
     </div>

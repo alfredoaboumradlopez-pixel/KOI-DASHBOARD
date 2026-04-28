@@ -331,3 +331,69 @@ def gastos_dashboard(
         "tendencia_semanal": tendencia,
         "alertas_gastos": sorted(alertas, key=lambda x: -x["variacion_pct"]),
     }
+
+
+@router.get("/api/gastos-caja/{restaurante_id}")
+def get_gastos_caja(
+    restaurante_id: int,
+    mes: Optional[int] = Query(None),
+    anio: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
+):
+    """
+    Retorna todos los gastos del mes para el navegador de días de Caja KOI.
+    Combina Gasto (fecha directa) + GastoDiario (fecha via CierreTurno).
+    """
+    hoy = date.today()
+    mes = mes or hoy.month
+    anio = anio or hoy.year
+
+    result = []
+
+    # ── Gasto table (transfers, invoices, quick entries) ──
+    gastos = (
+        db.query(models.Gasto)
+        .filter(
+            models.Gasto.restaurante_id == restaurante_id,
+            extract("month", models.Gasto.fecha) == mes,
+            extract("year", models.Gasto.fecha) == anio,
+        )
+        .all()
+    )
+    for g in gastos:
+        result.append({
+            "id": g.id,
+            "tabla": "gastos",
+            "fecha": str(g.fecha),
+            "proveedor": g.proveedor or "",
+            "categoria": g.categoria or "",
+            "comprobante": g.comprobante or "SIN_COMPROBANTE",
+            "descripcion": g.descripcion or "",
+            "monto": round(g.monto or 0.0, 2),
+        })
+
+    # ── GastoDiario + CierreTurno (daily ops from cierre de turno) ──
+    rows = (
+        db.query(models.GastoDiario, models.CierreTurno.fecha)
+        .join(models.CierreTurno, models.GastoDiario.cierre_id == models.CierreTurno.id)
+        .filter(
+            models.GastoDiario.restaurante_id == restaurante_id,
+            extract("month", models.CierreTurno.fecha) == mes,
+            extract("year", models.CierreTurno.fecha) == anio,
+        )
+        .all()
+    )
+    for gd, fecha_cierre in rows:
+        result.append({
+            "id": gd.id,
+            "tabla": "gastos_diarios",
+            "fecha": str(fecha_cierre),
+            "proveedor": gd.proveedor or "",
+            "categoria": gd.categoria or "",
+            "comprobante": str(gd.comprobante.value) if gd.comprobante else "SIN_COMPROBANTE",
+            "descripcion": gd.descripcion or "",
+            "monto": round(gd.monto or 0.0, 2),
+        })
+
+    result.sort(key=lambda x: (x["fecha"], x["proveedor"]))
+    return result
