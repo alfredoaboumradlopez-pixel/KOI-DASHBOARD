@@ -11,6 +11,7 @@ import { CuentasPorPagar } from "./components/CuentasPorPagar";
 import { Inventario } from "./components/Inventario";
 import { Nomina } from "./components/Nomina";
 import { Tesoreria } from "./components/Tesoreria";
+import { Fiscal } from "./components/Fiscal";
 import { Reportes } from "./components/Reportes";
 import { Propinas } from './components/Propinas';
 import { DashboardGastos } from './components/DashboardGastos';
@@ -199,6 +200,7 @@ function App() {
       {currentRoute === "/distribucion" && <DistribucionUtilidades />}
       {currentRoute === "/reportes" && <Reportes />}
       {currentRoute === "/tesoreria" && <Tesoreria />}
+      {currentRoute === "/fiscal" && <Fiscal />}
       {currentRoute === "/banco" && <ReconciliacionBancaria />}
       {currentRoute === "/dashboard-gastos" && <DashboardGastos />}
       {currentRoute === "/finder" && <InvoiceFinder />}

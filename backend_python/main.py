@@ -1705,6 +1705,237 @@ def listar_catalogo_cuentas(restaurante_id: int, db: Session = Depends(get_db)):
     return [{"id": c.id, "codigo": c.codigo, "nombre": c.nombre, "tipo": c.tipo, "categoria_pl": c.categoria_pl} for c in cuentas]
 
 
+@app.get("/api/fiscal/{restaurante_id}/posicion-mes")
+def posicion_fiscal_mes(
+    restaurante_id: int,
+    mes: Optional[int] = None,
+    anio: Optional[int] = None,
+    db: Session = Depends(get_db),
+):
+    from calendar import monthrange
+    from .services.pl_service import pl_service as _pl
+    hoy = date.today()
+    if not mes:
+        mes = hoy.month
+    if not anio:
+        anio = hoy.year
+
+    _MESES = ["","Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto",
+              "Septiembre","Octubre","Noviembre","Diciembre"]
+
+    # P&L del mes
+    pl = _pl.calcular_pl_mes(db, restaurante_id, mes, anio)
+
+    # IVA causado = ventas_netas * 0.16
+    iva_causado = round(pl.ventas_netas * 0.16, 2)
+
+    # IVA acreditable: gastos con catalogo iva_acreditable=True
+    cc_iva_ids = [c.id for c in db.query(models.CatalogoCuenta).filter(
+        models.CatalogoCuenta.restaurante_id == restaurante_id,
+        models.CatalogoCuenta.iva_acreditable == True,
+        models.CatalogoCuenta.activo == True,
+    ).all()]
+
+    monto_iva_base = 0.0
+    cierres_ids = [c.id for c in db.query(models.CierreTurno).filter(
+        models.CierreTurno.restaurante_id == restaurante_id,
+        extract("month", models.CierreTurno.fecha) == mes,
+        extract("year", models.CierreTurno.fecha) == anio,
+    ).all()]
+
+    if cc_iva_ids:
+        monto_iva_base += db.query(func.sum(models.Gasto.monto)).filter(
+            models.Gasto.restaurante_id == restaurante_id,
+            models.Gasto.catalogo_cuenta_id.in_(cc_iva_ids),
+            extract("month", models.Gasto.fecha) == mes,
+            extract("year", models.Gasto.fecha) == anio,
+        ).scalar() or 0.0
+        if cierres_ids:
+            monto_iva_base += db.query(func.sum(models.GastoDiario.monto)).filter(
+                models.GastoDiario.cierre_id.in_(cierres_ids),
+                models.GastoDiario.catalogo_cuenta_id.in_(cc_iva_ids),
+            ).scalar() or 0.0
+
+    iva_acreditable = round(monto_iva_base * 0.16, 2)
+    iva_por_pagar = round(max(0.0, iva_causado - iva_acreditable), 2)
+
+    # ISR: usar ebitda como utilidad fiscal (antes de impuestos estimados)
+    utilidad_fiscal = round(max(0.0, pl.ebitda), 2)
+    isr_estimado = round(utilidad_fiscal * 0.30, 2)
+
+    # Gastos deducibles (con factura) vs no deducibles
+    total_gastos_g = db.query(func.sum(models.Gasto.monto)).filter(
+        models.Gasto.restaurante_id == restaurante_id,
+        extract("month", models.Gasto.fecha) == mes,
+        extract("year", models.Gasto.fecha) == anio,
+    ).scalar() or 0.0
+
+    sin_factura_g = db.query(func.sum(models.Gasto.monto)).filter(
+        models.Gasto.restaurante_id == restaurante_id,
+        models.Gasto.comprobante == "SIN_COMPROBANTE",
+        extract("month", models.Gasto.fecha) == mes,
+        extract("year", models.Gasto.fecha) == anio,
+    ).scalar() or 0.0
+
+    total_gastos_gd = 0.0
+    sin_factura_gd = 0.0
+    if cierres_ids:
+        total_gastos_gd = db.query(func.sum(models.GastoDiario.monto)).filter(
+            models.GastoDiario.cierre_id.in_(cierres_ids),
+        ).scalar() or 0.0
+        sin_factura_gd = db.query(func.sum(models.GastoDiario.monto)).filter(
+            models.GastoDiario.cierre_id.in_(cierres_ids),
+            models.GastoDiario.comprobante == "SIN_COMPROBANTE",
+        ).scalar() or 0.0
+
+    total_gastos = round(total_gastos_g + total_gastos_gd, 2)
+    sin_factura = round(sin_factura_g + sin_factura_gd, 2)
+    con_factura = round(max(0.0, total_gastos - sin_factura), 2)
+    pct_ded = round((con_factura / max(total_gastos, 1)) * 100, 1)
+
+    # Obligaciones — deadline: día 17 del mes siguiente
+    mes_sig = mes % 12 + 1
+    anio_sig = anio + 1 if mes == 12 else anio
+    fecha_limite = date(anio_sig, mes_sig, 17)
+    dias_para_vencer = (fecha_limite - hoy).days
+
+    def _sem(dias: int) -> str:
+        if dias > 10: return "verde"
+        if dias >= 5: return "amarillo"
+        return "rojo"
+
+    obligaciones = []
+    for tipo, monto_est in [
+        ("IVA mensual", iva_por_pagar),
+        ("ISR provisional", isr_estimado),
+        ("DIOT", 0.0),
+    ]:
+        decl = db.query(models.DeclaracionFiscal).filter(
+            models.DeclaracionFiscal.restaurante_id == restaurante_id,
+            models.DeclaracionFiscal.mes == mes,
+            models.DeclaracionFiscal.anio == anio,
+            models.DeclaracionFiscal.tipo == tipo,
+        ).first()
+        estado = "declarado" if decl else "pendiente"
+        obligaciones.append({
+            "tipo": tipo,
+            "descripcion": f"{'Declaración y pago de ' if tipo != 'DIOT' else ''}{tipo} {_MESES[mes]} {anio}",
+            "fecha_limite": str(fecha_limite),
+            "dias_para_vencer": dias_para_vencer,
+            "monto_estimado": monto_est,
+            "estado": estado,
+            "semaforo": "verde" if estado == "declarado" else _sem(dias_para_vencer),
+            "fecha_declarada": str(decl.fecha_declarada) if decl else None,
+            "declarada_por": decl.declarada_por if decl else None,
+        })
+
+    # Historial (últimas 6 declaraciones de este restaurante)
+    historial_raw = db.query(models.DeclaracionFiscal).filter(
+        models.DeclaracionFiscal.restaurante_id == restaurante_id,
+    ).order_by(models.DeclaracionFiscal.created_at.desc()).limit(12).all()
+    historial = [{
+        "id": d.id, "mes": d.mes, "anio": d.anio, "tipo": d.tipo,
+        "monto": d.monto, "fecha_declarada": str(d.fecha_declarada) if d.fecha_declarada else None,
+        "declarada_por": d.declarada_por,
+        "nombre_mes": _MESES[d.mes] if 1 <= d.mes <= 12 else str(d.mes),
+    } for d in historial_raw]
+
+    # Semáforo general
+    pending_sems = [o["semaforo"] for o in obligaciones if o["estado"] == "pendiente"]
+    if "rojo" in pending_sems:
+        sem_general = "rojo"
+    elif "amarillo" in pending_sems:
+        sem_general = "amarillo"
+    else:
+        sem_general = "verde"
+
+    if sem_general == "verde":
+        msg = f"Fiscalmente al día — próximas obligaciones el 17 de {_MESES[mes_sig].lower()}"
+    elif sem_general == "amarillo":
+        msg = "Tienes obligaciones que vencen esta semana"
+    else:
+        msg = "Hay obligaciones vencidas — contacta a PMG inmediatamente"
+
+    sin_datos = pl.dias_con_datos == 0
+
+    return {
+        "periodo": {"mes": mes, "anio": anio, "nombre": f"{_MESES[mes]} {anio}"},
+        "sin_datos": sin_datos,
+        "iva": {
+            "causado": iva_causado,
+            "acreditable": iva_acreditable,
+            "por_pagar": iva_por_pagar,
+            "tasa": 16.0,
+        },
+        "isr": {
+            "utilidad_fiscal": utilidad_fiscal,
+            "isr_estimado": isr_estimado,
+            "pagos_provisionales": 0.0,
+            "isr_pendiente": isr_estimado,
+        },
+        "obligaciones": obligaciones,
+        "gastos_deducibles": {
+            "total": con_factura,
+            "sin_factura": sin_factura,
+            "total_gastos": total_gastos,
+            "porcentaje_deducible": pct_ded,
+        },
+        "resumen": {
+            "total_impuestos_estimados": round(iva_por_pagar + isr_estimado, 2),
+            "semaforo": sem_general,
+            "mensaje": msg,
+        },
+        "historial": historial,
+    }
+
+@app.post("/api/fiscal/{restaurante_id}/obligacion/{tipo}/declarar")
+def marcar_obligacion_declarada(
+    restaurante_id: int,
+    tipo: str,
+    mes: int = Query(...),
+    anio: int = Query(...),
+    declarada_por: str = Query(default="usuario"),
+    db: Session = Depends(get_db),
+):
+    existing = db.query(models.DeclaracionFiscal).filter(
+        models.DeclaracionFiscal.restaurante_id == restaurante_id,
+        models.DeclaracionFiscal.mes == mes,
+        models.DeclaracionFiscal.anio == anio,
+        models.DeclaracionFiscal.tipo == tipo,
+    ).first()
+    if existing:
+        return {"ok": True, "ya_declarada": True}
+    decl = models.DeclaracionFiscal(
+        restaurante_id=restaurante_id,
+        mes=mes,
+        anio=anio,
+        tipo=tipo,
+        fecha_declarada=date.today(),
+        declarada_por=declarada_por,
+    )
+    db.add(decl)
+    db.commit()
+    return {"ok": True, "ya_declarada": False}
+
+@app.delete("/api/fiscal/{restaurante_id}/obligacion/{tipo}/declarar")
+def desmarcar_obligacion_declarada(
+    restaurante_id: int,
+    tipo: str,
+    mes: int = Query(...),
+    anio: int = Query(...),
+    db: Session = Depends(get_db),
+):
+    decl = db.query(models.DeclaracionFiscal).filter(
+        models.DeclaracionFiscal.restaurante_id == restaurante_id,
+        models.DeclaracionFiscal.mes == mes,
+        models.DeclaracionFiscal.anio == anio,
+        models.DeclaracionFiscal.tipo == tipo,
+    ).first()
+    if decl:
+        db.delete(decl)
+        db.commit()
+    return {"ok": True}
+
 # Servir frontend en produccion
 frontend_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "dist")
 if os.path.exists(frontend_path):

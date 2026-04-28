@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useStore } from '../store/useStore';
-import { LayoutDashboard, ClipboardList, Receipt, Wallet, FileText, Users, BarChart3, Tag, LogOut, Building2, Plus } from 'lucide-react';
+import { LayoutDashboard, ClipboardList, Receipt, Wallet, FileText, Users, BarChart3, Tag, LogOut, Building2, Plus, Calculator } from 'lucide-react';
 import { api } from '../services/api';
 
 /** Semáforo color based on active alertas */
@@ -88,6 +88,7 @@ export const Sidebar = () => {
     { name: 'Categorizar gastos', icon: Tag, path: '/categorizar', badge: sinCatCount > 0 ? sinCatCount : undefined },
     { name: 'P&L & Reportes', icon: FileText, path: '/reportes' },
     { name: 'Calendario Pagos', icon: Wallet, path: '/tesoreria' },
+    { name: 'Fiscal', icon: Calculator, path: '/fiscal' },
     { name: 'Nómina', icon: Users, path: '/nomina' },
   ];
 

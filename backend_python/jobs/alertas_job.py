@@ -40,6 +40,9 @@ class AlertasJob:
             # Alertas D-3: pagos próximos a vencer (sin depender de alertas_config)
             alertas_creadas.extend(self._evaluar_pagos_proximos(db, restaurante_id, hoy))
 
+            # Alertas fiscales: obligaciones que vencen en ≤10 días
+            alertas_creadas.extend(self._evaluar_obligacion_fiscal(db, restaurante_id, hoy))
+
             if alertas_creadas:
                 db.commit()
 
@@ -297,6 +300,65 @@ class AlertasJob:
                     db.add(alerta)
                 if alerta:
                     creadas.append(alerta)
+
+        return creadas
+
+
+    def _evaluar_obligacion_fiscal(
+        self, db: Session, restaurante_id: int, hoy: date
+    ) -> List[models.AlertaLog]:
+        """Crea alertas OBLIGACION_FISCAL cuando IVA/ISR/DIOT vencen en ≤10 días."""
+        _MESES = ["","Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio",
+                  "Agosto","Septiembre","Octubre","Noviembre","Diciembre"]
+        creadas: List[models.AlertaLog] = []
+
+        mes_actual = hoy.month
+        anio_actual = hoy.year
+        mes_sig = mes_actual % 12 + 1
+        anio_sig = anio_actual + 1 if mes_actual == 12 else anio_actual
+
+        fecha_limite = date(anio_sig, mes_sig, 17)
+        dias_restantes = (fecha_limite - hoy).days
+
+        if dias_restantes > 10:
+            return creadas  # Sin urgencia aún
+
+        for tipo in ["IVA mensual", "ISR provisional", "DIOT"]:
+            # Verificar si ya fue declarada este mes
+            decl = db.query(models.DeclaracionFiscal).filter(
+                models.DeclaracionFiscal.restaurante_id == restaurante_id,
+                models.DeclaracionFiscal.mes == mes_actual,
+                models.DeclaracionFiscal.anio == anio_actual,
+                models.DeclaracionFiscal.tipo == tipo,
+            ).first()
+            if decl:
+                continue
+
+            # Anti-duplicado por concepto en 24h
+            hace_24h = datetime.utcnow() - timedelta(hours=24)
+            existe = db.query(models.AlertaLog).filter(
+                models.AlertaLog.restaurante_id == restaurante_id,
+                models.AlertaLog.tipo == "OBLIGACION_FISCAL",
+                models.AlertaLog.mensaje.contains(tipo),
+                models.AlertaLog.revisada == False,
+                models.AlertaLog.created_at >= hace_24h,
+            ).first()
+            if existe:
+                continue
+
+            sev = "CRITICAL" if dias_restantes <= 5 else "WARNING"
+            mes_nombre = _MESES[mes_actual] if 1 <= mes_actual <= 12 else str(mes_actual)
+            alerta = models.AlertaLog(
+                restaurante_id=restaurante_id,
+                tipo="OBLIGACION_FISCAL",
+                mensaje=f"{tipo} {mes_nombre} vence en {dias_restantes} día(s) — confirmar con PMG",
+                valor_detectado=float(dias_restantes),
+                umbral_config=10.0,
+                revisada=False,
+                severidad=sev,
+            )
+            db.add(alerta)
+            creadas.append(alerta)
 
         return creadas
 

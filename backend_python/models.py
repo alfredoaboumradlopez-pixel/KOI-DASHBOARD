@@ -422,3 +422,15 @@ class AuditLog(Base):
     detalle = Column(Text, nullable=True)
     ip_address = Column(String(45), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+class DeclaracionFiscal(Base):
+    __tablename__ = "declaraciones_fiscales"
+    id = Column(Integer, primary_key=True, index=True)
+    restaurante_id = Column(Integer, ForeignKey("restaurantes.id"), nullable=False)
+    mes = Column(Integer, nullable=False)
+    anio = Column(Integer, nullable=False)
+    tipo = Column(String(50), nullable=False)
+    monto = Column(Float, nullable=True)
+    fecha_declarada = Column(Date, nullable=True)
+    declarada_por = Column(String(100), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
