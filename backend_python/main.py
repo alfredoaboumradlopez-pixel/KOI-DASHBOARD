@@ -49,6 +49,7 @@ from .routers.alertas_router import router as alertas_router
 from .routers.gastos_dashboard_router import router as gastos_dashboard_router
 from .routers.costeo_router import router as costeo_router, seed_costeo
 from .routers.proveedores_analytics_router import router as proveedores_analytics_router
+from .routers.flujo_caja_router import router as flujo_caja_router
 
 models.Base.metadata.create_all(bind=engine)
 
@@ -256,6 +257,39 @@ try:
 except Exception as _e:
     print(f"Migracion catalogo_cuenta_id: {_e}")
 
+# Migracion: crear tabla config_flujo_caja e insertar default para KOI
+try:
+    with engine.begin() as _conn_fc:
+        if _USE_PG:
+            _conn_fc.execute(_text("""
+                CREATE TABLE IF NOT EXISTS config_flujo_caja (
+                    id SERIAL PRIMARY KEY,
+                    restaurante_id INTEGER UNIQUE REFERENCES restaurantes(id),
+                    saldo_banco_inicial DOUBLE PRECISION DEFAULT 0,
+                    nomina_semanal_estimada DOUBLE PRECISION DEFAULT 20000,
+                    dia_corte_impuestos INTEGER DEFAULT 17,
+                    porcentaje_iva DOUBLE PRECISION DEFAULT 16.0,
+                    porcentaje_isr DOUBLE PRECISION DEFAULT 30.0,
+                    retiro_utilidades_pct DOUBLE PRECISION DEFAULT 0,
+                    semana_retiro INTEGER DEFAULT 4,
+                    notas TEXT,
+                    updated_at TIMESTAMP DEFAULT now()
+                )
+            """))
+        _koi_fc = _conn_fc.execute(_text("SELECT id FROM restaurantes WHERE slug='koi' LIMIT 1")).fetchone()
+        if _koi_fc:
+            _conn_fc.execute(_text("""
+                INSERT INTO config_flujo_caja
+                    (restaurante_id, saldo_banco_inicial, nomina_semanal_estimada,
+                     dia_corte_impuestos, porcentaje_iva, porcentaje_isr,
+                     retiro_utilidades_pct, semana_retiro)
+                VALUES (:rid, 0, 20000, 17, 16.0, 30.0, 0, 4)
+                ON CONFLICT (restaurante_id) DO NOTHING
+            """), {"rid": _koi_fc[0]})
+            print("config_flujo_caja seed OK")
+except Exception as _e_fc:
+    print(f"Migracion config_flujo_caja: {_e_fc}")
+
 
 app = FastAPI(
     title="KOI Dashboard API",
@@ -279,6 +313,7 @@ app.include_router(alertas_router)
 app.include_router(gastos_dashboard_router)
 app.include_router(costeo_router)
 app.include_router(proveedores_analytics_router)
+app.include_router(flujo_caja_router)
 
 UPLOADS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
 os.makedirs(os.path.join(UPLOADS_DIR, "documentos"), exist_ok=True)

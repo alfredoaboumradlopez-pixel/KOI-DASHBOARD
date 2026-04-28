@@ -495,6 +495,21 @@ class Platillo(Base):
     activo = Column(Boolean, default=True)
 
 
+class ConfigFlujoCaja(Base):
+    __tablename__ = "config_flujo_caja"
+    id = Column(Integer, primary_key=True)
+    restaurante_id = Column(Integer, ForeignKey("restaurantes.id"), nullable=False, unique=True)
+    saldo_banco_inicial = Column(Float, default=0.0)
+    nomina_semanal_estimada = Column(Float, default=20000.0)
+    dia_corte_impuestos = Column(Integer, default=17)
+    porcentaje_iva = Column(Float, default=16.0)
+    porcentaje_isr = Column(Float, default=30.0)
+    retiro_utilidades_pct = Column(Float, default=0.0)
+    semana_retiro = Column(Integer, default=4)
+    notas = Column(Text, nullable=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class PlatilloIngrediente(Base):
     __tablename__ = "platillo_ingredientes"
     id = Column(Integer, primary_key=True, index=True)
