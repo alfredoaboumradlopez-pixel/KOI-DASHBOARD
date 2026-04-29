@@ -314,7 +314,7 @@ export const RestauranteDashboard = () => {
         style={{
           position: "fixed",
           bottom: "20px",
-          left: "50%",
+          left: "calc(50% + 130px)",
           transform: "translateX(-50%)",
           background: "rgba(30,30,30,0.96)",
           backdropFilter: "blur(20px)",
