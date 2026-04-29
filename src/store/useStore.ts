@@ -66,6 +66,6 @@ export const useStore = create<AppState>((set, get) => ({
   isSidebarOpen: false,
   toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
   setSidebarOpen: (isOpen) => set({ isSidebarOpen: isOpen }),
-  currentRoute: '/',
+  currentRoute: '/rbo',
   setCurrentRoute: (route) => set({ currentRoute: route }),
 }));
