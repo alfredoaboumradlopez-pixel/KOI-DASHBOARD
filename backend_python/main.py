@@ -113,7 +113,7 @@ try:
     with engine.begin() as _conn_rbs:
         _conn_rbs.execute(_text("""
             CREATE TABLE IF NOT EXISTS gastos_transferencia (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 restaurante_id INTEGER NOT NULL REFERENCES restaurantes(id),
                 proveedor VARCHAR(100) NOT NULL,
                 categoria VARCHAR(50) NOT NULL,
@@ -127,13 +127,34 @@ try:
                 comprobante_pago_nombre VARCHAR(255),
                 estado VARCHAR(20) DEFAULT 'PENDIENTE',
                 fecha_pago DATE,
+                folio VARCHAR(100),
+                folio_fiscal VARCHAR(40),
+                rfc_emisor VARCHAR(20),
+                items_json TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """))
         print("Tabla gastos_transferencia OK")
 except Exception as _e_rbs:
-    print(f"Migracion gastos_transferencia: {_e_rbs}")
+    print(f"Migracion gastos_transferencia (create): {_e_rbs}")
+
+# Migracion: agregar columnas faltantes a gastos_transferencia si la tabla ya existía
+try:
+    _insp_rbs = _inspect(engine)
+    _cols_rbs = [c['name'] for c in _insp_rbs.get_columns('gastos_transferencia')]
+    for _col_rbs, _tipo_rbs in [
+        ("folio", "VARCHAR(100)"),
+        ("folio_fiscal", "VARCHAR(40)"),
+        ("rfc_emisor", "VARCHAR(20)"),
+        ("items_json", "TEXT"),
+    ]:
+        if _col_rbs not in _cols_rbs:
+            with engine.begin() as _cx:
+                _cx.execute(_text(f"ALTER TABLE gastos_transferencia ADD COLUMN {_col_rbs} {_tipo_rbs}"))
+            print(f"Columna {_col_rbs} agregada a gastos_transferencia")
+except Exception as _e_rbs2:
+    print(f"Migracion gastos_transferencia (alter): {_e_rbs2}")
 
 # Migracion: agregar contenido_base64 a documentos_empleado
 try:

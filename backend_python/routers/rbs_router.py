@@ -79,8 +79,71 @@ def _serialize(g: models.GastoTransferencia) -> dict:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# CRUD endpoints
+# Parse PDF — DEBE ir antes de los wildcards /{restaurante_id}
 # ─────────────────────────────────────────────────────────────────────────────
+
+@router.post("/parse-invoice")
+async def parse_invoice(
+    file: UploadFile = File(...),
+    restaurante_id: int = Query(...),
+    db: Session = Depends(get_db),
+):
+    """
+    Parsea PDF de factura o comprobante de pago.
+    Si es comprobante, intenta match automático con facturas pendientes del restaurante.
+    IMPORTANTE: debe estar antes de POST /{restaurante_id} para evitar conflicto de rutas.
+    """
+    filename = file.filename or ""
+    if not filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Solo se aceptan archivos PDF")
+
+    content = await file.read()
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Archivo demasiado grande (máximo 10MB)")
+
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+        tmp.write(content)
+        tmp_path = tmp.name
+
+    try:
+        parser = InvoiceParser()
+        result = parser.parse(tmp_path)
+
+        # Si es comprobante → intentar match con facturas pendientes
+        if result.get("tipo_parser") == "comprobante_pago":
+            try:
+                facturas_db = db.query(models.GastoTransferencia).filter(
+                    models.GastoTransferencia.restaurante_id == restaurante_id,
+                    models.GastoTransferencia.estado == "PENDIENTE",
+                ).all()
+                facturas_list = [_serialize(f) for f in facturas_db]
+                match_result = match_payment_to_invoice(result, facturas_list)
+                result["match_sugerido"] = match_result
+            except Exception as e:
+                result["match_sugerido"] = None
+                result["match_error"] = str(e)
+
+        return {"ok": True, "data": result}
+
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except Exception:
+            pass
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CRUD endpoints (wildcards van DESPUÉS de rutas estáticas)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/{restaurante_id}/pendientes")
+def listar_pendientes(restaurante_id: int, db: Session = Depends(get_db)):
+    items = db.query(models.GastoTransferencia).filter(
+        models.GastoTransferencia.restaurante_id == restaurante_id,
+        models.GastoTransferencia.estado == "PENDIENTE",
+    ).order_by(models.GastoTransferencia.fecha_vencimiento.asc()).all()
+    return [_serialize(g) for g in items]
+
 
 @router.get("/{restaurante_id}")
 def listar_rbs(
@@ -103,15 +166,6 @@ def listar_rbs(
     if estado:
         result = [r for r in result if r["estado"] == estado.upper()]
     return result
-
-
-@router.get("/{restaurante_id}/pendientes")
-def listar_pendientes(restaurante_id: int, db: Session = Depends(get_db)):
-    items = db.query(models.GastoTransferencia).filter(
-        models.GastoTransferencia.restaurante_id == restaurante_id,
-        models.GastoTransferencia.estado == "PENDIENTE",
-    ).order_by(models.GastoTransferencia.fecha_vencimiento.asc()).all()
-    return [_serialize(g) for g in items]
 
 
 @router.post("/{restaurante_id}", status_code=201)
@@ -274,52 +328,3 @@ def descargar_comprobante(restaurante_id: int, gasto_id: int, db: Session = Depe
     if not g or not g.comprobante_pago_url:
         raise HTTPException(status_code=404, detail="Comprobante no encontrado")
     return _serve_base64_file(g.comprobante_pago_url, g.comprobante_pago_nombre or "comprobante.pdf")
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Parse PDF — factura o comprobante
-# ─────────────────────────────────────────────────────────────────────────────
-
-@router.post("/parse-invoice")
-async def parse_invoice(
-    file: UploadFile = File(...),
-    restaurante_id: int = Query(...),
-    db: Session = Depends(get_db),
-):
-    """
-    Parsea PDF de factura o comprobante de pago.
-    Si es comprobante, intenta match automático con facturas pendientes del restaurante.
-    """
-    filename = file.filename or ""
-    if not filename.lower().endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Solo se aceptan archivos PDF")
-
-    content = await file.read()
-    if len(content) > 10 * 1024 * 1024:
-        raise HTTPException(status_code=413, detail="Archivo demasiado grande (máximo 10MB)")
-
-    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
-        tmp.write(content)
-        tmp_path = tmp.name
-
-    try:
-        parser = InvoiceParser()
-        result = parser.parse(tmp_path)
-
-        # Si es comprobante → intentar match con facturas pendientes
-        if result.get("tipo_parser") == "comprobante_pago":
-            facturas_db = db.query(models.GastoTransferencia).filter(
-                models.GastoTransferencia.restaurante_id == restaurante_id,
-                models.GastoTransferencia.estado == "PENDIENTE",
-            ).all()
-            facturas_list = [_serialize(f) for f in facturas_db]
-            match_result = match_payment_to_invoice(result, facturas_list)
-            result["match_sugerido"] = match_result
-
-        return {"ok": True, "data": result}
-
-    finally:
-        try:
-            os.unlink(tmp_path)
-        except Exception:
-            pass
