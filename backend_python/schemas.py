@@ -102,6 +102,7 @@ class GastoCreate(BaseModel):
     metodo_pago: MetodoPago
     comprobante: Optional[str] = "SIN_COMPROBANTE"
     descripcion: Optional[str] = None
+    restaurante_id: Optional[int] = None
 
 class GastoResponse(GastoCreate):
     id: int

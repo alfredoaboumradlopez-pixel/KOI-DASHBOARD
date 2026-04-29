@@ -93,17 +93,30 @@ export const CapturaGastos: React.FC = () => {
     if (!bitacoraData?.gastos?.length) return;
     setBitacoraLoading(true);
     let ok = 0;
+    const errores: string[] = [];
     for (const g of bitacoraData.gastos) {
       try {
         await api.post("/api/gastos", {
-          fecha: bitacoraFecha, proveedor: g.proveedor, categoria: g.categoria,
-          monto: g.monto, metodo_pago: g.metodo_pago, comprobante: g.comprobante,
-          descripcion: g.descripcion, restaurante_id: restauranteId,
+          fecha: bitacoraFecha,
+          proveedor: g.proveedor || "DESCONOCIDO",
+          categoria: g.categoria || "OTROS",
+          monto: g.monto,
+          metodo_pago: g.metodo_pago || "EFECTIVO",
+          comprobante: g.comprobante || "SIN_COMPROBANTE",
+          descripcion: g.descripcion || null,
+          restaurante_id: restauranteId,
         });
         ok++;
-      } catch (e) {}
+      } catch (e: any) {
+        const msg = e?.message || e?.detail || String(e);
+        errores.push(`${g.proveedor} $${g.monto}: ${msg}`);
+      }
     }
-    alert(ok + " gastos registrados de " + bitacoraData.gastos_count);
+    if (errores.length) {
+      alert(`${ok} gastos guardados. ${errores.length} errores:\n${errores.slice(0, 5).join("\n")}`);
+    } else {
+      alert(`✓ ${ok} gastos registrados correctamente`);
+    }
     setBitacoraData(null);
     setBitacoraMode(false);
     setBitacoraFile(null);
