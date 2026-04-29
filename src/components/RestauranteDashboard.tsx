@@ -76,6 +76,8 @@ export const RestauranteDashboard = () => {
   const [error, setError] = useState("");
   const [subModule, setSubModule] = useState<SubModule>("dashboard");
   const [alertasGastos, setAlertasGastos] = useState(0);
+  const [sinCategorizar, setSinCategorizar] = useState(0);
+  const [hoveredDock, setHoveredDock] = useState<SubModule | null>(null);
 
   useEffect(() => {
     if (!slug) {
@@ -104,6 +106,13 @@ export const RestauranteDashboard = () => {
         setLoading(false);
       });
   }, [slug]);
+
+  useEffect(() => {
+    if (!restaurante) return;
+    api.get(`/api/gastos/sin-categorizar/${restaurante.id}`)
+      .then((d: any) => setSinCategorizar(d?.count ?? d?.total ?? 0))
+      .catch(() => {});
+  }, [restaurante]);
 
   // ── Estado de carga ──────────────────────────────────────────────────────
   if (loading) {
@@ -270,112 +279,88 @@ export const RestauranteDashboard = () => {
         </div>
       </div>
 
-      {/* ── Barra de módulos horizontal ───────────────────────────── */}
+      {/* ── Contenido del módulo seleccionado ──────────────────────── */}
+      <div style={{ paddingBottom: "100px" }}>
+        {subModule === "dashboard" && (
+          <PLDashboard restauranteIdOverride={restauranteId} />
+        )}
+        {subModule === "cierre-turno" && <CierreTurno />}
+        {subModule === "gastos" && <CapturaGastos />}
+        {subModule === "dashboard-gastos" && (
+          <DashboardGastos restauranteIdOverride={restauranteId} />
+        )}
+        {subModule === "categorizar" && (
+          <CategorizarGastos restauranteIdOverride={restauranteId} />
+        )}
+        {subModule === "nomina" && <Nomina />}
+        {subModule === "tesoreria" && <Tesoreria />}
+        {subModule === "fiscal" && <Fiscal />}
+        {subModule === "costeo" && (
+          <Costeo restauranteIdOverride={restauranteId} />
+        )}
+      </div>
+
+      {/* ── Dock flotante inferior ──────────────────────────────────── */}
+      <style>{`
+        .koi-dock-item { position: relative; display: flex; flex-direction: column; align-items: center; padding: 8px 12px; border-radius: 12px; cursor: pointer; transition: transform 0.2s ease, background 0.15s ease; min-width: 56px; border: none; background: transparent; }
+        .koi-dock-item:hover { transform: translateY(-4px); background: rgba(255,255,255,0.08); }
+        .koi-dock-item.active { background: #1a1a1a; }
+        .koi-dock-tooltip { position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%); background: #1a1a1a; color: white; padding: 4px 10px; border-radius: 8px; font-size: 12px; white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity 0.15s; z-index: 10; }
+        .koi-dock-item:hover .koi-dock-tooltip { opacity: 1; }
+        @media (max-width: 768px) { .koi-dock { left: 0 !important; right: 0 !important; transform: none !important; bottom: 0 !important; border-radius: 16px 16px 0 0 !important; max-width: 100% !important; overflow-x: auto; justify-content: flex-start; } }
+      `}</style>
       <div
+        className="koi-dock"
         style={{
+          position: "fixed",
+          bottom: "20px",
+          left: "50%",
+          transform: "translateX(-50%)",
+          background: "rgba(30,30,30,0.96)",
+          backdropFilter: "blur(20px)",
+          WebkitBackdropFilter: "blur(20px)",
+          border: "1px solid rgba(255,255,255,0.08)",
+          borderRadius: "20px",
+          boxShadow: "0 8px 32px rgba(0,0,0,0.28)",
+          padding: "8px 12px",
           display: "flex",
-          gap: "4px",
-          background: "#FFF",
-          borderRadius: "12px",
-          padding: "6px",
-          marginBottom: "20px",
-          boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
-          overflowX: "auto" as const,
-          flexWrap: "nowrap" as const,
+          gap: "2px",
+          zIndex: 100,
+          maxWidth: "700px",
         }}
       >
-        {MODULOS.map((m) => {
-          const Icon = m.icon;
+        {([
+          { key: "dashboard",        label: "Dashboard",    shortLabel: "Dashboard",  emoji: "📊" },
+          { key: "cierre-turno",     label: "Cierre de Turno", shortLabel: "Cierre", emoji: "📋" },
+          { key: "gastos",           label: "Gastos",       shortLabel: "Gastos",     emoji: "💰" },
+          { key: "dashboard-gastos", label: "Análisis",     shortLabel: "Análisis",   emoji: "📈" },
+          { key: "categorizar",      label: "Categorizar",  shortLabel: "Categ.",     emoji: "🏷️", badge: true },
+          { key: "nomina",           label: "Nómina",       shortLabel: "Nómina",     emoji: "👥" },
+          { key: "tesoreria",        label: "Pagos",        shortLabel: "Pagos",      emoji: "📅" },
+          { key: "fiscal",           label: "Fiscal",       shortLabel: "Fiscal",     emoji: "🏛️" },
+          { key: "costeo",           label: "Costeo & Menú", shortLabel: "Costeo",   emoji: "🍽️" },
+        ] as { key: SubModule; label: string; shortLabel: string; emoji: string; badge?: boolean }[]).map((m) => {
           const active = subModule === m.key;
-          const badge = m.badgeKey === "alertas" ? alertasGastos : 0;
+          const badgeCount = m.badge ? sinCategorizar : 0;
           return (
             <button
               key={m.key}
-              onClick={() => setSubModule(m.key)}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "6px",
-                padding: "8px 14px",
-                borderRadius: "8px",
-                border: "none",
-                cursor: "pointer",
-                fontSize: "12px",
-                fontWeight: active ? "700" : "500",
-                background: active ? "#3D1C1E" : "transparent",
-                color: active ? "#C8FF00" : "#6B7280",
-                transition: "all 0.15s",
-                whiteSpace: "nowrap" as const,
-                flexShrink: 0,
-                position: "relative" as const,
-              }}
-              onMouseEnter={(e) => {
-                if (!active) {
-                  e.currentTarget.style.background = "#F3F4F6";
-                  e.currentTarget.style.color = "#374151";
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!active) {
-                  e.currentTarget.style.background = "transparent";
-                  e.currentTarget.style.color = "#6B7280";
-                }
+              className={`koi-dock-item${active ? " active" : ""}`}
+              onClick={() => {
+                setSubModule(m.key);
+                window.scrollTo({ top: 0, behavior: "smooth" });
               }}
             >
-              <Icon style={{ width: "14px", height: "14px", flexShrink: 0 }} />
-              {m.label}
-              {badge > 0 && (
-                <span
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    minWidth: "16px",
-                    height: "16px",
-                    padding: "0 4px",
-                    borderRadius: "8px",
-                    background: active ? "#F97316" : "#F97316",
-                    color: "#FFF",
-                    fontSize: "9px",
-                    fontWeight: "800",
-                    lineHeight: 1,
-                  }}
-                >
-                  {badge}
-                </span>
+              <span style={{ fontSize: "22px", lineHeight: 1 }}>{m.emoji}</span>
+              <span style={{ fontSize: "10px", marginTop: "4px", fontWeight: "500", color: active ? "#C8FF00" : "rgba(255,255,255,0.55)", whiteSpace: "nowrap" }}>{m.shortLabel}</span>
+              <span className="koi-dock-tooltip">{m.label}</span>
+              {badgeCount > 0 && (
+                <span style={{ position: "absolute", top: "4px", right: "6px", background: "#ef4444", color: "white", fontSize: "9px", fontWeight: "700", padding: "1px 5px", borderRadius: "10px", minWidth: "16px", textAlign: "center" }}>{badgeCount}</span>
               )}
             </button>
           );
         })}
       </div>
-
-      {/* ── Contenido del módulo seleccionado ──────────────────────── */}
-
-      {subModule === "dashboard" && (
-        <PLDashboard restauranteIdOverride={restauranteId} />
-      )}
-
-      {subModule === "cierre-turno" && <CierreTurno />}
-
-      {subModule === "gastos" && <CapturaGastos />}
-
-      {subModule === "dashboard-gastos" && (
-        <DashboardGastos restauranteIdOverride={restauranteId} />
-      )}
-
-      {subModule === "categorizar" && (
-        <CategorizarGastos restauranteIdOverride={restauranteId} />
-      )}
-
-      {subModule === "nomina" && <Nomina />}
-
-      {subModule === "tesoreria" && <Tesoreria />}
-
-      {subModule === "fiscal" && <Fiscal />}
-
-      {subModule === "costeo" && (
-        <Costeo restauranteIdOverride={restauranteId} />
-      )}
     </div>
     </RestauranteProvider>
   );
