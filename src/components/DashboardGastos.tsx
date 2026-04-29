@@ -164,7 +164,16 @@ export const DashboardGastos = ({ restauranteIdOverride }: Props) => {
 
   // ── Toggle categoría activa ───────────────────────────────────────────────
   const toggleCategoria = (cat: string) => {
-    setCategoriaActiva((prev) => (prev === cat ? null : cat));
+    setCategoriaActiva((prev) => {
+      const opening = prev !== cat;
+      if (opening) {
+        setTimeout(() => {
+          const panel = document.getElementById("desglose-panel");
+          if (panel) panel.scrollIntoView({ behavior: "smooth", block: "start" });
+        }, 100);
+      }
+      return prev === cat ? null : cat;
+    });
   };
 
   // ── Datos del panel de desglose ───────────────────────────────────────────
@@ -594,6 +603,7 @@ export const DashboardGastos = ({ restauranteIdOverride }: Props) => {
           {/* ── 5. Panel de desglose ─────────────────────────────────────── */}
           {catActiva && (
             <div
+              id="desglose-panel"
               style={{
                 background: "#FFF",
                 borderRadius: "14px",
