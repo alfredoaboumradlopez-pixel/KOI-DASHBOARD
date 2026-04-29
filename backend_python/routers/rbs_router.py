@@ -1,17 +1,28 @@
 """
-RBS — Gastos por Transferencia con Factura y Comprobante de Pago
+RBS — Gastos por Transferencia con Factura, Comprobante de Pago y Parser de PDF.
 """
 import base64
+import json
+import os
+import tempfile
 from datetime import date, datetime
-from typing import Optional, List
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
-from sqlalchemy.orm import Session
+from typing import Optional
+
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel
+from sqlalchemy import extract
+from sqlalchemy.orm import Session
+
 from ..database import get_db
 from .. import models
+from ..services.pdf_parser import InvoiceParser, match_payment_to_invoice
 
 router = APIRouter(prefix="/api/rbs", tags=["rbs"])
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Schemas
+# ─────────────────────────────────────────────────────────────────────────────
 
 class GastoTransferenciaCreate(BaseModel):
     proveedor: str
@@ -20,6 +31,10 @@ class GastoTransferenciaCreate(BaseModel):
     monto: float
     fecha_factura: date
     fecha_vencimiento: Optional[date] = None
+    folio: Optional[str] = None
+    folio_fiscal: Optional[str] = None
+    rfc_emisor: Optional[str] = None
+    items_json: Optional[str] = None
 
 
 class GastoTransferenciaUpdate(BaseModel):
@@ -29,12 +44,16 @@ class GastoTransferenciaUpdate(BaseModel):
     monto: Optional[float] = None
     fecha_factura: Optional[date] = None
     fecha_vencimiento: Optional[date] = None
+    folio: Optional[str] = None
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Serializer
+# ─────────────────────────────────────────────────────────────────────────────
 
 def _serialize(g: models.GastoTransferencia) -> dict:
     hoy = date.today()
     estado = g.estado
-    # Auto-calcular VENCIDO
     if estado == "PENDIENTE" and g.fecha_vencimiento and g.fecha_vencimiento < hoy:
         estado = "VENCIDO"
     return {
@@ -52,9 +71,16 @@ def _serialize(g: models.GastoTransferencia) -> dict:
         "tiene_comprobante": bool(g.comprobante_pago_url),
         "estado": estado,
         "fecha_pago": str(g.fecha_pago) if g.fecha_pago else None,
+        "folio": g.folio,
+        "folio_fiscal": g.folio_fiscal,
+        "rfc_emisor": g.rfc_emisor,
         "created_at": str(g.created_at),
     }
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CRUD endpoints
+# ─────────────────────────────────────────────────────────────────────────────
 
 @router.get("/{restaurante_id}")
 def listar_rbs(
@@ -68,7 +94,6 @@ def listar_rbs(
         models.GastoTransferencia.restaurante_id == restaurante_id
     )
     if mes and anio:
-        from sqlalchemy import extract
         q = q.filter(
             extract("month", models.GastoTransferencia.fecha_factura) == mes,
             extract("year", models.GastoTransferencia.fecha_factura) == anio,
@@ -94,12 +119,16 @@ def crear_rbs(restaurante_id: int, data: GastoTransferenciaCreate, db: Session =
     g = models.GastoTransferencia(
         restaurante_id=restaurante_id,
         proveedor=data.proveedor.strip(),
-        categoria=data.categoria,
+        categoria=data.categoria or "OTROS",
         descripcion=data.descripcion,
         monto=data.monto,
         fecha_factura=data.fecha_factura,
         fecha_vencimiento=data.fecha_vencimiento,
         estado="PENDIENTE",
+        folio=data.folio,
+        folio_fiscal=data.folio_fiscal,
+        rfc_emisor=data.rfc_emisor,
+        items_json=data.items_json,
     )
     db.add(g)
     db.commit()
@@ -110,7 +139,7 @@ def crear_rbs(restaurante_id: int, data: GastoTransferenciaCreate, db: Session =
 @router.put("/{restaurante_id}/{gasto_id}")
 def actualizar_rbs(
     restaurante_id: int, gasto_id: int,
-    data: GastoTransferenciaUpdate, db: Session = Depends(get_db)
+    data: GastoTransferenciaUpdate, db: Session = Depends(get_db),
 ):
     g = db.query(models.GastoTransferencia).filter(
         models.GastoTransferencia.id == gasto_id,
@@ -139,10 +168,14 @@ def eliminar_rbs(restaurante_id: int, gasto_id: int, db: Session = Depends(get_d
     return {"ok": True}
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Subir archivos
+# ─────────────────────────────────────────────────────────────────────────────
+
 @router.post("/{restaurante_id}/{gasto_id}/factura")
 async def subir_factura(
     restaurante_id: int, gasto_id: int,
-    file: UploadFile = File(...), db: Session = Depends(get_db)
+    file: UploadFile = File(...), db: Session = Depends(get_db),
 ):
     g = db.query(models.GastoTransferencia).filter(
         models.GastoTransferencia.id == gasto_id,
@@ -153,9 +186,8 @@ async def subir_factura(
     content = await file.read()
     if len(content) > 10 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="Archivo demasiado grande (máximo 10MB)")
-    b64 = base64.b64encode(content).decode("utf-8")
     ext = (file.filename or "").rsplit(".", 1)[-1].lower()
-    g.factura_url = f"data:application/{ext};base64,{b64}"
+    g.factura_url = f"data:application/{ext};base64,{base64.b64encode(content).decode()}"
     g.factura_nombre = file.filename
     g.updated_at = datetime.utcnow()
     db.commit()
@@ -166,7 +198,7 @@ async def subir_factura(
 @router.post("/{restaurante_id}/{gasto_id}/comprobante")
 async def subir_comprobante(
     restaurante_id: int, gasto_id: int,
-    file: UploadFile = File(...), db: Session = Depends(get_db)
+    file: UploadFile = File(...), db: Session = Depends(get_db),
 ):
     g = db.query(models.GastoTransferencia).filter(
         models.GastoTransferencia.id == gasto_id,
@@ -177,16 +209,14 @@ async def subir_comprobante(
     content = await file.read()
     if len(content) > 10 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="Archivo demasiado grande (máximo 10MB)")
-    b64 = base64.b64encode(content).decode("utf-8")
     ext = (file.filename or "").rsplit(".", 1)[-1].lower()
-    g.comprobante_pago_url = f"data:application/{ext};base64,{b64}"
+    g.comprobante_pago_url = f"data:application/{ext};base64,{base64.b64encode(content).decode()}"
     g.comprobante_pago_nombre = file.filename
     g.estado = "PAGADO"
     g.fecha_pago = date.today()
     g.updated_at = datetime.utcnow()
     db.commit()
-
-    # Crear registro en gastos para que entre al P&L
+    # Crear registro en gastos para P&L
     try:
         gasto_pl = models.Gasto(
             fecha=g.fecha_pago,
@@ -201,45 +231,95 @@ async def subir_comprobante(
         db.add(gasto_pl)
         db.commit()
     except Exception:
-        pass  # No bloquear si falla
-
+        pass
     db.refresh(g)
     return _serialize(g)
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Descarga de archivos
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _serve_base64_file(data_url: str, filename: str):
+    from fastapi.responses import Response
+    if data_url.startswith("data:"):
+        _, b64part = data_url.split(",", 1)
+        content = base64.b64decode(b64part)
+        ext = (filename or "archivo").rsplit(".", 1)[-1].lower()
+        media = "application/pdf" if ext == "pdf" else f"image/{ext}"
+        return Response(
+            content=content, media_type=media,
+            headers={"Content-Disposition": f'inline; filename="{filename}"'},
+        )
+    raise HTTPException(status_code=404, detail="Archivo no disponible")
+
+
 @router.get("/{restaurante_id}/{gasto_id}/factura/archivo")
 def descargar_factura(restaurante_id: int, gasto_id: int, db: Session = Depends(get_db)):
-    from fastapi.responses import Response
     g = db.query(models.GastoTransferencia).filter(
         models.GastoTransferencia.id == gasto_id,
         models.GastoTransferencia.restaurante_id == restaurante_id,
     ).first()
     if not g or not g.factura_url:
         raise HTTPException(status_code=404, detail="Factura no encontrada")
-    if g.factura_url.startswith("data:"):
-        _, b64part = g.factura_url.split(",", 1)
-        content = base64.b64decode(b64part)
-        ext = (g.factura_nombre or "archivo").rsplit(".", 1)[-1].lower()
-        media = "application/pdf" if ext == "pdf" else f"image/{ext}"
-        return Response(content=content, media_type=media,
-                        headers={"Content-Disposition": f'inline; filename="{g.factura_nombre}"'})
-    raise HTTPException(status_code=404, detail="Archivo no disponible")
+    return _serve_base64_file(g.factura_url, g.factura_nombre or "factura.pdf")
 
 
 @router.get("/{restaurante_id}/{gasto_id}/comprobante/archivo")
 def descargar_comprobante(restaurante_id: int, gasto_id: int, db: Session = Depends(get_db)):
-    from fastapi.responses import Response
     g = db.query(models.GastoTransferencia).filter(
         models.GastoTransferencia.id == gasto_id,
         models.GastoTransferencia.restaurante_id == restaurante_id,
     ).first()
     if not g or not g.comprobante_pago_url:
         raise HTTPException(status_code=404, detail="Comprobante no encontrado")
-    if g.comprobante_pago_url.startswith("data:"):
-        _, b64part = g.comprobante_pago_url.split(",", 1)
-        content = base64.b64decode(b64part)
-        ext = (g.comprobante_pago_nombre or "archivo").rsplit(".", 1)[-1].lower()
-        media = "application/pdf" if ext == "pdf" else f"image/{ext}"
-        return Response(content=content, media_type=media,
-                        headers={"Content-Disposition": f'inline; filename="{g.comprobante_pago_nombre}"'})
-    raise HTTPException(status_code=404, detail="Archivo no disponible")
+    return _serve_base64_file(g.comprobante_pago_url, g.comprobante_pago_nombre or "comprobante.pdf")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Parse PDF — factura o comprobante
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.post("/parse-invoice")
+async def parse_invoice(
+    file: UploadFile = File(...),
+    restaurante_id: int = Query(...),
+    db: Session = Depends(get_db),
+):
+    """
+    Parsea PDF de factura o comprobante de pago.
+    Si es comprobante, intenta match automático con facturas pendientes del restaurante.
+    """
+    filename = file.filename or ""
+    if not filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Solo se aceptan archivos PDF")
+
+    content = await file.read()
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Archivo demasiado grande (máximo 10MB)")
+
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+        tmp.write(content)
+        tmp_path = tmp.name
+
+    try:
+        parser = InvoiceParser()
+        result = parser.parse(tmp_path)
+
+        # Si es comprobante → intentar match con facturas pendientes
+        if result.get("tipo_parser") == "comprobante_pago":
+            facturas_db = db.query(models.GastoTransferencia).filter(
+                models.GastoTransferencia.restaurante_id == restaurante_id,
+                models.GastoTransferencia.estado == "PENDIENTE",
+            ).all()
+            facturas_list = [_serialize(f) for f in facturas_db]
+            match_result = match_payment_to_invoice(result, facturas_list)
+            result["match_sugerido"] = match_result
+
+        return {"ok": True, "data": result}
+
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except Exception:
+            pass

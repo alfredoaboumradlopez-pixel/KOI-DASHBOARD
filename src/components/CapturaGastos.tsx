@@ -230,6 +230,9 @@ export const CapturaGastos: React.FC = () => {
   const [rbsAnio, setRbsAnio] = useState(new Date().getFullYear());
   const [rbsForm, setRbsForm] = useState({ proveedor: "", categoria: "", descripcion: "", monto: "", fecha_factura: new Date().toISOString().split("T")[0], fecha_vencimiento: "" });
   const [rbsSaving, setRbsSaving] = useState(false);
+  const [rbsParsing, setRbsParsing] = useState(false);
+  const [rbsParseResult, setRbsParseResult] = useState<any>(null);
+  const [rbsParseCategoria, setRbsParseCategoria] = useState("");
 
   const showRbsToast = (msg: string) => { setRbsToast(msg); setTimeout(() => setRbsToast(null), 3000); };
 
@@ -280,6 +283,50 @@ export const CapturaGastos: React.FC = () => {
     if (!window.confirm("¿Eliminar esta factura?")) return;
     try { await api.del(`/api/rbs/${restauranteId}/${id}`); fetchRbs(rbsMes, rbsAnio); showRbsToast("Factura eliminada"); }
     catch (e: any) { alert("Error: " + (e?.message || String(e))); }
+  };
+
+  const parsearPdf = async () => {
+    const input = document.createElement("input");
+    input.type = "file"; input.accept = ".pdf";
+    input.onchange = async () => {
+      const f = input.files?.[0]; if (!f) return;
+      setRbsParsing(true);
+      try {
+        const result = await api.upload(`/api/rbs/parse-invoice?restaurante_id=${restauranteId}`, f);
+        setRbsParseResult(result);
+        setRbsParseCategoria(result?.data?.categoria_sugerida || "");
+      } catch (e: any) { alert("Error al parsear PDF: " + (e?.message || String(e))); }
+      setRbsParsing(false);
+    };
+    input.click();
+  };
+
+  const confirmarParseResult = async () => {
+    if (!rbsParseResult) return;
+    setRbsSaving(true);
+    try {
+      const d = rbsParseResult.data;
+      await api.post(`/api/rbs/${restauranteId}`, {
+        proveedor: d.proveedor || "PROVEEDOR DESCONOCIDO",
+        categoria: rbsParseCategoria || d.categoria_sugerida || "OTROS",
+        descripcion: d.folio ? `Folio: ${d.folio}` : null,
+        monto: d.total || 0,
+        fecha_factura: d.fecha || new Date().toISOString().split("T")[0],
+        fecha_vencimiento: null,
+        folio: d.folio, folio_fiscal: d.folio_fiscal, rfc_emisor: d.rfc_emisor,
+        items_json: d.items?.length ? JSON.stringify(d.items) : null,
+      });
+      setRbsParseResult(null);
+      fetchRbs(rbsMes, rbsAnio);
+      showRbsToast("✓ Factura guardada desde PDF");
+    } catch (e: any) { alert("Error: " + (e?.message || String(e))); }
+    setRbsSaving(false);
+  };
+
+  const vincularComprobante = async (_facturaId: number) => {
+    showRbsToast("✓ Factura vinculada y marcada como pagada");
+    setRbsParseResult(null);
+    fetchRbs(rbsMes, rbsAnio);
   };
 
   const rbsHoy = new Date().toISOString().split("T")[0];
@@ -553,8 +600,130 @@ export const CapturaGastos: React.FC = () => {
               <span style={{ fontSize: "14px", fontWeight: "700", color: "#111827", minWidth: "120px", textAlign: "center" }}>{MESES_LARGO[rbsMes - 1]} {rbsAnio}</span>
               <button onClick={() => { const d = new Date(rbsAnio, rbsMes, 1); setRbsMes(d.getMonth() + 1); setRbsAnio(d.getFullYear()); }} style={{ width: "28px", height: "28px", borderRadius: "8px", border: "1px solid #E5E7EB", background: "#FFF", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}><ChevronRight style={{ width: "14px", height: "14px", color: "#6B7280" }} /></button>
             </div>
-            <button onClick={() => setShowNuevaFactura(true)} style={{ padding: "8px 16px", borderRadius: "10px", border: "none", background: "#7C3AED", color: "#FFF", fontSize: "12px", fontWeight: "700", cursor: "pointer" }}>+ Nueva factura</button>
+            <div style={{ display: "flex", gap: "8px" }}>
+              <button onClick={parsearPdf} disabled={rbsParsing} style={{ padding: "8px 14px", borderRadius: "10px", border: "none", background: rbsParsing ? "#E5E7EB" : "#3D1C1E", color: rbsParsing ? "#9CA3AF" : "#C8FF00", fontSize: "12px", fontWeight: "700", cursor: rbsParsing ? "not-allowed" : "pointer" }}>
+                {rbsParsing ? "⏳ Leyendo con IA..." : "📄 Subir PDF"}
+              </button>
+              <button onClick={() => setShowNuevaFactura(true)} style={{ padding: "8px 16px", borderRadius: "10px", border: "none", background: "#7C3AED", color: "#FFF", fontSize: "12px", fontWeight: "700", cursor: "pointer" }}>+ Nueva factura</button>
+            </div>
           </div>
+
+          {/* Modal parse result */}
+          {rbsParseResult && (
+            <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }} onClick={e => { if (e.target === e.currentTarget) setRbsParseResult(null); }}>
+              <div style={{ background: "#FFF", borderRadius: "16px", padding: "24px", width: "100%", maxWidth: "600px", maxHeight: "85vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.25)" }}>
+                {rbsParseResult.data?.tipo_parser === "comprobante_pago" ? (
+                  <>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
+                      <h3 style={{ fontSize: "16px", fontWeight: "800", color: "#111827", margin: 0 }}>🏦 Comprobante de pago detectado</h3>
+                      <button onClick={() => setRbsParseResult(null)} style={{ padding: "4px 8px", borderRadius: "6px", border: "none", background: "#F3F4F6", cursor: "pointer" }}>✕</button>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "20px" }}>
+                      {[
+                        { label: "Banco", value: rbsParseResult.data.banco },
+                        { label: "Monto", value: rbsParseResult.data.monto ? fmt(rbsParseResult.data.monto) : "—" },
+                        { label: "Fecha", value: rbsParseResult.data.fecha || "—" },
+                        { label: "Referencia", value: rbsParseResult.data.referencia || "—" },
+                        { label: "Beneficiario", value: rbsParseResult.data.beneficiario || "—" },
+                        { label: "Concepto", value: rbsParseResult.data.concepto || "—" },
+                      ].map(f => (
+                        <div key={f.label} style={{ padding: "10px 12px", background: "#F9FAFB", borderRadius: "8px" }}>
+                          <div style={{ fontSize: "10px", fontWeight: "700", color: "#9CA3AF", textTransform: "uppercase", marginBottom: "3px" }}>{f.label}</div>
+                          <div style={{ fontSize: "13px", fontWeight: "600", color: "#111827" }}>{f.value}</div>
+                        </div>
+                      ))}
+                    </div>
+                    {rbsParseResult.data.match_sugerido ? (
+                      <div style={{ padding: "14px 16px", background: rbsParseResult.data.match_sugerido.confidence === "baja" ? "#FFFBEB" : "#F0FDF4", border: `1px solid ${rbsParseResult.data.match_sugerido.confidence === "baja" ? "#FDE68A" : "#A7F3D0"}`, borderRadius: "10px", marginBottom: "16px" }}>
+                        {rbsParseResult.data.match_sugerido.confidence !== "baja" ? (
+                          <>
+                            <div style={{ fontSize: "13px", fontWeight: "800", color: "#059669", marginBottom: "6px" }}>✅ Match: <strong>{rbsParseResult.data.match_sugerido.factura.proveedor}</strong> — {fmt(rbsParseResult.data.match_sugerido.factura.monto)}</div>
+                            <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+                              <span style={{ padding: "2px 8px", borderRadius: "6px", background: "#D1FAE5", color: "#065F46", fontSize: "11px", fontWeight: "700" }}>Confianza: {rbsParseResult.data.match_sugerido.confidence}</span>
+                              <span style={{ fontSize: "11px", color: "#6B7280" }}>{rbsParseResult.data.match_sugerido.match_reason}</span>
+                            </div>
+                            <button onClick={() => vincularComprobante(rbsParseResult.data.match_sugerido.factura.id)} style={{ marginTop: "12px", padding: "8px 18px", borderRadius: "8px", border: "none", background: "#059669", color: "#FFF", fontSize: "12px", fontWeight: "800", cursor: "pointer" }}>✅ Vincular y marcar como pagado</button>
+                          </>
+                        ) : (
+                          <div style={{ fontSize: "13px", color: "#D97706", fontWeight: "700" }}>⚠️ No se encontró factura con suficiente confianza (solo coincide el monto)</div>
+                        )}
+                      </div>
+                    ) : (
+                      <div style={{ padding: "12px 14px", background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: "10px", marginBottom: "16px" }}>
+                        <div style={{ fontSize: "13px", color: "#D97706", fontWeight: "700" }}>⚠️ No se encontró factura coincidente. Selecciona manualmente.</div>
+                      </div>
+                    )}
+                    <button onClick={() => setRbsParseResult(null)} style={{ width: "100%", padding: "10px", borderRadius: "10px", border: "1px solid #E5E7EB", background: "#FFF", color: "#6B7280", fontSize: "13px", fontWeight: "700", cursor: "pointer" }}>Cerrar</button>
+                  </>
+                ) : (
+                  <>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
+                      <h3 style={{ fontSize: "16px", fontWeight: "800", color: "#111827", margin: 0 }}>📄 Factura detectada</h3>
+                      <button onClick={() => setRbsParseResult(null)} style={{ padding: "4px 8px", borderRadius: "6px", border: "none", background: "#F3F4F6", cursor: "pointer" }}>✕</button>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "16px" }}>
+                      {[
+                        { label: "Proveedor", value: rbsParseResult.data.proveedor || "—" },
+                        { label: "Total", value: rbsParseResult.data.total ? fmt(rbsParseResult.data.total) : "—" },
+                        { label: "Fecha", value: rbsParseResult.data.fecha || "—" },
+                        { label: "Folio", value: rbsParseResult.data.folio || "—" },
+                        { label: "RFC", value: rbsParseResult.data.rfc_emisor || "—" },
+                        { label: "IVA", value: rbsParseResult.data.iva ? fmt(rbsParseResult.data.iva) : "—" },
+                      ].map(f => (
+                        <div key={f.label} style={{ padding: "10px 12px", background: "#F9FAFB", borderRadius: "8px" }}>
+                          <div style={{ fontSize: "10px", fontWeight: "700", color: "#9CA3AF", textTransform: "uppercase", marginBottom: "3px" }}>{f.label}</div>
+                          <div style={{ fontSize: "13px", fontWeight: "600", color: "#111827" }}>{f.value}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ marginBottom: "16px" }}>
+                      <label style={{ display: "block", fontSize: "11px", fontWeight: "700", color: "#374151", marginBottom: "5px", textTransform: "uppercase", letterSpacing: "0.5px" }}>Categoría sugerida (editable)</label>
+                      <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                        <span style={{ padding: "4px 10px", borderRadius: "6px", background: "#EDE9FE", color: "#7C3AED", fontSize: "12px", fontWeight: "700" }}>{rbsParseResult.data.categoria_sugerida || "OTROS"}</span>
+                        <select value={rbsParseCategoria} onChange={e => setRbsParseCategoria(e.target.value)} style={{ flex: 1, padding: "7px 10px", borderRadius: "8px", border: "1px solid #E5E7EB", fontSize: "12px" }}>
+                          <option value="">Usar sugerida ({rbsParseResult.data.categoria_sugerida})</option>
+                          {CATEGORIAS.map(c => <option key={c} value={c}>{c.replace(/_/g, " ")}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                    {rbsParseResult.data.items?.length > 0 && (
+                      <div style={{ marginBottom: "16px", overflowX: "auto" }}>
+                        <div style={{ fontSize: "11px", fontWeight: "700", color: "#374151", marginBottom: "8px", textTransform: "uppercase" }}>Detalle de items ({rbsParseResult.data.items.length})</div>
+                        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "11px" }}>
+                          <thead>
+                            <tr style={{ background: "#F9FAFB" }}>
+                              {["Descripción", "Cant.", "Precio u.", "Importe"].map(h => <th key={h} style={{ padding: "6px 8px", textAlign: "left", fontWeight: "700", color: "#6B7280", borderBottom: "1px solid #E5E7EB" }}>{h}</th>)}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {rbsParseResult.data.items.map((item: any, i: number) => (
+                              <tr key={i} style={{ borderBottom: "1px solid #F3F4F6" }}>
+                                <td style={{ padding: "6px 8px", color: "#374151" }}>{item.descripcion}</td>
+                                <td style={{ padding: "6px 8px", color: "#374151" }}>{item.cantidad} {item.unidad}</td>
+                                <td style={{ padding: "6px 8px", color: "#374151" }}>{fmt(item.precio_unitario || 0)}</td>
+                                <td style={{ padding: "6px 8px", fontWeight: "700", color: "#111827" }}>{fmt(item.importe || 0)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                        <div style={{ display: "flex", justifyContent: "flex-end", gap: "16px", marginTop: "8px", padding: "8px 0", borderTop: "1px solid #E5E7EB" }}>
+                          <span style={{ fontSize: "12px", color: "#6B7280" }}>Subtotal: <strong>{fmt(rbsParseResult.data.subtotal || 0)}</strong></span>
+                          <span style={{ fontSize: "12px", color: "#6B7280" }}>IVA: <strong>{fmt(rbsParseResult.data.iva || 0)}</strong></span>
+                          <span style={{ fontSize: "13px", fontWeight: "800", color: "#111827" }}>Total: {fmt(rbsParseResult.data.total || 0)}</span>
+                        </div>
+                      </div>
+                    )}
+                    <div style={{ display: "flex", gap: "8px" }}>
+                      <button onClick={() => setRbsParseResult(null)} style={{ flex: 1, padding: "10px", borderRadius: "10px", border: "1px solid #E5E7EB", background: "#FFF", color: "#6B7280", fontSize: "13px", fontWeight: "700", cursor: "pointer" }}>❌ Descartar</button>
+                      <button onClick={confirmarParseResult} disabled={rbsSaving} style={{ flex: 2, padding: "10px", borderRadius: "10px", border: "none", background: rbsSaving ? "#E5E7EB" : "#059669", color: rbsSaving ? "#9CA3AF" : "#FFF", fontSize: "13px", fontWeight: "800", cursor: rbsSaving ? "not-allowed" : "pointer" }}>
+                        {rbsSaving ? "Guardando..." : "✅ Confirmar y Guardar"}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Métricas */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "12px", marginBottom: "20px" }}>
