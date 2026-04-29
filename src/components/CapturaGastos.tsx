@@ -330,6 +330,56 @@ export const CapturaGastos: React.FC = () => {
 
   const selectDay = (day: string) => { setSelectedDay(day); setViewMode("dia"); };
 
+  // ── Inline edit state ──
+  const [editandoGastoId, setEditandoGastoId] = useState<number | null>(null);
+  const [editandoTabla, setEditandoTabla] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<{ proveedor: string; categoria: string; descripcion: string; metodo_pago: string; comprobante: string; monto: string }>({ proveedor: "", categoria: "", descripcion: "", metodo_pago: "EFECTIVO", comprobante: "SIN_COMPROBANTE", monto: "" });
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
+
+  const startEdit = (g: any) => {
+    setEditandoGastoId(g.id);
+    setEditandoTabla(g.tabla);
+    setEditForm({ proveedor: g.proveedor || "", categoria: g.categoria || "", descripcion: g.descripcion || "", metodo_pago: g.metodo_pago || "EFECTIVO", comprobante: g.comprobante || "SIN_COMPROBANTE", monto: String(g.monto || "") });
+  };
+
+  const cancelEdit = () => { setEditandoGastoId(null); setEditandoTabla(null); };
+
+  const showToast = (msg: string) => { setToastMsg(msg); setTimeout(() => setToastMsg(null), 3000); };
+
+  const saveEdit = async (g: any) => {
+    const monto = parseFloat(editForm.monto);
+    if (!editForm.proveedor.trim() || isNaN(monto) || monto <= 0) return;
+    try {
+      await api.put(`/api/gastos/${g.id}`, {
+        fecha: g.fecha,
+        proveedor: editForm.proveedor.trim(),
+        categoria: editForm.categoria,
+        monto,
+        metodo_pago: editForm.metodo_pago,
+        comprobante: editForm.comprobante,
+        descripcion: editForm.descripcion || null,
+        restaurante_id: restauranteId,
+      });
+      setCajaData(prev => prev.map(item => item.id === g.id && item.tabla === g.tabla ? { ...item, proveedor: editForm.proveedor.trim(), categoria: editForm.categoria, descripcion: editForm.descripcion, metodo_pago: editForm.metodo_pago, comprobante: editForm.comprobante, monto } : item));
+      setEditandoGastoId(null);
+      setEditandoTabla(null);
+      showToast("✓ Gasto actualizado");
+    } catch (e: any) {
+      alert("Error al guardar: " + (e?.message || String(e)));
+    }
+  };
+
+  const deleteGasto = async (g: any) => {
+    if (!window.confirm("¿Eliminar este gasto? Esta acción no se puede deshacer.")) return;
+    try {
+      await api.del(`/api/gastos/${g.id}`);
+      setCajaData(prev => prev.filter(item => !(item.id === g.id && item.tabla === g.tabla)));
+      showToast("Gasto eliminado");
+    } catch (e: any) {
+      alert("Error al eliminar: " + (e?.message || String(e)));
+    }
+  };
+
   // ── Computed: gastos for selected day (with filters) ──
   const selectedDayGastos = useMemo(() => {
     if (!selectedDay) return [];
@@ -386,6 +436,10 @@ export const CapturaGastos: React.FC = () => {
 
   return (
     <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
+      {/* ── Toast ── */}
+      {toastMsg && (
+        <div style={{ position: "fixed", bottom: "24px", left: "50%", transform: "translateX(-50%)", background: "#111827", color: "#FFF", padding: "10px 20px", borderRadius: "10px", fontSize: "13px", fontWeight: "700", zIndex: 9999, boxShadow: "0 4px 16px rgba(0,0,0,0.2)", pointerEvents: "none" }}>{toastMsg}</div>
+      )}
       {/* ── Header ── */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "24px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
@@ -633,20 +687,46 @@ export const CapturaGastos: React.FC = () => {
                   </div>
                 ) : (
                   <>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 130px 180px 100px 90px", padding: "8px 20px", borderBottom: "1px solid #F3F4F6", background: "#FAFBFC" }}>
-                      {["Proveedor", "Categoría", "Descripción", "Tipo", "Monto"].map(h => (
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 120px 160px 90px 90px 64px", padding: "8px 20px", borderBottom: "1px solid #F3F4F6", background: "#FAFBFC" }}>
+                      {["Proveedor", "Categoría", "Descripción", "Tipo", "Monto", ""].map(h => (
                         <span key={h} style={{ fontSize: "10px", fontWeight: "700", color: "#9CA3AF", textTransform: "uppercase", letterSpacing: "0.5px" }}>{h}</span>
                       ))}
                     </div>
                     {selectedDayGastos.map((g, i) => {
                       const badge = comprobanteBadge(g.comprobante || "SIN_COMPROBANTE");
+                      const isEditing = editandoGastoId === g.id && editandoTabla === g.tabla;
+                      if (isEditing) {
+                        return (
+                          <div key={`${g.tabla}-${g.id}-${i}`} style={{ padding: "12px 20px", borderBottom: "1px solid #F9FAFB", background: "#FFFBEB" }}>
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 120px 160px 90px 90px 64px", gap: "6px", alignItems: "center" }}>
+                              <input value={editForm.proveedor} onChange={e => setEditForm(f => ({ ...f, proveedor: e.target.value }))} style={{ fontSize: "12px", padding: "5px 8px", border: "1px solid #D1D5DB", borderRadius: "6px", outline: "none" }} placeholder="Proveedor" />
+                              <select value={editForm.categoria} onChange={e => setEditForm(f => ({ ...f, categoria: e.target.value }))} style={{ fontSize: "11px", padding: "5px 6px", border: "1px solid #D1D5DB", borderRadius: "6px", outline: "none" }}>
+                                {CATEGORIAS.map(c => <option key={c} value={c}>{c.replace(/_/g, " ")}</option>)}
+                              </select>
+                              <input value={editForm.descripcion} onChange={e => setEditForm(f => ({ ...f, descripcion: e.target.value }))} style={{ fontSize: "11px", padding: "5px 8px", border: "1px solid #D1D5DB", borderRadius: "6px", outline: "none" }} placeholder="Descripción" />
+                              <select value={editForm.comprobante} onChange={e => setEditForm(f => ({ ...f, comprobante: e.target.value }))} style={{ fontSize: "11px", padding: "5px 6px", border: "1px solid #D1D5DB", borderRadius: "6px", outline: "none" }}>
+                                {["TICKET", "VALE", "FACTURA", "NOTA_REMISION", "RECIBO", "TRANSFERENCIA", "SIN_COMPROBANTE"].map(c => <option key={c} value={c}>{c.replace(/_/g, " ")}</option>)}
+                              </select>
+                              <input type="number" value={editForm.monto} onChange={e => setEditForm(f => ({ ...f, monto: e.target.value }))} style={{ fontSize: "12px", padding: "5px 8px", border: "1px solid #D1D5DB", borderRadius: "6px", outline: "none", textAlign: "right" }} />
+                              <div style={{ display: "flex", gap: "4px" }}>
+                                <button onClick={() => saveEdit(g)} style={{ flex: 1, padding: "5px 0", borderRadius: "6px", border: "none", background: "#059669", color: "#FFF", fontSize: "11px", fontWeight: "700", cursor: "pointer" }}>✓</button>
+                                <button onClick={cancelEdit} style={{ flex: 1, padding: "5px 0", borderRadius: "6px", border: "1px solid #E5E7EB", background: "#FFF", color: "#6B7280", fontSize: "11px", cursor: "pointer" }}>✕</button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
                       return (
-                        <div key={`${g.tabla}-${g.id}-${i}`} style={{ display: "grid", gridTemplateColumns: "1fr 130px 180px 100px 90px", padding: "12px 20px", borderBottom: "1px solid #F9FAFB", alignItems: "center" }}>
+                        <div key={`${g.tabla}-${g.id}-${i}`} style={{ display: "grid", gridTemplateColumns: "1fr 120px 160px 90px 90px 64px", padding: "12px 20px", borderBottom: "1px solid #F9FAFB", alignItems: "center" }}>
                           <span style={{ fontSize: "13px", fontWeight: "700", color: "#111827", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.proveedor}</span>
                           <span style={{ fontSize: "11px", padding: "3px 8px", borderRadius: "6px", background: "#F3F4F6", color: "#374151", width: "fit-content" }}>{(g.categoria || "").replace(/_/g, " ")}</span>
                           <span style={{ fontSize: "12px", color: "#9CA3AF", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.descripcion || "—"}</span>
                           <span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "6px", background: badge.bg, color: badge.color, fontWeight: "600", width: "fit-content" }}>{badge.label}</span>
                           <span style={{ fontSize: "13px", fontWeight: "700", color: "#111827", textAlign: "right" }}>{fmt(g.monto || 0)}</span>
+                          <div style={{ display: "flex", gap: "4px", justifyContent: "flex-end" }}>
+                            <button onClick={() => startEdit(g)} title="Editar" style={{ padding: "4px 7px", borderRadius: "6px", border: "1px solid #E5E7EB", background: "#FFF", color: "#6B7280", fontSize: "12px", cursor: "pointer" }}>✏️</button>
+                            <button onClick={() => deleteGasto(g)} title="Eliminar" style={{ padding: "4px 7px", borderRadius: "6px", border: "1px solid #FEE2E2", background: "#FFF", color: "#EF4444", fontSize: "12px", cursor: "pointer" }}>🗑</button>
+                          </div>
                         </div>
                       );
                     })}
