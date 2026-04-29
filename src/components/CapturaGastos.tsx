@@ -221,6 +221,75 @@ export const CapturaGastos: React.FC = () => {
   // ── Tab state ──
   const [tabGastos, setTabGastos] = useState<"caja" | "rbs" | "proveedores" | "categorias">("caja");
 
+  // ── RBS state ──
+  const [rbsData, setRbsData] = useState<any[]>([]);
+  const [rbsLoading, setRbsLoading] = useState(false);
+  const [showNuevaFactura, setShowNuevaFactura] = useState(false);
+  const [rbsToast, setRbsToast] = useState<string | null>(null);
+  const [rbsMes, setRbsMes] = useState(new Date().getMonth() + 1);
+  const [rbsAnio, setRbsAnio] = useState(new Date().getFullYear());
+  const [rbsForm, setRbsForm] = useState({ proveedor: "", categoria: "", descripcion: "", monto: "", fecha_factura: new Date().toISOString().split("T")[0], fecha_vencimiento: "" });
+  const [rbsSaving, setRbsSaving] = useState(false);
+
+  const showRbsToast = (msg: string) => { setRbsToast(msg); setTimeout(() => setRbsToast(null), 3000); };
+
+  const fetchRbs = async (mes = rbsMes, anio = rbsAnio) => {
+    setRbsLoading(true);
+    try {
+      const data = await api.get(`/api/rbs/${restauranteId}?mes=${mes}&anio=${anio}`);
+      setRbsData(Array.isArray(data) ? data : []);
+    } catch { setRbsData([]); }
+    setRbsLoading(false);
+  };
+
+  useEffect(() => { if (tabGastos === "rbs" && restauranteId) fetchRbs(rbsMes, rbsAnio); }, [tabGastos, restauranteId, rbsMes, rbsAnio]);
+
+  const crearFactura = async () => {
+    if (!rbsForm.proveedor.trim() || !rbsForm.monto || parseFloat(rbsForm.monto) <= 0) return;
+    setRbsSaving(true);
+    try {
+      await api.post(`/api/rbs/${restauranteId}`, {
+        proveedor: rbsForm.proveedor.trim(), categoria: rbsForm.categoria || "OTROS",
+        descripcion: rbsForm.descripcion || null, monto: parseFloat(rbsForm.monto),
+        fecha_factura: rbsForm.fecha_factura,
+        fecha_vencimiento: rbsForm.fecha_vencimiento || null,
+      });
+      setShowNuevaFactura(false);
+      setRbsForm({ proveedor: "", categoria: "", descripcion: "", monto: "", fecha_factura: new Date().toISOString().split("T")[0], fecha_vencimiento: "" });
+      fetchRbs(rbsMes, rbsAnio);
+      showRbsToast("✓ Factura registrada");
+    } catch (e: any) { alert("Error: " + (e?.message || String(e))); }
+    setRbsSaving(false);
+  };
+
+  const subirArchivo = async (gastoId: number, tipo: "factura" | "comprobante") => {
+    const input = document.createElement("input");
+    input.type = "file"; input.accept = ".pdf,.jpg,.jpeg,.png";
+    input.onchange = async () => {
+      const file = input.files?.[0]; if (!file) return;
+      try {
+        await api.upload(`/api/rbs/${restauranteId}/${gastoId}/${tipo}`, file);
+        fetchRbs(rbsMes, rbsAnio);
+        showRbsToast(tipo === "comprobante" ? "✓ Factura marcada como pagada" : "✓ Factura subida correctamente");
+      } catch (e: any) { alert("Error al subir: " + (e?.message || String(e))); }
+    };
+    input.click();
+  };
+
+  const eliminarRbs = async (id: number) => {
+    if (!window.confirm("¿Eliminar esta factura?")) return;
+    try { await api.del(`/api/rbs/${restauranteId}/${id}`); fetchRbs(rbsMes, rbsAnio); showRbsToast("Factura eliminada"); }
+    catch (e: any) { alert("Error: " + (e?.message || String(e))); }
+  };
+
+  const rbsHoy = new Date().toISOString().split("T")[0];
+  const rbsPendientes = rbsData.filter(g => g.estado === "PENDIENTE");
+  const rbsVencidos = rbsData.filter(g => g.estado === "VENCIDO");
+  const rbsPagados = rbsData.filter(g => g.estado === "PAGADO");
+  const rbsTotalPendiente = rbsPendientes.reduce((s, g) => s + g.monto, 0);
+  const rbsTotalVencido = rbsVencidos.reduce((s, g) => s + g.monto, 0);
+  const rbsTotalPagado = rbsPagados.reduce((s, g) => s + g.monto, 0);
+
   // ── Calendar popover state ──
   const [showCalPopover, setShowCalPopover] = useState(false);
   const [calPopoverMes, setCalPopoverMes] = useState(0);
@@ -473,12 +542,153 @@ export const CapturaGastos: React.FC = () => {
 
       {/* ── RBS TAB ── */}
       {tabGastos === "rbs" && !showNuevoGasto && (
-        <div style={{ background: "#FFF", borderRadius: "14px", overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.04),0 4px 12px rgba(0,0,0,0.02)" }}>
-          <div style={{ padding: "16px 24px", borderBottom: "1px solid #F3F4F6", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div><span style={{ fontSize: "14px", fontWeight: "700", color: "#111827" }}>Gastos RBS</span><span style={{ fontSize: "11px", color: "#9CA3AF", marginLeft: "8px" }}>Facturas, transferencias y gastos privados</span></div>
-            <button onClick={() => setShowNuevoGasto(true)} style={{ padding: "6px 14px", borderRadius: "8px", border: "none", background: "#7C3AED", color: "#FFF", fontSize: "12px", fontWeight: "700", cursor: "pointer" }}>+ Nuevo Gasto / Subir PDF</button>
+        <div>
+          {/* Toast */}
+          {rbsToast && <div style={{ position: "fixed", bottom: "100px", left: "50%", transform: "translateX(-50%)", background: "#111827", color: "#FFF", padding: "10px 20px", borderRadius: "10px", fontSize: "13px", fontWeight: "700", zIndex: 9999, boxShadow: "0 4px 16px rgba(0,0,0,0.2)", pointerEvents: "none" }}>{rbsToast}</div>}
+
+          {/* Header + mes selector */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px", flexWrap: "wrap", gap: "8px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <button onClick={() => { const d = new Date(rbsAnio, rbsMes - 2, 1); setRbsMes(d.getMonth() + 1); setRbsAnio(d.getFullYear()); }} style={{ width: "28px", height: "28px", borderRadius: "8px", border: "1px solid #E5E7EB", background: "#FFF", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}><ChevronLeft style={{ width: "14px", height: "14px", color: "#6B7280" }} /></button>
+              <span style={{ fontSize: "14px", fontWeight: "700", color: "#111827", minWidth: "120px", textAlign: "center" }}>{MESES_LARGO[rbsMes - 1]} {rbsAnio}</span>
+              <button onClick={() => { const d = new Date(rbsAnio, rbsMes, 1); setRbsMes(d.getMonth() + 1); setRbsAnio(d.getFullYear()); }} style={{ width: "28px", height: "28px", borderRadius: "8px", border: "1px solid #E5E7EB", background: "#FFF", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}><ChevronRight style={{ width: "14px", height: "14px", color: "#6B7280" }} /></button>
+            </div>
+            <button onClick={() => setShowNuevaFactura(true)} style={{ padding: "8px 16px", borderRadius: "10px", border: "none", background: "#7C3AED", color: "#FFF", fontSize: "12px", fontWeight: "700", cursor: "pointer" }}>+ Nueva factura</button>
           </div>
-          <div style={{ padding: "24px", textAlign: "center" }}><p style={{ fontSize: "13px", color: "#9CA3AF" }}>Registra gastos privados con factura o manual</p></div>
+
+          {/* Métricas */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "12px", marginBottom: "20px" }}>
+            {[
+              { label: "PENDIENTE DE PAGO", value: rbsTotalPendiente, color: "#F59E0B", bg: "#FFFBEB", count: rbsPendientes.length },
+              { label: "PAGADO ESTE MES", value: rbsTotalPagado, color: "#059669", bg: "#F0FDF4", count: rbsPagados.length },
+              { label: "VENCIDOS", value: rbsTotalVencido, color: "#EF4444", bg: "#FEF2F2", count: rbsVencidos.length },
+            ].map(m => (
+              <div key={m.label} style={{ background: m.bg, borderRadius: "12px", padding: "14px 16px", border: `1px solid ${m.color}22` }}>
+                <div style={{ fontSize: "9px", fontWeight: "800", color: m.color, textTransform: "uppercase", letterSpacing: "1px", marginBottom: "6px" }}>{m.label}</div>
+                <div style={{ fontSize: "18px", fontWeight: "900", color: "#111827" }}>{fmt(m.value)}</div>
+                <div style={{ fontSize: "11px", color: "#9CA3AF", marginTop: "2px" }}>{m.count} factura{m.count !== 1 ? "s" : ""}</div>
+              </div>
+            ))}
+          </div>
+
+          {rbsLoading ? (
+            <div style={{ padding: "40px", textAlign: "center" }}><Loader2 style={{ width: "24px", height: "24px", color: "#9CA3AF", margin: "0 auto", animation: "spin 1s linear infinite" }} /></div>
+          ) : (
+            <>
+              {/* Banner vencidos */}
+              {rbsVencidos.length > 0 && (
+                <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: "10px", padding: "12px 16px", marginBottom: "16px", display: "flex", alignItems: "center", gap: "8px" }}>
+                  <span style={{ fontSize: "16px" }}>⚠️</span>
+                  <span style={{ fontSize: "13px", fontWeight: "700", color: "#DC2626" }}>
+                    {rbsVencidos.length} factura{rbsVencidos.length !== 1 ? "s" : ""} vencida{rbsVencidos.length !== 1 ? "s" : ""} por {fmt(rbsTotalVencido)} — pagar inmediatamente
+                  </span>
+                </div>
+              )}
+
+              {/* Lista agrupada por estado */}
+              {rbsData.length === 0 ? (
+                <div style={{ background: "#FFF", borderRadius: "14px", padding: "40px", textAlign: "center" }}>
+                  <p style={{ fontSize: "13px", color: "#9CA3AF", margin: 0 }}>Sin facturas registradas para este mes</p>
+                  <button onClick={() => setShowNuevaFactura(true)} style={{ marginTop: "12px", padding: "8px 16px", borderRadius: "8px", border: "none", background: "#7C3AED", color: "#FFF", fontSize: "12px", fontWeight: "700", cursor: "pointer" }}>+ Nueva factura</button>
+                </div>
+              ) : (
+                <>
+                  {(["VENCIDO", "PENDIENTE", "PAGADO"] as const).map(estado => {
+                    const grupo = rbsData.filter(g => g.estado === estado);
+                    if (!grupo.length) return null;
+                    const labels: Record<string, string> = { VENCIDO: "🔴 Vencidos", PENDIENTE: "🟡 Pendientes de pago", PAGADO: "✅ Pagados este mes" };
+                    return (
+                      <div key={estado} style={{ marginBottom: "20px" }}>
+                        <div style={{ fontSize: "11px", fontWeight: "800", color: "#9CA3AF", textTransform: "uppercase", letterSpacing: "1px", marginBottom: "8px", paddingLeft: "4px" }}>{labels[estado]}</div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                          {grupo.map(g => {
+                            const esHoy = g.fecha_vencimiento === rbsHoy;
+                            const dotColor = estado === "VENCIDO" ? "#EF4444" : estado === "PAGADO" ? "#059669" : g.fecha_vencimiento ? "#F59E0B" : "#9CA3AF";
+                            const cardBg = estado === "VENCIDO" ? "#FFF5F5" : estado === "PAGADO" ? "#F9FFFE" : "#FFFDF5";
+                            const cardBorder = estado === "VENCIDO" ? "#FECACA" : estado === "PAGADO" ? "#A7F3D0" : "#FDE68A";
+                            return (
+                              <div key={g.id} style={{ background: cardBg, borderRadius: "12px", border: `1px solid ${cardBorder}`, padding: "14px 16px" }}>
+                                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "8px" }}>
+                                  <div style={{ display: "flex", alignItems: "center", gap: "8px", flex: 1, minWidth: 0 }}>
+                                    <div style={{ width: "10px", height: "10px", borderRadius: "50%", background: dotColor, flexShrink: 0 }} />
+                                    <div style={{ minWidth: 0 }}>
+                                      <div style={{ fontSize: "13px", fontWeight: "800", color: "#111827" }}>{g.proveedor} <span style={{ fontSize: "11px", fontWeight: "500", color: "#6B7280", background: "#F3F4F6", padding: "1px 6px", borderRadius: "4px", marginLeft: "4px" }}>{(g.categoria || "").replace(/_/g, " ")}</span></div>
+                                      {g.descripcion && <div style={{ fontSize: "12px", color: "#6B7280", marginTop: "2px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.descripcion}</div>}
+                                    </div>
+                                  </div>
+                                  <div style={{ textAlign: "right", flexShrink: 0 }}>
+                                    <div style={{ fontSize: "15px", fontWeight: "900", color: "#111827" }}>{fmt(g.monto)}</div>
+                                    {g.fecha_vencimiento && (
+                                      <div style={{ fontSize: "11px", color: estado === "VENCIDO" ? "#EF4444" : "#9CA3AF", marginTop: "1px" }}>
+                                        {estado === "PAGADO" ? `Pagado: ${g.fecha_pago}` : esHoy ? "⚡ Vence hoy" : `Vence: ${g.fecha_vencimiento}`}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                                {/* Archivos */}
+                                <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "10px", flexWrap: "wrap" }}>
+                                  {g.tiene_factura ? (
+                                    <a href={`/api/rbs/${restauranteId}/${g.id}/factura/archivo`} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "4px 10px", borderRadius: "6px", background: "#EFF6FF", color: "#2563EB", fontSize: "11px", fontWeight: "700", textDecoration: "none" }}>📄 Factura ✓</a>
+                                  ) : estado !== "PAGADO" ? (
+                                    <button onClick={() => subirArchivo(g.id, "factura")} style={{ padding: "4px 10px", borderRadius: "6px", border: "1px dashed #D1D5DB", background: "#FFF", color: "#6B7280", fontSize: "11px", cursor: "pointer" }}>📄 Subir factura</button>
+                                  ) : (
+                                    <span style={{ fontSize: "11px", color: "#9CA3AF" }}>📄 Sin factura</span>
+                                  )}
+                                  {g.tiene_comprobante ? (
+                                    <a href={`/api/rbs/${restauranteId}/${g.id}/comprobante/archivo`} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "4px 10px", borderRadius: "6px", background: "#F0FDF4", color: "#059669", fontSize: "11px", fontWeight: "700", textDecoration: "none" }}>📎 Comprobante ✓</a>
+                                  ) : estado !== "PAGADO" ? (
+                                    <button onClick={() => subirArchivo(g.id, "comprobante")} style={{ padding: "4px 12px", borderRadius: "6px", border: "none", background: "#7C3AED", color: "#FFF", fontSize: "11px", fontWeight: "700", cursor: "pointer" }}>📎 Subir comprobante de pago</button>
+                                  ) : null}
+                                  <button onClick={() => eliminarRbs(g.id)} style={{ marginLeft: "auto", padding: "4px 8px", borderRadius: "6px", border: "1px solid #FEE2E2", background: "#FFF", color: "#EF4444", fontSize: "11px", cursor: "pointer" }}>🗑</button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </>
+              )}
+            </>
+          )}
+
+          {/* Modal nueva factura */}
+          {showNuevaFactura && (
+            <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px" }} onClick={e => { if (e.target === e.currentTarget) setShowNuevaFactura(false); }}>
+              <div style={{ background: "#FFF", borderRadius: "16px", padding: "24px", width: "100%", maxWidth: "480px", boxShadow: "0 20px 60px rgba(0,0,0,0.2)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
+                  <h3 style={{ fontSize: "16px", fontWeight: "800", color: "#111827", margin: 0 }}>Nueva factura / transferencia</h3>
+                  <button onClick={() => setShowNuevaFactura(false)} style={{ padding: "4px 8px", borderRadius: "6px", border: "none", background: "#F3F4F6", color: "#6B7280", cursor: "pointer" }}>✕</button>
+                </div>
+                {[
+                  { label: "Proveedor *", key: "proveedor", type: "text", placeholder: "COCA COLA, SAMS..." },
+                  { label: "Descripción", key: "descripcion", type: "text", placeholder: "Pedido semanal..." },
+                  { label: "Monto *", key: "monto", type: "number", placeholder: "0.00" },
+                  { label: "Fecha de factura *", key: "fecha_factura", type: "date", placeholder: "" },
+                  { label: "Fecha de vencimiento", key: "fecha_vencimiento", type: "date", placeholder: "" },
+                ].map(f => (
+                  <div key={f.key} style={{ marginBottom: "14px" }}>
+                    <label style={{ display: "block", fontSize: "11px", fontWeight: "700", color: "#374151", marginBottom: "5px", textTransform: "uppercase", letterSpacing: "0.5px" }}>{f.label}</label>
+                    <input type={f.type} value={(rbsForm as any)[f.key]} onChange={e => setRbsForm(prev => ({ ...prev, [f.key]: e.target.value }))} placeholder={f.placeholder} style={{ width: "100%", padding: "9px 12px", borderRadius: "8px", border: "1px solid #E5E7EB", fontSize: "13px", boxSizing: "border-box" as const }} />
+                  </div>
+                ))}
+                <div style={{ marginBottom: "20px" }}>
+                  <label style={{ display: "block", fontSize: "11px", fontWeight: "700", color: "#374151", marginBottom: "5px", textTransform: "uppercase", letterSpacing: "0.5px" }}>Categoría</label>
+                  <select value={rbsForm.categoria} onChange={e => setRbsForm(prev => ({ ...prev, categoria: e.target.value }))} style={{ width: "100%", padding: "9px 12px", borderRadius: "8px", border: "1px solid #E5E7EB", fontSize: "13px" }}>
+                    <option value="">— Seleccionar —</option>
+                    {CATEGORIAS.map(c => <option key={c} value={c}>{c.replace(/_/g, " ")}</option>)}
+                  </select>
+                </div>
+                <div style={{ display: "flex", gap: "8px" }}>
+                  <button onClick={() => setShowNuevaFactura(false)} style={{ flex: 1, padding: "10px", borderRadius: "10px", border: "1px solid #E5E7EB", background: "#FFF", color: "#6B7280", fontSize: "13px", fontWeight: "700", cursor: "pointer" }}>Cancelar</button>
+                  <button onClick={crearFactura} disabled={rbsSaving || !rbsForm.proveedor.trim() || !rbsForm.monto} style={{ flex: 2, padding: "10px", borderRadius: "10px", border: "none", background: rbsSaving || !rbsForm.proveedor.trim() ? "#E5E7EB" : "#7C3AED", color: rbsSaving || !rbsForm.proveedor.trim() ? "#9CA3AF" : "#FFF", fontSize: "13px", fontWeight: "800", cursor: rbsSaving || !rbsForm.proveedor.trim() ? "not-allowed" : "pointer" }}>
+                    {rbsSaving ? "Guardando..." : "Guardar factura"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

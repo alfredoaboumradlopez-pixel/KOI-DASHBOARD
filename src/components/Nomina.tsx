@@ -405,10 +405,10 @@ export const Nomina = () => {
             <div><label style={labelStyle}>Cuenta Banco</label><input value={form.cuenta_banco} onChange={e => setForm({ ...form, cuenta_banco: e.target.value })} style={inputStyle} /></div>
           </div>
 
-          {/* Documentos pending */}
+          {/* CARDEX pending */}
           <div style={{ paddingTop: "14px", borderTop: "1px solid #F3F4F6", marginBottom: "16px" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
-              <span style={{ fontSize: "12px", fontWeight: "700", color: "#374151" }}>Documentos (se suben al guardar)</span>
+              <span style={{ fontSize: "12px", fontWeight: "700", color: "#374151" }}>CARDEX (se suben al guardar)</span>
               <label style={{ display: "flex", alignItems: "center", gap: "5px", padding: "5px 12px", borderRadius: "7px", border: "1px dashed #D1D5DB", background: "#F9FAFB", fontSize: "11px", color: "#6B7280", cursor: "pointer", fontWeight: "600" }}>
                 <Plus style={{ width: "12px", height: "12px" }} /> Seleccionar
                 <input type="file" accept=".pdf,.jpg,.jpeg,.png" multiple onChange={e => handleFileUpload(e.target.files)} style={{ display: "none" }} />
@@ -732,7 +732,7 @@ export const Nomina = () => {
                         {e.fecha_nacimiento && <div style={{ fontSize: "13px", color: "#374151", marginBottom: "4px" }}>Nacimiento: <strong>{e.fecha_nacimiento}</strong></div>}
                       </div>
                       <div>
-                        <div style={{ fontSize: "10px", fontWeight: "700", color: "#9CA3AF", textTransform: "uppercase", marginBottom: "8px" }}>Documentos Legales</div>
+                        <div style={{ fontSize: "10px", fontWeight: "700", color: "#9CA3AF", textTransform: "uppercase", marginBottom: "8px" }}>CARDEX</div>
                         <div style={{ fontSize: "13px", color: "#374151", marginBottom: "4px" }}>IMSS: <strong style={{ color: e.numero_imss ? "#059669" : "#DC2626" }}>{e.numero_imss || "NO REGISTRADO"}</strong></div>
                         <div style={{ fontSize: "13px", color: "#374151", marginBottom: "4px" }}>RFC: <strong>{e.rfc || "No registrado"}</strong></div>
                         <div style={{ fontSize: "13px", color: "#374151" }}>CURP: <strong>{e.curp || "No registrado"}</strong></div>
@@ -741,7 +741,7 @@ export const Nomina = () => {
                     {/* Archivos */}
                     <div style={{ paddingTop: "12px", borderTop: "1px solid #E5E7EB" }}>
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
-                        <span style={{ fontSize: "12px", fontWeight: "700", color: "#374151" }}>Archivos guardados ({e.documentos.length})</span>
+                        <span style={{ fontSize: "12px", fontWeight: "700", color: "#374151" }}>CARDEX ({e.documentos.length} archivo{e.documentos.length !== 1 ? "s" : ""})</span>
                         <label style={{ display: "flex", alignItems: "center", gap: "4px", padding: "4px 10px", borderRadius: "6px", border: "1px dashed #D1D5DB", background: "#F9FAFB", fontSize: "11px", color: "#6B7280", cursor: "pointer", fontWeight: "600" }}>
                           <Plus style={{ width: "11px", height: "11px" }} /> Subir
                           <input type="file" accept=".pdf,.jpg,.jpeg,.png" multiple onChange={ev => handleFileUpload(ev.target.files, e.id)} style={{ display: "none" }} />

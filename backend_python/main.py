@@ -50,6 +50,7 @@ from .routers.gastos_dashboard_router import router as gastos_dashboard_router
 from .routers.costeo_router import router as costeo_router, seed_costeo, seed_ventas_parrot
 from .routers.proveedores_analytics_router import router as proveedores_analytics_router
 from .routers.flujo_caja_router import router as flujo_caja_router
+from .routers.rbs_router import router as rbs_router
 
 models.Base.metadata.create_all(bind=engine)
 
@@ -106,6 +107,33 @@ try:
                 print(f"  (skip {_tbl}.restaurante_id: {_e})")
 except Exception as _e:
     print(f"Migracion restaurante_id: {_e}")
+
+# Migracion: crear tabla gastos_transferencia (RBS)
+try:
+    with engine.begin() as _conn_rbs:
+        _conn_rbs.execute(_text("""
+            CREATE TABLE IF NOT EXISTS gastos_transferencia (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                restaurante_id INTEGER NOT NULL REFERENCES restaurantes(id),
+                proveedor VARCHAR(100) NOT NULL,
+                categoria VARCHAR(50) NOT NULL,
+                descripcion VARCHAR(255),
+                monto DOUBLE PRECISION NOT NULL,
+                fecha_factura DATE NOT NULL,
+                fecha_vencimiento DATE,
+                factura_url TEXT,
+                factura_nombre VARCHAR(255),
+                comprobante_pago_url TEXT,
+                comprobante_pago_nombre VARCHAR(255),
+                estado VARCHAR(20) DEFAULT 'PENDIENTE',
+                fecha_pago DATE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """))
+        print("Tabla gastos_transferencia OK")
+except Exception as _e_rbs:
+    print(f"Migracion gastos_transferencia: {_e_rbs}")
 
 # Migracion: agregar contenido_base64 a documentos_empleado
 try:
@@ -348,6 +376,7 @@ app.include_router(gastos_dashboard_router)
 app.include_router(costeo_router)
 app.include_router(proveedores_analytics_router)
 app.include_router(flujo_caja_router)
+app.include_router(rbs_router)
 
 UPLOADS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
 os.makedirs(os.path.join(UPLOADS_DIR, "documentos"), exist_ok=True)
@@ -1829,6 +1858,29 @@ def get_flujo_caja(restaurante_id: int, dias: int = 30, db: Session = Depends(ge
                 "dias_para_vencer": dias_para_vencer,
                 "estado": "pendiente",
             })
+
+    # ── RBS pendientes ───────────────────────────────────────────────────
+    try:
+        rbs_pendientes = db.query(models.GastoTransferencia).filter(
+            models.GastoTransferencia.restaurante_id == restaurante_id,
+            models.GastoTransferencia.estado == "PENDIENTE",
+        ).all()
+        for rbs in rbs_pendientes:
+            fecha_v = rbs.fecha_vencimiento or hoy
+            dias_para_vencer = (fecha_v - hoy).days
+            if dias_para_vencer <= dias:
+                pagos_comprometidos.append({
+                    "concepto": f"[Factura] {rbs.proveedor}",
+                    "proveedor": rbs.proveedor,
+                    "monto": round(rbs.monto, 2),
+                    "fecha_vencimiento": str(fecha_v),
+                    "dias_para_vencer": dias_para_vencer,
+                    "estado": "vencido" if dias_para_vencer < 0 else "pendiente",
+                    "tipo": "rbs",
+                    "rbs_id": rbs.id,
+                })
+    except Exception:
+        pass
 
     total_comprometido = sum(p["monto"] for p in pagos_comprometidos)
     ingresos_proyectados = round(ventas_promedio_diario * dias, 2)

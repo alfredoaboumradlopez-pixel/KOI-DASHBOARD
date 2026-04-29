@@ -536,3 +536,23 @@ class PlatilloIngrediente(Base):
     cantidad = Column(Float, default=0.0)
     costo_unitario = Column(Float, default=0.0)
     costo_total = Column(Float, default=0.0)
+
+
+class GastoTransferencia(Base):
+    __tablename__ = "gastos_transferencia"
+    id = Column(Integer, primary_key=True, index=True)
+    restaurante_id = Column(Integer, ForeignKey("restaurantes.id"), nullable=False)
+    proveedor = Column(String(100), nullable=False)
+    categoria = Column(String(50), nullable=False)
+    descripcion = Column(String(255), nullable=True)
+    monto = Column(Float, nullable=False)
+    fecha_factura = Column(Date, nullable=False)
+    fecha_vencimiento = Column(Date, nullable=True)
+    factura_url = Column(Text, nullable=True)
+    factura_nombre = Column(String(255), nullable=True)
+    comprobante_pago_url = Column(Text, nullable=True)
+    comprobante_pago_nombre = Column(String(255), nullable=True)
+    estado = Column(String(20), default="PENDIENTE")
+    fecha_pago = Column(Date, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
