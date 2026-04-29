@@ -21,6 +21,7 @@ import { LoginPage } from "./components/LoginPage";
 import { PLDashboard } from "./components/PLDashboard";
 import { RBODashboard } from "./components/RBODashboard";
 import { RestauranteDashboard } from "./components/RestauranteDashboard";
+import { OnboardingRestaurante } from "./components/OnboardingRestaurante";
 import { CategorizarGastos } from "./components/CategorizarGastos";
 import { Costeo } from "./components/Costeo";
 import { api } from "./services/api";
@@ -207,6 +208,7 @@ function App() {
       {currentRoute === "/finder" && <InvoiceFinder />}
       {currentRoute === "/propinas" && <Propinas />}
       {currentRoute === "/rbo" && <RBODashboard />}
+      {currentRoute === "/rbo/nuevo-restaurante" && <OnboardingRestaurante />}
       {currentRoute.startsWith("/rbo/restaurante/") && <RestauranteDashboard />}
       {currentRoute === "/pl-dashboard" && <PLDashboard />}
       {currentRoute === "/categorizar" && <CategorizarGastos />}

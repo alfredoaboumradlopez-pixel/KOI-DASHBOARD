@@ -95,6 +95,26 @@ def crear_usuario_restaurante(slug: str, data: UsuarioCreate, _=Depends(super_ad
     db.refresh(u)
     return {"id": u.id, "email": u.email, "nombre": u.nombre, "rol": u.rol, "restaurante_id": u.restaurante_id}
 
+@router.post("/{slug}/alertas-config", status_code=201)
+def crear_alertas_config(slug: str, configs: list, _=Depends(super_admin_only), db: Session = Depends(get_db)):
+    r = db.query(models.Restaurante).filter(models.Restaurante.slug == slug).first()
+    if not r:
+        raise HTTPException(status_code=404, detail={"detail": "Restaurante no encontrado", "code": "NOT_FOUND"})
+    db.query(models.AlertaConfig).filter(models.AlertaConfig.restaurante_id == r.id).delete()
+    for c in configs:
+        db.add(models.AlertaConfig(restaurante_id=r.id, tipo=c["tipo"], umbral=float(c["umbral"]), activo=True))
+    db.commit()
+    return {"ok": True, "count": len(configs)}
+
+@router.delete("/{slug}")
+def eliminar_restaurante(slug: str, _=Depends(super_admin_only), db: Session = Depends(get_db)):
+    r = db.query(models.Restaurante).filter(models.Restaurante.slug == slug).first()
+    if not r:
+        raise HTTPException(status_code=404, detail={"detail": "Restaurante no encontrado", "code": "NOT_FOUND"})
+    db.delete(r)
+    db.commit()
+    return {"ok": True}
+
 @router.get("/{slug}/health")
 def health_restaurante(slug: str, _=Depends(super_admin_only), db: Session = Depends(get_db)):
     r = db.query(models.Restaurante).filter(models.Restaurante.slug == slug).first()

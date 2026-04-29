@@ -309,6 +309,7 @@ class PagoRecurrenteCreate(BaseModel):
     dia_limite: Optional[int] = None
     monto_estimado: float = 0.0
     notas: Optional[str] = None
+    restaurante_id: Optional[int] = None
 
 class PagoRecurrenteUpdate(BaseModel):
     concepto: Optional[str] = None
