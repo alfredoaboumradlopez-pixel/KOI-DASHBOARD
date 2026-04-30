@@ -188,25 +188,31 @@ def listar_rbs(
 
 @router.post("/{restaurante_id}", status_code=201)
 def crear_rbs(restaurante_id: int, data: GastoTransferenciaCreate, db: Session = Depends(get_db)):
-    g = models.GastoTransferencia(
-        restaurante_id=restaurante_id,
-        proveedor=data.proveedor.strip(),
-        categoria=data.categoria or "OTROS",
-        descripcion=data.descripcion,
-        monto=data.monto,
-        fecha_factura=data.fecha_factura,
-        fecha_vencimiento=data.fecha_vencimiento,
-        estado=data.estado or "PENDIENTE",
-        fecha_pago=data.fecha_pago,
-        folio=data.folio,
-        folio_fiscal=data.folio_fiscal,
-        rfc_emisor=data.rfc_emisor,
-        items_json=data.items_json,
-    )
-    db.add(g)
-    db.commit()
-    db.refresh(g)
-    return _serialize(g)
+    import traceback as _tb
+    try:
+        g = models.GastoTransferencia(
+            restaurante_id=restaurante_id,
+            proveedor=data.proveedor.strip(),
+            categoria=data.categoria or "OTROS",
+            descripcion=data.descripcion,
+            monto=data.monto,
+            fecha_factura=data.fecha_factura,
+            fecha_vencimiento=data.fecha_vencimiento,
+            estado=data.estado or "PENDIENTE",
+            fecha_pago=data.fecha_pago,
+            folio=data.folio,
+            folio_fiscal=data.folio_fiscal,
+            rfc_emisor=data.rfc_emisor,
+            items_json=data.items_json,
+        )
+        db.add(g)
+        db.commit()
+        db.refresh(g)
+        return _serialize(g)
+    except Exception as _err:
+        db.rollback()
+        print(f"CREAR_RBS ERROR: {_tb.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Error al guardar: {str(_err)}")
 
 
 @router.put("/{restaurante_id}/{gasto_id}")
