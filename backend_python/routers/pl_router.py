@@ -14,6 +14,249 @@ from ..services.pl_service import pl_service
 router = APIRouter(prefix="/api/pl", tags=["pl"])
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# V2 P&L — nueva estructura de grupos y categorías
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Mapeo: UPPERCASE categoría (como aparece en gastos_por_categoria) → (grupo_v2, linea_v2)
+_V2_CAT_MAP: dict[str, tuple[str, str]] = {
+    # FOOD COST
+    "PROTEINA":          ("food_cost", "PROTEINA"),
+    "CARNE":             ("food_cost", "PROTEINA"),
+    "CARNES":            ("food_cost", "PROTEINA"),
+    "PESCADO":           ("food_cost", "PROTEINA"),
+    "MARISCOS":          ("food_cost", "PROTEINA"),
+    "SALMON":            ("food_cost", "PROTEINA"),
+    "ATUN":              ("food_cost", "PROTEINA"),
+    "VEGETALES":         ("food_cost", "VEGETALES FRUTAS"),
+    "FRUTAS":            ("food_cost", "VEGETALES FRUTAS"),
+    "VEGETALES_FRUTAS":  ("food_cost", "VEGETALES FRUTAS"),
+    "ABARROTES":         ("food_cost", "ABARROTES"),
+    "INGREDIENTES":      ("food_cost", "ABARROTES"),
+    "MATERIA_PRIMA":     ("food_cost", "ABARROTES"),
+    "LACTEOS":           ("food_cost", "ABARROTES"),
+    "PANADERIA":         ("food_cost", "ABARROTES"),
+    "TORTILLAS":         ("food_cost", "ABARROTES"),
+    "COCINA":            ("food_cost", "ABARROTES"),
+    "MERCADO":           ("food_cost", "ABARROTES"),
+    "PRODUCTOS_ASIATICOS": ("food_cost", "PRODUCTOS ASIATICOS"),
+    # BEVERAGE COST
+    "BEBIDAS":           ("beverage_cost", "BEBIDAS"),
+    "LICORES":           ("beverage_cost", "BEBIDAS"),
+    "VINOS":             ("beverage_cost", "BEBIDAS"),
+    "CERVEZAS":          ("beverage_cost", "BEBIDAS"),
+    "REFRESCOS":         ("beverage_cost", "BEBIDAS"),
+    "AGUAS":             ("beverage_cost", "BEBIDAS"),
+    # NÓMINA (sueldos)
+    "NOMINA":            ("nomina_g", "NOMINA"),
+    "SALARIOS":          ("nomina_g", "NOMINA"),
+    "SUELDOS":           ("nomina_g", "NOMINA"),
+    # GASTOS PERSONAL (no sueldos)
+    "PERSONAL":          ("gastos_personal", "PERSONAL"),
+    "COMIDA_PERSONAL":   ("gastos_personal", "PERSONAL"),
+    # OPERACIÓN
+    "LIMPIEZA":          ("operacion", "LIMPIEZA MANTTO"),
+    "LIMPIEZA_MANTTO":   ("operacion", "LIMPIEZA MANTTO"),
+    "DESINFECTANTE":     ("operacion", "LIMPIEZA MANTTO"),
+    "DETERGENTE":        ("operacion", "LIMPIEZA MANTTO"),
+    "DESECHABLES_EMPAQUES": ("operacion", "DESECHABLES EMPAQUES"),
+    "DESECHABLES":       ("operacion", "DESECHABLES EMPAQUES"),
+    "ESTACIONAMIENTO":   ("operacion", "ESTACIONAMIENTO"),
+    "MANTENIMIENTO":     ("operacion", "MANTENIMIENTO"),
+    "REPARACION":        ("operacion", "MANTENIMIENTO"),
+    "PLOMERO":           ("operacion", "MANTENIMIENTO"),
+    "ELECTRICISTA":      ("operacion", "MANTENIMIENTO"),
+    "HERRAMIENTAS":      ("operacion", "MANTENIMIENTO"),
+    "MARKETING":         ("operacion", "MARKETING"),
+    "PUBLICIDAD":        ("operacion", "MARKETING"),
+    "REDES_SOCIALES":    ("operacion", "MARKETING"),
+    "FOTOGRAFIA":        ("operacion", "MARKETING"),
+    "PAPELERIA":         ("operacion", "PAPELERIA"),
+    "EQUIPO":            ("operacion", "EQUIPO"),
+    "UTENSILIOS":        ("operacion", "EQUIPO"),
+    # SERVICIOS
+    "SERVICIOS":         ("servicios", "SERVICIOS"),
+    "TELEFONO":          ("servicios", "SERVICIOS"),
+    "INTERNET":          ("servicios", "SERVICIOS"),
+    "TELMEX":            ("servicios", "SERVICIOS"),
+    "CFE":               ("servicios", "SERVICIOS"),
+    "GAS":               ("servicios", "SERVICIOS"),
+    "AGUA":              ("servicios", "SERVICIOS"),
+    "ELECTRICIDAD":      ("servicios", "LUZ"),
+    "LUZ":               ("servicios", "LUZ"),
+    "RENTA":             ("servicios", "RENTA"),
+    "ARRENDAMIENTO":     ("servicios", "RENTA"),
+    # COMISIONES
+    "COMISIONES_BANCARIAS":    ("comisiones", "COMISIONES BANCARIAS"),
+    "COMISIONES BANCARIAS":    ("comisiones", "COMISIONES BANCARIAS"),
+    "COMISIONES_PLATAFORMAS":  ("comisiones", "COMISIONES PLATAFORMAS"),
+    "COMISIONES PLATAFORMAS":  ("comisiones", "COMISIONES PLATAFORMAS"),
+    # IMPUESTOS
+    "IMPUESTOS":         ("impuestos", "ISR"),
+    "ISR":               ("impuestos", "ISR"),
+    "IVA":               ("impuestos", "IVA"),
+    # OTROS
+    "OTROS":             ("otros", "OTROS"),
+    "MISCELANEOS":       ("otros", "OTROS"),
+    "VARIOS":            ("otros", "OTROS"),
+    "SOFTWARE":          ("otros", "OTROS"),
+    "PROPINAS":          ("otros", "OTROS"),
+}
+
+# Fallback por categoria_pl cuando el texto no matchea
+_V2_PL_FALLBACK: dict[str, tuple[str, str]] = {
+    "costo_alimentos":  ("food_cost", "ABARROTES"),
+    "costo_bebidas":    ("beverage_cost", "BEBIDAS"),
+    "nomina":           ("nomina_g", "NOMINA"),
+    "renta":            ("servicios", "RENTA"),
+    "servicios":        ("servicios", "SERVICIOS"),
+    "mantenimiento":    ("operacion", "MANTENIMIENTO"),
+    "limpieza":         ("operacion", "LIMPIEZA MANTTO"),
+    "marketing":        ("operacion", "MARKETING"),
+    "admin":            ("otros", "OTROS"),
+    "otros_gastos":     ("otros", "OTROS"),
+    "impuestos":        ("impuestos", "ISR"),
+}
+
+# Grupos operativos (para calcular TOTAL GASTOS OPERATIVOS — excluye impuestos y costo_ventas)
+_OPEX_GRUPOS = {"nomina_g", "gastos_personal", "operacion", "servicios", "comisiones", "otros"}
+
+# Grupos de costo de ventas
+_COSTO_VENTAS_GRUPOS = {"food_cost", "beverage_cost"}
+
+
+def _build_v2(pl, ventas: float, alerta_otros_threshold: float = 0.005) -> dict:
+    """
+    Transforma PLResult.gastos_por_categoria en la nueva estructura v2.
+    Acepta el PLResult completo para tomar ventas_netas y los totales ya calculados.
+    """
+    from ..services.pl_service import PLResult
+    result = pl
+
+    # 1. Acumular montos en {grupo: {linea: monto}}
+    grupos: dict[str, dict[str, float]] = {}
+
+    def _add(grupo: str, linea: str, monto: float):
+        if grupo not in grupos:
+            grupos[grupo] = {}
+        grupos[grupo][linea] = grupos[grupo].get(linea, 0.0) + monto
+
+    for item in result.gastos_por_categoria:
+        cat_text = (item.get("categoria") or "").upper().strip()
+        cat_pl   = item.get("categoria_pl") or ""
+        monto    = item.get("monto") or 0.0
+
+        if cat_text in _V2_CAT_MAP:
+            grupo, linea = _V2_CAT_MAP[cat_text]
+        elif cat_pl in _V2_PL_FALLBACK:
+            grupo, linea = _V2_PL_FALLBACK[cat_pl]
+        else:
+            grupo, linea = "otros", "OTROS"
+
+        _add(grupo, linea, monto)
+
+    def _pct(monto: float) -> float:
+        return round(monto / ventas * 100, 2) if ventas > 0 else 0.0
+
+    def _grupo_dict(grupo_key: str, lines_default: list[str]) -> dict:
+        d = grupos.get(grupo_key, {})
+        detalle = {line: round(d.get(line, 0.0), 2) for line in lines_default}
+        # Include any extra lines not in defaults
+        for k, v in d.items():
+            if k not in detalle:
+                detalle[k] = round(v, 2)
+        subtotal = sum(detalle.values())
+        return {"detalle": detalle, "subtotal": round(subtotal, 2), "porcentaje": _pct(subtotal)}
+
+    # 2. Costo de ventas
+    fc = _grupo_dict("food_cost", ["PROTEINA", "VEGETALES FRUTAS", "ABARROTES", "PRODUCTOS ASIATICOS"])
+    bev = _grupo_dict("beverage_cost", ["BEBIDAS"])
+    total_costo = round(fc["subtotal"] + bev["subtotal"], 2)
+    utilidad_bruta = round(ventas - total_costo, 2)
+
+    # 3. Gastos operativos
+    nom   = _grupo_dict("nomina_g",       ["NOMINA"])
+    pers  = _grupo_dict("gastos_personal", ["PERSONAL"])
+    oper  = _grupo_dict("operacion",       ["LIMPIEZA MANTTO", "DESECHABLES EMPAQUES", "ESTACIONAMIENTO", "MANTENIMIENTO", "MARKETING", "PAPELERIA", "EQUIPO"])
+    serv  = _grupo_dict("servicios",       ["SERVICIOS", "LUZ", "RENTA"])
+    com   = _grupo_dict("comisiones",      ["COMISIONES BANCARIAS", "COMISIONES PLATAFORMAS"])
+
+    otros_subtotal = sum(grupos.get("otros", {}).values())
+    otros_alerta   = ventas > 0 and (otros_subtotal / ventas) > alerta_otros_threshold
+    otros_dict = {
+        "detalle": {"OTROS": round(otros_subtotal, 2)},
+        "subtotal": round(otros_subtotal, 2),
+        "porcentaje": _pct(otros_subtotal),
+        "alerta": otros_alerta,
+        "alerta_threshold": alerta_otros_threshold,
+        "alerta_mensaje": (
+            f"OTROS supera el {alerta_otros_threshold*100:.1f}% de ventas "
+            f"(${otros_subtotal:,.0f}). Revisa si hay gastos que deban reclasificarse."
+        ) if otros_alerta else None,
+    }
+
+    total_opex = round(
+        nom["subtotal"] + pers["subtotal"] + oper["subtotal"] +
+        serv["subtotal"] + com["subtotal"] + otros_subtotal,
+        2,
+    )
+
+    # 4. Impuestos
+    imp_d  = grupos.get("impuestos", {})
+    imp_isr = round(imp_d.get("ISR", 0.0), 2)
+    imp_iva = round(imp_d.get("IVA", 0.0), 2)
+    # Fallback: use PLResult's impuestos_estimados if no line-item taxes found
+    if imp_isr == 0 and imp_iva == 0 and result.impuestos_estimados > 0:
+        imp_isr = round(result.impuestos_estimados, 2)
+    total_imp = round(imp_isr + imp_iva, 2)
+
+    # 5. Totales
+    ebitda        = round(utilidad_bruta - total_opex, 2)
+    utilidad_neta = round(ebitda - total_imp, 2)
+
+    return {
+        "periodo": {
+            "inicio": str(result.fecha_inicio),
+            "fin":    str(result.fecha_fin),
+        },
+        "ventas": round(ventas, 2),
+        "propinas_totales": round(result.propinas_totales, 2),
+        "costo_ventas": {
+            "food_cost":    fc,
+            "beverage_cost": bev,
+            "total": total_costo,
+            "total_porcentaje": _pct(total_costo),
+            "margen_bruto_pct": _pct(utilidad_bruta),
+        },
+        "utilidad_bruta": utilidad_bruta,
+        "utilidad_bruta_pct": _pct(utilidad_bruta),
+        "gastos_operativos": {
+            "nomina":          nom,
+            "gastos_personal": pers,
+            "operacion":       oper,
+            "servicios":       serv,
+            "comisiones":      com,
+            "otros":           otros_dict,
+            "total": total_opex,
+            "total_porcentaje": _pct(total_opex),
+        },
+        "ebitda": ebitda,
+        "ebitda_pct": _pct(ebitda),
+        "impuestos": {
+            "detalle": {"ISR": imp_isr, "IVA": imp_iva},
+            "total": total_imp,
+        },
+        "utilidad_neta": utilidad_neta,
+        "utilidad_neta_pct": _pct(utilidad_neta),
+        # KPIs extra para colores
+        "food_cost_pct":     fc["porcentaje"],
+        "beverage_cost_pct": bev["porcentaje"],
+        "advertencias": result.advertencias,
+        "gastos_sin_categorizar": result.gastos_sin_categorizar,
+        "dias_con_datos": result.dias_con_datos,
+    }
+
+
 def _check_tenant_access(restaurante_id: int, current_user: Optional[models.Usuario]):
     """SUPER_ADMIN puede ver cualquier restaurante; otros solo el suyo."""
     if current_user is None:
@@ -30,6 +273,21 @@ def _wrap(data, fecha_inicio, fecha_fin):
         "generado_en": datetime.utcnow().isoformat(),
         "periodo": {"inicio": str(fecha_inicio), "fin": str(fecha_fin)},
     }
+
+
+@router.get("/{restaurante_id}/v2/mes/{anio}/{mes}")
+def pl_v2_mes(
+    restaurante_id: int, anio: int, mes: int,
+    db: Session = Depends(get_db),
+    current_user: Optional[models.Usuario] = Depends(get_optional_user),
+):
+    """Nueva estructura P&L v2 con grupos granulares."""
+    _check_tenant_access(restaurante_id, current_user)
+    if not (1 <= mes <= 12):
+        raise HTTPException(status_code=400, detail={"detail": "Mes inválido (1-12)", "code": "INVALID_MONTH"})
+    result = pl_service.calcular_pl_mes(db, restaurante_id, mes, anio)
+    ventas = result.ventas_netas
+    return _build_v2(result, ventas)
 
 
 @router.get("/{restaurante_id}/mes/{anio}/{mes}")
