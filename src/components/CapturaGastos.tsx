@@ -233,6 +233,9 @@ export const CapturaGastos: React.FC = () => {
   const [rbsParsing, setRbsParsing] = useState(false);
   const [rbsParseResult, setRbsParseResult] = useState<any>(null);
   const [rbsParseCategoria, setRbsParseCategoria] = useState("");
+  const [showNuevoComprobante, setShowNuevoComprobante] = useState(false);
+  const [comprobanteSaving, setComprobanteSaving] = useState(false);
+  const [comprobanteForm, setComprobanteForm] = useState({ banco: "", beneficiario: "", monto: "", fecha: new Date().toISOString().split("T")[0], concepto: "", referencia: "" });
 
   const showRbsToast = (msg: string) => { setRbsToast(msg); setTimeout(() => setRbsToast(null), 3000); };
 
@@ -263,6 +266,29 @@ export const CapturaGastos: React.FC = () => {
       showRbsToast("✓ Factura registrada");
     } catch (e: any) { alert("Error: " + (e?.message || String(e))); }
     setRbsSaving(false);
+  };
+
+  const crearComprobanteManual = async () => {
+    if (!comprobanteForm.monto || parseFloat(comprobanteForm.monto) <= 0) return;
+    setComprobanteSaving(true);
+    try {
+      const proveedor = comprobanteForm.beneficiario.trim() || comprobanteForm.banco.trim() || "TRANSFERENCIA";
+      await api.post(`/api/rbs/${restauranteId}`, {
+        proveedor,
+        categoria: "TRANSFERENCIA",
+        descripcion: comprobanteForm.concepto || comprobanteForm.referencia || null,
+        monto: parseFloat(comprobanteForm.monto),
+        fecha_factura: comprobanteForm.fecha,
+        estado: "PAGADO",
+        fecha_pago: comprobanteForm.fecha,
+        folio: comprobanteForm.referencia || null,
+      });
+      setShowNuevoComprobante(false);
+      setComprobanteForm({ banco: "", beneficiario: "", monto: "", fecha: new Date().toISOString().split("T")[0], concepto: "", referencia: "" });
+      fetchRbs(rbsMes, rbsAnio);
+      showRbsToast("✓ Comprobante registrado");
+    } catch (e: any) { alert("Error: " + (e?.message || String(e))); }
+    setComprobanteSaving(false);
   };
 
   const subirArchivo = async (gastoId: number, tipo: "factura" | "comprobante") => {
@@ -593,22 +619,185 @@ export const CapturaGastos: React.FC = () => {
           {/* Toast */}
           {rbsToast && <div style={{ position: "fixed", bottom: "100px", left: "50%", transform: "translateX(-50%)", background: "#111827", color: "#FFF", padding: "10px 20px", borderRadius: "10px", fontSize: "13px", fontWeight: "700", zIndex: 9999, boxShadow: "0 4px 16px rgba(0,0,0,0.2)", pointerEvents: "none" }}>{rbsToast}</div>}
 
-          {/* Header + mes selector */}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px", flexWrap: "wrap", gap: "8px" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <button onClick={() => { const d = new Date(rbsAnio, rbsMes - 2, 1); setRbsMes(d.getMonth() + 1); setRbsAnio(d.getFullYear()); }} style={{ width: "28px", height: "28px", borderRadius: "8px", border: "1px solid #E5E7EB", background: "#FFF", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}><ChevronLeft style={{ width: "14px", height: "14px", color: "#6B7280" }} /></button>
-              <span style={{ fontSize: "14px", fontWeight: "700", color: "#111827", minWidth: "120px", textAlign: "center" }}>{MESES_LARGO[rbsMes - 1]} {rbsAnio}</span>
-              <button onClick={() => { const d = new Date(rbsAnio, rbsMes, 1); setRbsMes(d.getMonth() + 1); setRbsAnio(d.getFullYear()); }} style={{ width: "28px", height: "28px", borderRadius: "8px", border: "1px solid #E5E7EB", background: "#FFF", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}><ChevronRight style={{ width: "14px", height: "14px", color: "#6B7280" }} /></button>
-            </div>
-            <div style={{ display: "flex", gap: "8px" }}>
-              <button onClick={parsearPdf} disabled={rbsParsing} style={{ padding: "8px 14px", borderRadius: "10px", border: "none", background: rbsParsing ? "#E5E7EB" : "#3D1C1E", color: rbsParsing ? "#9CA3AF" : "#C8FF00", fontSize: "12px", fontWeight: "700", cursor: rbsParsing ? "not-allowed" : "pointer" }}>
-                {rbsParsing ? "⏳ Leyendo con IA..." : "📄 Subir Factura o Comprobante"}
-              </button>
-              <button onClick={() => setShowNuevaFactura(true)} style={{ padding: "8px 16px", borderRadius: "10px", border: "none", background: "#7C3AED", color: "#FFF", fontSize: "12px", fontWeight: "700", cursor: "pointer" }}>+ Nueva factura</button>
-            </div>
+          {/* Mes nav — compartido entre secciones */}
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "24px" }}>
+            <button onClick={() => { const d = new Date(rbsAnio, rbsMes - 2, 1); setRbsMes(d.getMonth() + 1); setRbsAnio(d.getFullYear()); }} style={{ width: "28px", height: "28px", borderRadius: "8px", border: "1px solid #E5E7EB", background: "#FFF", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}><ChevronLeft style={{ width: "14px", height: "14px", color: "#6B7280" }} /></button>
+            <span style={{ fontSize: "15px", fontWeight: "800", color: "#111827", minWidth: "130px", textAlign: "center" }}>{MESES_LARGO[rbsMes - 1]} {rbsAnio}</span>
+            <button onClick={() => { const d = new Date(rbsAnio, rbsMes, 1); setRbsMes(d.getMonth() + 1); setRbsAnio(d.getFullYear()); }} style={{ width: "28px", height: "28px", borderRadius: "8px", border: "1px solid #E5E7EB", background: "#FFF", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}><ChevronRight style={{ width: "14px", height: "14px", color: "#6B7280" }} /></button>
+            {rbsLoading && <Loader2 style={{ width: "16px", height: "16px", color: "#9CA3AF", animation: "spin 1s linear infinite" }} />}
           </div>
 
-          {/* Modal parse result */}
+          {/* ══════════════════════════════════════════
+              SECCIÓN 1 — FACTURAS DE PROVEEDORES
+          ══════════════════════════════════════════ */}
+          <div style={{ marginBottom: "32px" }}>
+            {/* Header sección */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "14px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <div style={{ width: "6px", height: "22px", borderRadius: "3px", background: "#7C3AED" }} />
+                <h2 style={{ fontSize: "15px", fontWeight: "800", color: "#111827", margin: 0 }}>Facturas de Proveedores</h2>
+              </div>
+              <div style={{ display: "flex", gap: "8px" }}>
+                <button onClick={parsearPdf} disabled={rbsParsing} style={{ padding: "7px 13px", borderRadius: "9px", border: "none", background: rbsParsing ? "#E5E7EB" : "#3D1C1E", color: rbsParsing ? "#9CA3AF" : "#C8FF00", fontSize: "12px", fontWeight: "700", cursor: rbsParsing ? "not-allowed" : "pointer", display: "flex", alignItems: "center", gap: "5px" }}>
+                  {rbsParsing ? "⏳ Leyendo..." : "📄 Subir PDF"}
+                </button>
+                <button onClick={() => setShowNuevaFactura(true)} style={{ padding: "7px 13px", borderRadius: "9px", border: "1px solid #7C3AED", background: "#FFF", color: "#7C3AED", fontSize: "12px", fontWeight: "700", cursor: "pointer" }}>+ Registrar manual</button>
+              </div>
+            </div>
+
+            {/* Métricas facturas */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "10px", marginBottom: "16px" }}>
+              {[
+                { label: "PENDIENTE DE PAGO", value: rbsTotalPendiente, color: "#F59E0B", bg: "#FFFBEB", count: rbsPendientes.length },
+                { label: "PAGADO ESTE MES",   value: rbsTotalPagado,    color: "#059669", bg: "#F0FDF4", count: rbsPagados.length },
+                { label: "VENCIDOS",           value: rbsTotalVencido,   color: "#EF4444", bg: "#FEF2F2", count: rbsVencidos.length },
+              ].map(m => (
+                <div key={m.label} style={{ background: m.bg, borderRadius: "12px", padding: "12px 14px", border: `1px solid ${m.color}22` }}>
+                  <div style={{ fontSize: "9px", fontWeight: "800", color: m.color, textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: "5px" }}>{m.label}</div>
+                  <div style={{ fontSize: "17px", fontWeight: "900", color: "#111827" }}>{fmt(m.value)}</div>
+                  <div style={{ fontSize: "11px", color: "#9CA3AF", marginTop: "2px" }}>{m.count} factura{m.count !== 1 ? "s" : ""}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Banner vencidos */}
+            {rbsVencidos.length > 0 && (
+              <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: "10px", padding: "10px 14px", marginBottom: "14px", display: "flex", alignItems: "center", gap: "8px" }}>
+                <span>⚠️</span>
+                <span style={{ fontSize: "13px", fontWeight: "700", color: "#DC2626" }}>{rbsVencidos.length} factura{rbsVencidos.length !== 1 ? "s" : ""} vencida{rbsVencidos.length !== 1 ? "s" : ""} por {fmt(rbsTotalVencido)} — pagar inmediatamente</span>
+              </div>
+            )}
+
+            {/* Lista facturas VENCIDO + PENDIENTE */}
+            {(["VENCIDO", "PENDIENTE"] as const).map(estado => {
+              const grupo = rbsData.filter(g => g.estado === estado);
+              if (!grupo.length) return null;
+              const labels: Record<string, string> = { VENCIDO: "🔴 Vencidas", PENDIENTE: "🟡 Pendientes de pago" };
+              const dotColor = estado === "VENCIDO" ? "#EF4444" : "#F59E0B";
+              const cardBg   = estado === "VENCIDO" ? "#FFF5F5" : "#FFFDF5";
+              const cardBdr  = estado === "VENCIDO" ? "#FECACA" : "#FDE68A";
+              return (
+                <div key={estado} style={{ marginBottom: "16px" }}>
+                  <div style={{ fontSize: "11px", fontWeight: "800", color: "#9CA3AF", textTransform: "uppercase", letterSpacing: "1px", marginBottom: "8px", paddingLeft: "2px" }}>{labels[estado]}</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                    {grupo.map(g => {
+                      const esHoy = g.fecha_vencimiento === rbsHoy;
+                      return (
+                        <div key={g.id} style={{ background: cardBg, borderRadius: "12px", border: `1px solid ${cardBdr}`, padding: "13px 15px" }}>
+                          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "8px" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px", flex: 1, minWidth: 0 }}>
+                              <div style={{ width: "9px", height: "9px", borderRadius: "50%", background: dotColor, flexShrink: 0 }} />
+                              <div style={{ minWidth: 0 }}>
+                                <div style={{ fontSize: "13px", fontWeight: "800", color: "#111827" }}>{g.proveedor} <span style={{ fontSize: "11px", fontWeight: "500", color: "#6B7280", background: "#F3F4F6", padding: "1px 6px", borderRadius: "4px", marginLeft: "4px" }}>{(g.categoria || "").replace(/_/g, " ")}</span></div>
+                                {g.descripcion && <div style={{ fontSize: "12px", color: "#6B7280", marginTop: "2px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.descripcion}</div>}
+                                {g.folio && <div style={{ fontSize: "10px", color: "#9CA3AF", marginTop: "1px" }}>Folio: {g.folio}</div>}
+                              </div>
+                            </div>
+                            <div style={{ textAlign: "right", flexShrink: 0 }}>
+                              <div style={{ fontSize: "15px", fontWeight: "900", color: "#111827" }}>{fmt(g.monto)}</div>
+                              {g.fecha_vencimiento && <div style={{ fontSize: "11px", color: estado === "VENCIDO" ? "#EF4444" : "#9CA3AF", marginTop: "1px" }}>{esHoy ? "⚡ Vence hoy" : `Vence: ${g.fecha_vencimiento}`}</div>}
+                            </div>
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "10px", flexWrap: "wrap" }}>
+                            {g.tiene_factura
+                              ? <a href={`/api/rbs/${restauranteId}/${g.id}/factura/archivo`} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "4px 10px", borderRadius: "6px", background: "#EFF6FF", color: "#2563EB", fontSize: "11px", fontWeight: "700", textDecoration: "none" }}>📄 Factura ✓</a>
+                              : <button onClick={() => subirArchivo(g.id, "factura")} style={{ padding: "4px 10px", borderRadius: "6px", border: "1px dashed #D1D5DB", background: "#FFF", color: "#6B7280", fontSize: "11px", cursor: "pointer" }}>📄 Subir factura</button>}
+                            {g.tiene_comprobante
+                              ? <a href={`/api/rbs/${restauranteId}/${g.id}/comprobante/archivo`} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "4px 10px", borderRadius: "6px", background: "#F0FDF4", color: "#059669", fontSize: "11px", fontWeight: "700", textDecoration: "none" }}>📎 Comprobante ✓</a>
+                              : <button onClick={() => subirArchivo(g.id, "comprobante")} style={{ padding: "4px 12px", borderRadius: "6px", border: "none", background: "#7C3AED", color: "#FFF", fontSize: "11px", fontWeight: "700", cursor: "pointer" }}>📎 Subir comprobante</button>}
+                            <button onClick={() => eliminarRbs(g.id)} style={{ marginLeft: "auto", padding: "4px 8px", borderRadius: "6px", border: "1px solid #FEE2E2", background: "#FFF", color: "#EF4444", fontSize: "11px", cursor: "pointer" }}>🗑</button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+
+            {rbsPendientes.length === 0 && rbsVencidos.length === 0 && !rbsLoading && (
+              <div style={{ background: "#FFF", borderRadius: "12px", padding: "32px", textAlign: "center", border: "1px dashed #E5E7EB" }}>
+                <p style={{ fontSize: "13px", color: "#9CA3AF", margin: "0 0 12px" }}>Sin facturas pendientes para este mes</p>
+                <div style={{ display: "flex", gap: "8px", justifyContent: "center" }}>
+                  <button onClick={parsearPdf} style={{ padding: "7px 13px", borderRadius: "8px", border: "none", background: "#3D1C1E", color: "#C8FF00", fontSize: "12px", fontWeight: "700", cursor: "pointer" }}>📄 Subir PDF</button>
+                  <button onClick={() => setShowNuevaFactura(true)} style={{ padding: "7px 13px", borderRadius: "8px", border: "1px solid #7C3AED", background: "#FFF", color: "#7C3AED", fontSize: "12px", fontWeight: "700", cursor: "pointer" }}>+ Manual</button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* ══════════════════════════════════════════
+              SECCIÓN 2 — COMPROBANTES DE PAGO
+          ══════════════════════════════════════════ */}
+          <div style={{ borderTop: "2px solid #F3F4F6", paddingTop: "24px" }}>
+            {/* Header sección */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "14px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <div style={{ width: "6px", height: "22px", borderRadius: "3px", background: "#059669" }} />
+                <h2 style={{ fontSize: "15px", fontWeight: "800", color: "#111827", margin: 0 }}>Comprobantes de Pago</h2>
+              </div>
+              <div style={{ display: "flex", gap: "8px" }}>
+                <button onClick={parsearPdf} disabled={rbsParsing} style={{ padding: "7px 13px", borderRadius: "9px", border: "none", background: rbsParsing ? "#E5E7EB" : "#064E3B", color: rbsParsing ? "#9CA3AF" : "#A7F3D0", fontSize: "12px", fontWeight: "700", cursor: rbsParsing ? "not-allowed" : "pointer" }}>
+                  {rbsParsing ? "⏳ Leyendo..." : "🏦 Subir imagen/PDF"}
+                </button>
+                <button onClick={() => setShowNuevoComprobante(true)} style={{ padding: "7px 13px", borderRadius: "9px", border: "1px solid #059669", background: "#FFF", color: "#059669", fontSize: "12px", fontWeight: "700", cursor: "pointer" }}>+ Registrar manual</button>
+              </div>
+            </div>
+
+            {/* Métrica comprobantes */}
+            <div style={{ background: "#F0FDF4", borderRadius: "12px", padding: "12px 16px", border: "1px solid #A7F3D022", marginBottom: "16px", display: "inline-flex", gap: "24px", alignItems: "center" }}>
+              <div>
+                <div style={{ fontSize: "9px", fontWeight: "800", color: "#059669", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: "3px" }}>TOTAL PAGADO ESTE MES</div>
+                <div style={{ fontSize: "20px", fontWeight: "900", color: "#111827" }}>{fmt(rbsTotalPagado)}</div>
+              </div>
+              <div style={{ width: "1px", height: "36px", background: "#D1FAE5" }} />
+              <div>
+                <div style={{ fontSize: "9px", fontWeight: "800", color: "#6B7280", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: "3px" }}>COMPROBANTES</div>
+                <div style={{ fontSize: "20px", fontWeight: "900", color: "#111827" }}>{rbsPagados.length}</div>
+              </div>
+            </div>
+
+            {/* Lista comprobantes (PAGADO) */}
+            {rbsPagados.length === 0 && !rbsLoading ? (
+              <div style={{ background: "#FFF", borderRadius: "12px", padding: "32px", textAlign: "center", border: "1px dashed #E5E7EB" }}>
+                <p style={{ fontSize: "13px", color: "#9CA3AF", margin: "0 0 12px" }}>Sin comprobantes este mes</p>
+                <div style={{ display: "flex", gap: "8px", justifyContent: "center" }}>
+                  <button onClick={parsearPdf} style={{ padding: "7px 13px", borderRadius: "8px", border: "none", background: "#064E3B", color: "#A7F3D0", fontSize: "12px", fontWeight: "700", cursor: "pointer" }}>🏦 Subir imagen/PDF</button>
+                  <button onClick={() => setShowNuevoComprobante(true)} style={{ padding: "7px 13px", borderRadius: "8px", border: "1px solid #059669", background: "#FFF", color: "#059669", fontSize: "12px", fontWeight: "700", cursor: "pointer" }}>+ Manual</button>
+                </div>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                {rbsPagados.map(g => (
+                  <div key={g.id} style={{ background: "#F9FFFE", borderRadius: "12px", border: "1px solid #A7F3D0", padding: "13px 15px" }}>
+                    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "8px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", flex: 1, minWidth: 0 }}>
+                        <div style={{ width: "9px", height: "9px", borderRadius: "50%", background: "#059669", flexShrink: 0 }} />
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: "13px", fontWeight: "800", color: "#111827" }}>{g.proveedor} <span style={{ fontSize: "11px", fontWeight: "500", color: "#6B7280", background: "#F3F4F6", padding: "1px 6px", borderRadius: "4px", marginLeft: "4px" }}>{(g.categoria || "").replace(/_/g, " ")}</span></div>
+                          {g.descripcion && <div style={{ fontSize: "12px", color: "#6B7280", marginTop: "2px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.descripcion}</div>}
+                          {g.folio && <div style={{ fontSize: "10px", color: "#9CA3AF", marginTop: "1px" }}>Ref: {g.folio}</div>}
+                        </div>
+                      </div>
+                      <div style={{ textAlign: "right", flexShrink: 0 }}>
+                        <div style={{ fontSize: "15px", fontWeight: "900", color: "#059669" }}>{fmt(g.monto)}</div>
+                        <div style={{ fontSize: "11px", color: "#9CA3AF", marginTop: "1px" }}>Pagado: {g.fecha_pago || g.fecha_factura}</div>
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "10px", flexWrap: "wrap" }}>
+                      {g.tiene_factura && <a href={`/api/rbs/${restauranteId}/${g.id}/factura/archivo`} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "4px 10px", borderRadius: "6px", background: "#EFF6FF", color: "#2563EB", fontSize: "11px", fontWeight: "700", textDecoration: "none" }}>📄 Factura</a>}
+                      {g.tiene_comprobante
+                        ? <a href={`/api/rbs/${restauranteId}/${g.id}/comprobante/archivo`} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "4px 10px", borderRadius: "6px", background: "#D1FAE5", color: "#065F46", fontSize: "11px", fontWeight: "700", textDecoration: "none" }}>📎 Comprobante ✓</a>
+                        : <button onClick={() => subirArchivo(g.id, "comprobante")} style={{ padding: "4px 10px", borderRadius: "6px", border: "1px dashed #6EE7B7", background: "#FFF", color: "#059669", fontSize: "11px", cursor: "pointer" }}>📎 Subir comprobante</button>}
+                      <button onClick={() => eliminarRbs(g.id)} style={{ marginLeft: "auto", padding: "4px 8px", borderRadius: "6px", border: "1px solid #FEE2E2", background: "#FFF", color: "#EF4444", fontSize: "11px", cursor: "pointer" }}>🗑</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* ══ Modal parse result (factura o comprobante detectado por IA) ══ */}
           {rbsParseResult && (
             <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }} onClick={e => { if (e.target === e.currentTarget) setRbsParseResult(null); }}>
               <div style={{ background: "#FFF", borderRadius: "16px", padding: "24px", width: "100%", maxWidth: "600px", maxHeight: "85vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.25)" }}>
@@ -620,12 +809,12 @@ export const CapturaGastos: React.FC = () => {
                     </div>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "20px" }}>
                       {[
-                        { label: "Banco", value: rbsParseResult.data.banco },
-                        { label: "Monto", value: rbsParseResult.data.monto ? fmt(rbsParseResult.data.monto) : "—" },
-                        { label: "Fecha", value: rbsParseResult.data.fecha || "—" },
-                        { label: "Referencia", value: rbsParseResult.data.referencia || "—" },
+                        { label: "Banco",        value: rbsParseResult.data.banco },
+                        { label: "Monto",        value: rbsParseResult.data.monto ? fmt(rbsParseResult.data.monto) : "—" },
+                        { label: "Fecha",        value: rbsParseResult.data.fecha || "—" },
+                        { label: "Referencia",   value: rbsParseResult.data.referencia || "—" },
                         { label: "Beneficiario", value: rbsParseResult.data.beneficiario || "—" },
-                        { label: "Concepto", value: rbsParseResult.data.concepto || "—" },
+                        { label: "Concepto",     value: rbsParseResult.data.concepto || "—" },
                       ].map(f => (
                         <div key={f.label} style={{ padding: "10px 12px", background: "#F9FAFB", borderRadius: "8px" }}>
                           <div style={{ fontSize: "10px", fontWeight: "700", color: "#9CA3AF", textTransform: "uppercase", marginBottom: "3px" }}>{f.label}</div>
@@ -633,27 +822,45 @@ export const CapturaGastos: React.FC = () => {
                         </div>
                       ))}
                     </div>
-                    {rbsParseResult.data.match_sugerido ? (
-                      <div style={{ padding: "14px 16px", background: rbsParseResult.data.match_sugerido.confidence === "baja" ? "#FFFBEB" : "#F0FDF4", border: `1px solid ${rbsParseResult.data.match_sugerido.confidence === "baja" ? "#FDE68A" : "#A7F3D0"}`, borderRadius: "10px", marginBottom: "16px" }}>
-                        {rbsParseResult.data.match_sugerido.confidence !== "baja" ? (
-                          <>
-                            <div style={{ fontSize: "13px", fontWeight: "800", color: "#059669", marginBottom: "6px" }}>✅ Match: <strong>{rbsParseResult.data.match_sugerido.factura.proveedor}</strong> — {fmt(rbsParseResult.data.match_sugerido.factura.monto)}</div>
-                            <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
-                              <span style={{ padding: "2px 8px", borderRadius: "6px", background: "#D1FAE5", color: "#065F46", fontSize: "11px", fontWeight: "700" }}>Confianza: {rbsParseResult.data.match_sugerido.confidence}</span>
-                              <span style={{ fontSize: "11px", color: "#6B7280" }}>{rbsParseResult.data.match_sugerido.match_reason}</span>
-                            </div>
-                            <button onClick={() => vincularComprobante(rbsParseResult.data.match_sugerido.factura.id)} style={{ marginTop: "12px", padding: "8px 18px", borderRadius: "8px", border: "none", background: "#059669", color: "#FFF", fontSize: "12px", fontWeight: "800", cursor: "pointer" }}>✅ Vincular y marcar como pagado</button>
-                          </>
-                        ) : (
-                          <div style={{ fontSize: "13px", color: "#D97706", fontWeight: "700" }}>⚠️ No se encontró factura con suficiente confianza (solo coincide el monto)</div>
-                        )}
+                    {rbsParseResult.data.match_sugerido && rbsParseResult.data.match_sugerido.confidence !== "baja" ? (
+                      <div style={{ padding: "14px 16px", background: "#F0FDF4", border: "1px solid #A7F3D0", borderRadius: "10px", marginBottom: "16px" }}>
+                        <div style={{ fontSize: "13px", fontWeight: "800", color: "#059669", marginBottom: "6px" }}>✅ Match encontrado: <strong>{rbsParseResult.data.match_sugerido.factura.proveedor}</strong> — {fmt(rbsParseResult.data.match_sugerido.factura.monto)}</div>
+                        <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+                          <span style={{ padding: "2px 8px", borderRadius: "6px", background: "#D1FAE5", color: "#065F46", fontSize: "11px", fontWeight: "700" }}>Confianza: {rbsParseResult.data.match_sugerido.confidence}</span>
+                          <span style={{ fontSize: "11px", color: "#6B7280" }}>{rbsParseResult.data.match_sugerido.match_reason}</span>
+                        </div>
+                        <button onClick={() => vincularComprobante(rbsParseResult.data.match_sugerido.factura.id)} style={{ marginTop: "12px", padding: "8px 18px", borderRadius: "8px", border: "none", background: "#059669", color: "#FFF", fontSize: "12px", fontWeight: "800", cursor: "pointer" }}>✅ Vincular y marcar como pagado</button>
                       </div>
                     ) : (
                       <div style={{ padding: "12px 14px", background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: "10px", marginBottom: "16px" }}>
-                        <div style={{ fontSize: "13px", color: "#D97706", fontWeight: "700" }}>⚠️ No se encontró factura coincidente. Selecciona manualmente.</div>
+                        <div style={{ fontSize: "13px", color: "#D97706", fontWeight: "700" }}>⚠️ {rbsParseResult.data.match_sugerido ? "Solo coincide el monto — vincula manualmente." : "Sin factura coincidente. Guarda como comprobante independiente."}</div>
                       </div>
                     )}
-                    <button onClick={() => setRbsParseResult(null)} style={{ width: "100%", padding: "10px", borderRadius: "10px", border: "1px solid #E5E7EB", background: "#FFF", color: "#6B7280", fontSize: "13px", fontWeight: "700", cursor: "pointer" }}>Cerrar</button>
+                    <div style={{ display: "flex", gap: "8px" }}>
+                      <button onClick={() => setRbsParseResult(null)} style={{ flex: 1, padding: "10px", borderRadius: "10px", border: "1px solid #E5E7EB", background: "#FFF", color: "#6B7280", fontSize: "13px", fontWeight: "700", cursor: "pointer" }}>Cerrar</button>
+                      <button onClick={async () => {
+                        setRbsSaving(true);
+                        try {
+                          const d = rbsParseResult.data;
+                          await api.post(`/api/rbs/${restauranteId}`, {
+                            proveedor: d.beneficiario || d.banco || "TRANSFERENCIA",
+                            categoria: "TRANSFERENCIA",
+                            descripcion: d.concepto || d.referencia || null,
+                            monto: d.monto || 0,
+                            fecha_factura: d.fecha || new Date().toISOString().split("T")[0],
+                            estado: "PAGADO",
+                            fecha_pago: d.fecha || new Date().toISOString().split("T")[0],
+                            folio: d.referencia || null,
+                          });
+                          setRbsParseResult(null);
+                          fetchRbs(rbsMes, rbsAnio);
+                          showRbsToast("✓ Comprobante guardado");
+                        } catch (e: any) { alert("Error: " + (e?.message || String(e))); }
+                        setRbsSaving(false);
+                      }} disabled={rbsSaving} style={{ flex: 2, padding: "10px", borderRadius: "10px", border: "none", background: rbsSaving ? "#E5E7EB" : "#059669", color: rbsSaving ? "#9CA3AF" : "#FFF", fontSize: "13px", fontWeight: "800", cursor: rbsSaving ? "not-allowed" : "pointer" }}>
+                        {rbsSaving ? "Guardando..." : "💾 Guardar comprobante"}
+                      </button>
+                    </div>
                   </>
                 ) : (
                   <>
@@ -664,11 +871,11 @@ export const CapturaGastos: React.FC = () => {
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "16px" }}>
                       {[
                         { label: "Proveedor", value: rbsParseResult.data.proveedor || "—" },
-                        { label: "Total", value: rbsParseResult.data.total ? fmt(rbsParseResult.data.total) : "—" },
-                        { label: "Fecha", value: rbsParseResult.data.fecha || "—" },
-                        { label: "Folio", value: rbsParseResult.data.folio || "—" },
-                        { label: "RFC", value: rbsParseResult.data.rfc_emisor || "—" },
-                        { label: "IVA", value: rbsParseResult.data.iva ? fmt(rbsParseResult.data.iva) : "—" },
+                        { label: "Total",     value: rbsParseResult.data.total ? fmt(rbsParseResult.data.total) : "—" },
+                        { label: "Fecha",     value: rbsParseResult.data.fecha || "—" },
+                        { label: "Folio",     value: rbsParseResult.data.folio || "—" },
+                        { label: "RFC",       value: rbsParseResult.data.rfc_emisor || "—" },
+                        { label: "IVA",       value: rbsParseResult.data.iva ? fmt(rbsParseResult.data.iva) : "—" },
                       ].map(f => (
                         <div key={f.label} style={{ padding: "10px 12px", background: "#F9FAFB", borderRadius: "8px" }}>
                           <div style={{ fontSize: "10px", fontWeight: "700", color: "#9CA3AF", textTransform: "uppercase", marginBottom: "3px" }}>{f.label}</div>
@@ -677,7 +884,7 @@ export const CapturaGastos: React.FC = () => {
                       ))}
                     </div>
                     <div style={{ marginBottom: "16px" }}>
-                      <label style={{ display: "block", fontSize: "11px", fontWeight: "700", color: "#374151", marginBottom: "5px", textTransform: "uppercase", letterSpacing: "0.5px" }}>Categoría sugerida (editable)</label>
+                      <label style={{ display: "block", fontSize: "11px", fontWeight: "700", color: "#374151", marginBottom: "5px", textTransform: "uppercase", letterSpacing: "0.5px" }}>Categoría</label>
                       <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
                         <span style={{ padding: "4px 10px", borderRadius: "6px", background: "#EDE9FE", color: "#7C3AED", fontSize: "12px", fontWeight: "700" }}>{rbsParseResult.data.categoria_sugerida || "OTROS"}</span>
                         <select value={rbsParseCategoria} onChange={e => setRbsParseCategoria(e.target.value)} style={{ flex: 1, padding: "7px 10px", borderRadius: "8px", border: "1px solid #E5E7EB", fontSize: "12px" }}>
@@ -688,13 +895,9 @@ export const CapturaGastos: React.FC = () => {
                     </div>
                     {rbsParseResult.data.items?.length > 0 && (
                       <div style={{ marginBottom: "16px", overflowX: "auto" }}>
-                        <div style={{ fontSize: "11px", fontWeight: "700", color: "#374151", marginBottom: "8px", textTransform: "uppercase" }}>Detalle de items ({rbsParseResult.data.items.length})</div>
+                        <div style={{ fontSize: "11px", fontWeight: "700", color: "#374151", marginBottom: "8px", textTransform: "uppercase" }}>Items ({rbsParseResult.data.items.length})</div>
                         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "11px" }}>
-                          <thead>
-                            <tr style={{ background: "#F9FAFB" }}>
-                              {["Descripción", "Cant.", "Precio u.", "Importe"].map(h => <th key={h} style={{ padding: "6px 8px", textAlign: "left", fontWeight: "700", color: "#6B7280", borderBottom: "1px solid #E5E7EB" }}>{h}</th>)}
-                            </tr>
-                          </thead>
+                          <thead><tr style={{ background: "#F9FAFB" }}>{["Descripción","Cant.","Precio u.","Importe"].map(h => <th key={h} style={{ padding: "6px 8px", textAlign: "left", fontWeight: "700", color: "#6B7280", borderBottom: "1px solid #E5E7EB" }}>{h}</th>)}</tr></thead>
                           <tbody>
                             {rbsParseResult.data.items.map((item: any, i: number) => (
                               <tr key={i} style={{ borderBottom: "1px solid #F3F4F6" }}>
@@ -715,7 +918,7 @@ export const CapturaGastos: React.FC = () => {
                     )}
                     <div style={{ display: "flex", gap: "8px" }}>
                       <button onClick={() => setRbsParseResult(null)} style={{ flex: 1, padding: "10px", borderRadius: "10px", border: "1px solid #E5E7EB", background: "#FFF", color: "#6B7280", fontSize: "13px", fontWeight: "700", cursor: "pointer" }}>❌ Descartar</button>
-                      <button onClick={confirmarParseResult} disabled={rbsSaving} style={{ flex: 2, padding: "10px", borderRadius: "10px", border: "none", background: rbsSaving ? "#E5E7EB" : "#059669", color: rbsSaving ? "#9CA3AF" : "#FFF", fontSize: "13px", fontWeight: "800", cursor: rbsSaving ? "not-allowed" : "pointer" }}>
+                      <button onClick={confirmarParseResult} disabled={rbsSaving} style={{ flex: 2, padding: "10px", borderRadius: "10px", border: "none", background: rbsSaving ? "#E5E7EB" : "#7C3AED", color: rbsSaving ? "#9CA3AF" : "#FFF", fontSize: "13px", fontWeight: "800", cursor: rbsSaving ? "not-allowed" : "pointer" }}>
                         {rbsSaving ? "Guardando..." : "✅ Confirmar y Guardar"}
                       </button>
                     </div>
@@ -725,109 +928,12 @@ export const CapturaGastos: React.FC = () => {
             </div>
           )}
 
-          {/* Métricas */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "12px", marginBottom: "20px" }}>
-            {[
-              { label: "PENDIENTE DE PAGO", value: rbsTotalPendiente, color: "#F59E0B", bg: "#FFFBEB", count: rbsPendientes.length },
-              { label: "PAGADO ESTE MES", value: rbsTotalPagado, color: "#059669", bg: "#F0FDF4", count: rbsPagados.length },
-              { label: "VENCIDOS", value: rbsTotalVencido, color: "#EF4444", bg: "#FEF2F2", count: rbsVencidos.length },
-            ].map(m => (
-              <div key={m.label} style={{ background: m.bg, borderRadius: "12px", padding: "14px 16px", border: `1px solid ${m.color}22` }}>
-                <div style={{ fontSize: "9px", fontWeight: "800", color: m.color, textTransform: "uppercase", letterSpacing: "1px", marginBottom: "6px" }}>{m.label}</div>
-                <div style={{ fontSize: "18px", fontWeight: "900", color: "#111827" }}>{fmt(m.value)}</div>
-                <div style={{ fontSize: "11px", color: "#9CA3AF", marginTop: "2px" }}>{m.count} factura{m.count !== 1 ? "s" : ""}</div>
-              </div>
-            ))}
-          </div>
-
-          {rbsLoading ? (
-            <div style={{ padding: "40px", textAlign: "center" }}><Loader2 style={{ width: "24px", height: "24px", color: "#9CA3AF", margin: "0 auto", animation: "spin 1s linear infinite" }} /></div>
-          ) : (
-            <>
-              {/* Banner vencidos */}
-              {rbsVencidos.length > 0 && (
-                <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: "10px", padding: "12px 16px", marginBottom: "16px", display: "flex", alignItems: "center", gap: "8px" }}>
-                  <span style={{ fontSize: "16px" }}>⚠️</span>
-                  <span style={{ fontSize: "13px", fontWeight: "700", color: "#DC2626" }}>
-                    {rbsVencidos.length} factura{rbsVencidos.length !== 1 ? "s" : ""} vencida{rbsVencidos.length !== 1 ? "s" : ""} por {fmt(rbsTotalVencido)} — pagar inmediatamente
-                  </span>
-                </div>
-              )}
-
-              {/* Lista agrupada por estado */}
-              {rbsData.length === 0 ? (
-                <div style={{ background: "#FFF", borderRadius: "14px", padding: "40px", textAlign: "center" }}>
-                  <p style={{ fontSize: "13px", color: "#9CA3AF", margin: 0 }}>Sin facturas registradas para este mes</p>
-                  <button onClick={() => setShowNuevaFactura(true)} style={{ marginTop: "12px", padding: "8px 16px", borderRadius: "8px", border: "none", background: "#7C3AED", color: "#FFF", fontSize: "12px", fontWeight: "700", cursor: "pointer" }}>+ Nueva factura</button>
-                </div>
-              ) : (
-                <>
-                  {(["VENCIDO", "PENDIENTE", "PAGADO"] as const).map(estado => {
-                    const grupo = rbsData.filter(g => g.estado === estado);
-                    if (!grupo.length) return null;
-                    const labels: Record<string, string> = { VENCIDO: "🔴 Vencidos", PENDIENTE: "🟡 Pendientes de pago", PAGADO: "✅ Pagados este mes" };
-                    return (
-                      <div key={estado} style={{ marginBottom: "20px" }}>
-                        <div style={{ fontSize: "11px", fontWeight: "800", color: "#9CA3AF", textTransform: "uppercase", letterSpacing: "1px", marginBottom: "8px", paddingLeft: "4px" }}>{labels[estado]}</div>
-                        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                          {grupo.map(g => {
-                            const esHoy = g.fecha_vencimiento === rbsHoy;
-                            const dotColor = estado === "VENCIDO" ? "#EF4444" : estado === "PAGADO" ? "#059669" : g.fecha_vencimiento ? "#F59E0B" : "#9CA3AF";
-                            const cardBg = estado === "VENCIDO" ? "#FFF5F5" : estado === "PAGADO" ? "#F9FFFE" : "#FFFDF5";
-                            const cardBorder = estado === "VENCIDO" ? "#FECACA" : estado === "PAGADO" ? "#A7F3D0" : "#FDE68A";
-                            return (
-                              <div key={g.id} style={{ background: cardBg, borderRadius: "12px", border: `1px solid ${cardBorder}`, padding: "14px 16px" }}>
-                                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "8px" }}>
-                                  <div style={{ display: "flex", alignItems: "center", gap: "8px", flex: 1, minWidth: 0 }}>
-                                    <div style={{ width: "10px", height: "10px", borderRadius: "50%", background: dotColor, flexShrink: 0 }} />
-                                    <div style={{ minWidth: 0 }}>
-                                      <div style={{ fontSize: "13px", fontWeight: "800", color: "#111827" }}>{g.proveedor} <span style={{ fontSize: "11px", fontWeight: "500", color: "#6B7280", background: "#F3F4F6", padding: "1px 6px", borderRadius: "4px", marginLeft: "4px" }}>{(g.categoria || "").replace(/_/g, " ")}</span></div>
-                                      {g.descripcion && <div style={{ fontSize: "12px", color: "#6B7280", marginTop: "2px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.descripcion}</div>}
-                                    </div>
-                                  </div>
-                                  <div style={{ textAlign: "right", flexShrink: 0 }}>
-                                    <div style={{ fontSize: "15px", fontWeight: "900", color: "#111827" }}>{fmt(g.monto)}</div>
-                                    {g.fecha_vencimiento && (
-                                      <div style={{ fontSize: "11px", color: estado === "VENCIDO" ? "#EF4444" : "#9CA3AF", marginTop: "1px" }}>
-                                        {estado === "PAGADO" ? `Pagado: ${g.fecha_pago}` : esHoy ? "⚡ Vence hoy" : `Vence: ${g.fecha_vencimiento}`}
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                                {/* Archivos */}
-                                <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "10px", flexWrap: "wrap" }}>
-                                  {g.tiene_factura ? (
-                                    <a href={`/api/rbs/${restauranteId}/${g.id}/factura/archivo`} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "4px 10px", borderRadius: "6px", background: "#EFF6FF", color: "#2563EB", fontSize: "11px", fontWeight: "700", textDecoration: "none" }}>📄 Factura ✓</a>
-                                  ) : estado !== "PAGADO" ? (
-                                    <button onClick={() => subirArchivo(g.id, "factura")} style={{ padding: "4px 10px", borderRadius: "6px", border: "1px dashed #D1D5DB", background: "#FFF", color: "#6B7280", fontSize: "11px", cursor: "pointer" }}>📄 Subir factura</button>
-                                  ) : (
-                                    <span style={{ fontSize: "11px", color: "#9CA3AF" }}>📄 Sin factura</span>
-                                  )}
-                                  {g.tiene_comprobante ? (
-                                    <a href={`/api/rbs/${restauranteId}/${g.id}/comprobante/archivo`} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "4px 10px", borderRadius: "6px", background: "#F0FDF4", color: "#059669", fontSize: "11px", fontWeight: "700", textDecoration: "none" }}>📎 Comprobante ✓</a>
-                                  ) : estado !== "PAGADO" ? (
-                                    <button onClick={() => subirArchivo(g.id, "comprobante")} style={{ padding: "4px 12px", borderRadius: "6px", border: "none", background: "#7C3AED", color: "#FFF", fontSize: "11px", fontWeight: "700", cursor: "pointer" }}>📎 Subir comprobante de pago</button>
-                                  ) : null}
-                                  <button onClick={() => eliminarRbs(g.id)} style={{ marginLeft: "auto", padding: "4px 8px", borderRadius: "6px", border: "1px solid #FEE2E2", background: "#FFF", color: "#EF4444", fontSize: "11px", cursor: "pointer" }}>🗑</button>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </>
-              )}
-            </>
-          )}
-
-          {/* Modal nueva factura */}
+          {/* ══ Modal nueva factura manual ══ */}
           {showNuevaFactura && (
             <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px" }} onClick={e => { if (e.target === e.currentTarget) setShowNuevaFactura(false); }}>
               <div style={{ background: "#FFF", borderRadius: "16px", padding: "24px", width: "100%", maxWidth: "480px", boxShadow: "0 20px 60px rgba(0,0,0,0.2)" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
-                  <h3 style={{ fontSize: "16px", fontWeight: "800", color: "#111827", margin: 0 }}>Nueva factura / transferencia</h3>
+                  <h3 style={{ fontSize: "16px", fontWeight: "800", color: "#111827", margin: 0 }}>📄 Nueva factura de proveedor</h3>
                   <button onClick={() => setShowNuevaFactura(false)} style={{ padding: "4px 8px", borderRadius: "6px", border: "none", background: "#F3F4F6", color: "#6B7280", cursor: "pointer" }}>✕</button>
                 </div>
                 {[
@@ -837,13 +943,13 @@ export const CapturaGastos: React.FC = () => {
                   { label: "Fecha de factura *", key: "fecha_factura", type: "date", placeholder: "" },
                   { label: "Fecha de vencimiento", key: "fecha_vencimiento", type: "date", placeholder: "" },
                 ].map(f => (
-                  <div key={f.key} style={{ marginBottom: "14px" }}>
-                    <label style={{ display: "block", fontSize: "11px", fontWeight: "700", color: "#374151", marginBottom: "5px", textTransform: "uppercase", letterSpacing: "0.5px" }}>{f.label}</label>
+                  <div key={f.key} style={{ marginBottom: "12px" }}>
+                    <label style={{ display: "block", fontSize: "11px", fontWeight: "700", color: "#374151", marginBottom: "4px", textTransform: "uppercase", letterSpacing: "0.5px" }}>{f.label}</label>
                     <input type={f.type} value={(rbsForm as any)[f.key]} onChange={e => setRbsForm(prev => ({ ...prev, [f.key]: e.target.value }))} placeholder={f.placeholder} style={{ width: "100%", padding: "9px 12px", borderRadius: "8px", border: "1px solid #E5E7EB", fontSize: "13px", boxSizing: "border-box" as const }} />
                   </div>
                 ))}
-                <div style={{ marginBottom: "20px" }}>
-                  <label style={{ display: "block", fontSize: "11px", fontWeight: "700", color: "#374151", marginBottom: "5px", textTransform: "uppercase", letterSpacing: "0.5px" }}>Categoría</label>
+                <div style={{ marginBottom: "18px" }}>
+                  <label style={{ display: "block", fontSize: "11px", fontWeight: "700", color: "#374151", marginBottom: "4px", textTransform: "uppercase", letterSpacing: "0.5px" }}>Categoría</label>
                   <select value={rbsForm.categoria} onChange={e => setRbsForm(prev => ({ ...prev, categoria: e.target.value }))} style={{ width: "100%", padding: "9px 12px", borderRadius: "8px", border: "1px solid #E5E7EB", fontSize: "13px" }}>
                     <option value="">— Seleccionar —</option>
                     {CATEGORIAS.map(c => <option key={c} value={c}>{c.replace(/_/g, " ")}</option>)}
@@ -853,6 +959,37 @@ export const CapturaGastos: React.FC = () => {
                   <button onClick={() => setShowNuevaFactura(false)} style={{ flex: 1, padding: "10px", borderRadius: "10px", border: "1px solid #E5E7EB", background: "#FFF", color: "#6B7280", fontSize: "13px", fontWeight: "700", cursor: "pointer" }}>Cancelar</button>
                   <button onClick={crearFactura} disabled={rbsSaving || !rbsForm.proveedor.trim() || !rbsForm.monto} style={{ flex: 2, padding: "10px", borderRadius: "10px", border: "none", background: rbsSaving || !rbsForm.proveedor.trim() ? "#E5E7EB" : "#7C3AED", color: rbsSaving || !rbsForm.proveedor.trim() ? "#9CA3AF" : "#FFF", fontSize: "13px", fontWeight: "800", cursor: rbsSaving || !rbsForm.proveedor.trim() ? "not-allowed" : "pointer" }}>
                     {rbsSaving ? "Guardando..." : "Guardar factura"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ══ Modal nuevo comprobante manual ══ */}
+          {showNuevoComprobante && (
+            <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px" }} onClick={e => { if (e.target === e.currentTarget) setShowNuevoComprobante(false); }}>
+              <div style={{ background: "#FFF", borderRadius: "16px", padding: "24px", width: "100%", maxWidth: "480px", boxShadow: "0 20px 60px rgba(0,0,0,0.2)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
+                  <h3 style={{ fontSize: "16px", fontWeight: "800", color: "#111827", margin: 0 }}>🏦 Registrar comprobante de pago</h3>
+                  <button onClick={() => setShowNuevoComprobante(false)} style={{ padding: "4px 8px", borderRadius: "6px", border: "none", background: "#F3F4F6", color: "#6B7280", cursor: "pointer" }}>✕</button>
+                </div>
+                {[
+                  { label: "Banco *", key: "banco", type: "text", placeholder: "SANTANDER, BBVA..." },
+                  { label: "Beneficiario / Destino", key: "beneficiario", type: "text", placeholder: "Nombre del proveedor" },
+                  { label: "Monto *", key: "monto", type: "number", placeholder: "0.00" },
+                  { label: "Fecha *", key: "fecha", type: "date", placeholder: "" },
+                  { label: "Concepto", key: "concepto", type: "text", placeholder: "Pago factura X..." },
+                  { label: "Referencia / No. movimiento", key: "referencia", type: "text", placeholder: "0000000000" },
+                ].map(f => (
+                  <div key={f.key} style={{ marginBottom: "12px" }}>
+                    <label style={{ display: "block", fontSize: "11px", fontWeight: "700", color: "#374151", marginBottom: "4px", textTransform: "uppercase", letterSpacing: "0.5px" }}>{f.label}</label>
+                    <input type={f.type} value={(comprobanteForm as any)[f.key]} onChange={e => setComprobanteForm(prev => ({ ...prev, [f.key]: e.target.value }))} placeholder={f.placeholder} style={{ width: "100%", padding: "9px 12px", borderRadius: "8px", border: "1px solid #E5E7EB", fontSize: "13px", boxSizing: "border-box" as const }} />
+                  </div>
+                ))}
+                <div style={{ display: "flex", gap: "8px", marginTop: "6px" }}>
+                  <button onClick={() => setShowNuevoComprobante(false)} style={{ flex: 1, padding: "10px", borderRadius: "10px", border: "1px solid #E5E7EB", background: "#FFF", color: "#6B7280", fontSize: "13px", fontWeight: "700", cursor: "pointer" }}>Cancelar</button>
+                  <button onClick={crearComprobanteManual} disabled={comprobanteSaving || !comprobanteForm.banco.trim() || !comprobanteForm.monto} style={{ flex: 2, padding: "10px", borderRadius: "10px", border: "none", background: comprobanteSaving || !comprobanteForm.banco.trim() ? "#E5E7EB" : "#059669", color: comprobanteSaving || !comprobanteForm.banco.trim() ? "#9CA3AF" : "#FFF", fontSize: "13px", fontWeight: "800", cursor: comprobanteSaving || !comprobanteForm.banco.trim() ? "not-allowed" : "pointer" }}>
+                    {comprobanteSaving ? "Guardando..." : "💾 Guardar comprobante"}
                   </button>
                 </div>
               </div>

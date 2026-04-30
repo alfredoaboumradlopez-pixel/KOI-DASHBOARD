@@ -35,6 +35,8 @@ class GastoTransferenciaCreate(BaseModel):
     folio_fiscal: Optional[str] = None
     rfc_emisor: Optional[str] = None
     items_json: Optional[str] = None
+    estado: Optional[str] = "PENDIENTE"
+    fecha_pago: Optional[date] = None
 
 
 class GastoTransferenciaUpdate(BaseModel):
@@ -114,11 +116,16 @@ async def parse_invoice(
         tmp_path = tmp.name
 
     try:
-        if is_image:
-            result = await parse_image_with_vision(tmp_path, media_type)
-        else:
-            parser = InvoiceParser()
-            result = parser.parse(tmp_path)
+        import traceback as _tb
+        try:
+            if is_image:
+                result = await parse_image_with_vision(tmp_path, media_type)
+            else:
+                parser = InvoiceParser()
+                result = parser.parse(tmp_path)
+        except Exception as _parse_err:
+            print(f"PARSE ERROR: {_tb.format_exc()}")
+            raise HTTPException(status_code=500, detail=f"Error al parsear archivo: {str(_parse_err)}")
 
         # Si es comprobante → intentar match con facturas pendientes
         if result.get("tipo_parser") == "comprobante_pago":
@@ -189,7 +196,8 @@ def crear_rbs(restaurante_id: int, data: GastoTransferenciaCreate, db: Session =
         monto=data.monto,
         fecha_factura=data.fecha_factura,
         fecha_vencimiento=data.fecha_vencimiento,
-        estado="PENDIENTE",
+        estado=data.estado or "PENDIENTE",
+        fecha_pago=data.fecha_pago,
         folio=data.folio,
         folio_fiscal=data.folio_fiscal,
         rfc_emisor=data.rfc_emisor,

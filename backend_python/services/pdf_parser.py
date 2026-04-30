@@ -454,7 +454,7 @@ Si es FACTURA O NOTA DE COMPRA, usa este schema:
                 "content-type": "application/json",
             },
             json={
-                "model": "claude-sonnet-4-20250514",
+                "model": "claude-opus-4-5",
                 "max_tokens": 2000,
                 "messages": [{
                     "role": "user",
