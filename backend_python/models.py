@@ -560,3 +560,62 @@ class GastoTransferencia(Base):
     items_json = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Tabulador de Propinas
+# ─────────────────────────────────────────────────────────────────────────────
+
+class PropinaConfig(Base):
+    __tablename__ = "propinas_config"
+    id = Column(Integer, primary_key=True, index=True)
+    restaurante_id = Column(Integer, ForeignKey("restaurantes.id"), nullable=False, unique=True)
+    porcentaje_empleados = Column(Float, default=90.0)
+    porcentaje_restaurante = Column(Float, default=10.0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class PropinasSemana(Base):
+    __tablename__ = "propinas_semana"
+    id = Column(Integer, primary_key=True, index=True)
+    restaurante_id = Column(Integer, ForeignKey("restaurantes.id"), nullable=False)
+    numero_semana = Column(Integer, nullable=False)
+    anio = Column(Integer, nullable=False)
+    fecha_inicio = Column(Date, nullable=False)   # lunes
+    fecha_fin = Column(Date, nullable=False)       # domingo
+    propina_lun = Column(Float, default=0.0)
+    propina_mar = Column(Float, default=0.0)
+    propina_mie = Column(Float, default=0.0)
+    propina_jue = Column(Float, default=0.0)
+    propina_vie = Column(Float, default=0.0)
+    propina_sab = Column(Float, default=0.0)
+    propina_dom = Column(Float, default=0.0)
+    total_propinas = Column(Float, default=0.0)       # suma bruta semana
+    total_empleados = Column(Float, default=0.0)      # total distribuido a empleados
+    total_restaurante = Column(Float, default=0.0)    # retención restaurante
+    estado = Column(String(20), default="borrador")   # borrador|confirmado|pagado
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    empleados = relationship("PropinasEmpleado", back_populates="semana",
+                             cascade="all, delete-orphan")
+
+
+class PropinasEmpleado(Base):
+    __tablename__ = "propinas_empleado"
+    id = Column(Integer, primary_key=True, index=True)
+    semana_id = Column(Integer, ForeignKey("propinas_semana.id"), nullable=False)
+    nombre = Column(String(100), nullable=False)
+    trabajo_lun = Column(Boolean, default=False)
+    trabajo_mar = Column(Boolean, default=False)
+    trabajo_mie = Column(Boolean, default=False)
+    trabajo_jue = Column(Boolean, default=False)
+    trabajo_vie = Column(Boolean, default=False)
+    trabajo_sab = Column(Boolean, default=False)
+    trabajo_dom = Column(Boolean, default=False)
+    propina_calculada = Column(Float, default=0.0)
+    adelanto = Column(Float, default=0.0)
+    total_neto = Column(Float, default=0.0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    semana = relationship("PropinasSemana", back_populates="empleados")

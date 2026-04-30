@@ -40,6 +40,7 @@ import { Nomina } from "./Nomina";
 import { Tesoreria } from "./Tesoreria";
 import { Fiscal } from "./Fiscal";
 import { Costeo } from "./Costeo";
+import { Propinas } from "./Propinas";
 import { RestauranteProvider } from "../context/RestauranteContext";
 
 type SubModule =
@@ -49,6 +50,7 @@ type SubModule =
   | "dashboard-gastos"
   | "categorizar"
   | "nomina"
+  | "propinas"
   | "tesoreria"
   | "fiscal"
   | "costeo";
@@ -60,6 +62,7 @@ const MODULOS: { key: SubModule; label: string; icon: any; badgeKey?: string }[]
   { key: "dashboard-gastos",  label: "Dashboard Gastos",     icon: BarChart2, badgeKey: "alertas" },
   { key: "categorizar",       label: "Categorizar gastos",   icon: Tag },
   { key: "nomina",            label: "Nómina",               icon: Users },
+  { key: "propinas",          label: "Propinas",             icon: Wallet },
   { key: "tesoreria",         label: "Calendario Pagos",     icon: Wallet },
   { key: "fiscal",            label: "Fiscal",               icon: Calculator },
   { key: "costeo",            label: "Costeo & Menú",        icon: ChefHat },
@@ -293,6 +296,7 @@ export const RestauranteDashboard = () => {
           <CategorizarGastos restauranteIdOverride={restauranteId} />
         )}
         {subModule === "nomina" && <Nomina />}
+        {subModule === "propinas" && <Propinas />}
         {subModule === "tesoreria" && <Tesoreria />}
         {subModule === "fiscal" && <Fiscal />}
         {subModule === "costeo" && (
@@ -336,6 +340,7 @@ export const RestauranteDashboard = () => {
           { key: "dashboard-gastos", label: "Análisis",     shortLabel: "Análisis",   emoji: "📈" },
           { key: "categorizar",      label: "Categorizar",  shortLabel: "Categ.",     emoji: "🏷️", badge: true },
           { key: "nomina",           label: "Nómina",       shortLabel: "Nómina",     emoji: "👥" },
+          { key: "propinas",         label: "Propinas",     shortLabel: "Propinas",   emoji: "💵" },
           { key: "tesoreria",        label: "Pagos",        shortLabel: "Pagos",      emoji: "📅" },
           { key: "fiscal",           label: "Fiscal",       shortLabel: "Fiscal",     emoji: "🏛️" },
           { key: "costeo",           label: "Costeo & Menú", shortLabel: "Costeo",   emoji: "🍽️" },

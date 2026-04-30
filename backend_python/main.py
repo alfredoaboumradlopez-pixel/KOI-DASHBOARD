@@ -51,6 +51,7 @@ from .routers.costeo_router import router as costeo_router, seed_costeo, seed_ve
 from .routers.proveedores_analytics_router import router as proveedores_analytics_router
 from .routers.flujo_caja_router import router as flujo_caja_router
 from .routers.rbs_router import router as rbs_router
+from .routers.propinas_router import router as propinas_router
 
 models.Base.metadata.create_all(bind=engine)
 
@@ -155,6 +156,65 @@ try:
             print(f"Columna {_col_rbs} agregada a gastos_transferencia")
 except Exception as _e_rbs2:
     print(f"Migracion gastos_transferencia (alter): {_e_rbs2}")
+
+# Migracion: crear tablas propinas (config, semana, empleado)
+try:
+    with engine.begin() as _conn_prop:
+        _conn_prop.execute(_text("""
+            CREATE TABLE IF NOT EXISTS propinas_config (
+                id SERIAL PRIMARY KEY,
+                restaurante_id INTEGER NOT NULL UNIQUE REFERENCES restaurantes(id),
+                porcentaje_empleados DOUBLE PRECISION DEFAULT 90.0,
+                porcentaje_restaurante DOUBLE PRECISION DEFAULT 10.0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """))
+        _conn_prop.execute(_text("""
+            CREATE TABLE IF NOT EXISTS propinas_semana (
+                id SERIAL PRIMARY KEY,
+                restaurante_id INTEGER NOT NULL REFERENCES restaurantes(id),
+                numero_semana INTEGER NOT NULL,
+                anio INTEGER NOT NULL,
+                fecha_inicio DATE NOT NULL,
+                fecha_fin DATE NOT NULL,
+                propina_lun DOUBLE PRECISION DEFAULT 0,
+                propina_mar DOUBLE PRECISION DEFAULT 0,
+                propina_mie DOUBLE PRECISION DEFAULT 0,
+                propina_jue DOUBLE PRECISION DEFAULT 0,
+                propina_vie DOUBLE PRECISION DEFAULT 0,
+                propina_sab DOUBLE PRECISION DEFAULT 0,
+                propina_dom DOUBLE PRECISION DEFAULT 0,
+                total_propinas DOUBLE PRECISION DEFAULT 0,
+                total_empleados DOUBLE PRECISION DEFAULT 0,
+                total_restaurante DOUBLE PRECISION DEFAULT 0,
+                estado VARCHAR(20) DEFAULT 'borrador',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """))
+        _conn_prop.execute(_text("""
+            CREATE TABLE IF NOT EXISTS propinas_empleado (
+                id SERIAL PRIMARY KEY,
+                semana_id INTEGER NOT NULL REFERENCES propinas_semana(id) ON DELETE CASCADE,
+                nombre VARCHAR(100) NOT NULL,
+                trabajo_lun BOOLEAN DEFAULT false,
+                trabajo_mar BOOLEAN DEFAULT false,
+                trabajo_mie BOOLEAN DEFAULT false,
+                trabajo_jue BOOLEAN DEFAULT false,
+                trabajo_vie BOOLEAN DEFAULT false,
+                trabajo_sab BOOLEAN DEFAULT false,
+                trabajo_dom BOOLEAN DEFAULT false,
+                propina_calculada DOUBLE PRECISION DEFAULT 0,
+                adelanto DOUBLE PRECISION DEFAULT 0,
+                total_neto DOUBLE PRECISION DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """))
+        print("Tablas propinas OK")
+except Exception as _e_prop:
+    print(f"Migracion propinas: {_e_prop}")
 
 # Migracion: agregar contenido_base64 a documentos_empleado
 try:
@@ -398,6 +458,7 @@ app.include_router(costeo_router)
 app.include_router(proveedores_analytics_router)
 app.include_router(flujo_caja_router)
 app.include_router(rbs_router)
+app.include_router(propinas_router)
 
 UPLOADS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
 os.makedirs(os.path.join(UPLOADS_DIR, "documentos"), exist_ok=True)
