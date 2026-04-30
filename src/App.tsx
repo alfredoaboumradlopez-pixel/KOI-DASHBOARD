@@ -200,7 +200,7 @@ function App() {
       {currentRoute === "/nomina" && <Nomina />}
       {currentRoute === "/pl" && <EstadoResultados />}
       {currentRoute === "/distribucion" && <DistribucionUtilidades />}
-      {currentRoute === "/reportes" && <Reportes />}
+      {currentRoute === "/reportes" && <EstadoResultados />}
       {currentRoute === "/tesoreria" && <Tesoreria />}
       {currentRoute === "/fiscal" && <Fiscal />}
       {currentRoute === "/banco" && <ReconciliacionBancaria />}
