@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from .. import models
-from ..services.pdf_parser import InvoiceParser, match_payment_to_invoice
+from ..services.pdf_parser import InvoiceParser, match_payment_to_invoice, parse_image_with_vision
 
 router = APIRouter(prefix="/api/rbs", tags=["rbs"])
 
@@ -89,25 +89,36 @@ async def parse_invoice(
     db: Session = Depends(get_db),
 ):
     """
-    Parsea PDF de factura o comprobante de pago.
-    Si es comprobante, intenta match automático con facturas pendientes del restaurante.
+    Parsea PDF, JPEG o PNG de factura o comprobante de pago.
+    - PDF  → pdfplumber / Claude Vision (fallback escaneados)
+    - JPEG/PNG → Claude Vision directo
+    Si es comprobante, intenta match automático con facturas pendientes.
     IMPORTANTE: debe estar antes de POST /{restaurante_id} para evitar conflicto de rutas.
     """
-    filename = file.filename or ""
-    if not filename.lower().endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Solo se aceptan archivos PDF")
+    filename = (file.filename or "").lower()
+    is_pdf   = filename.endswith(".pdf")
+    is_image = filename.endswith((".jpg", ".jpeg", ".png"))
+
+    if not is_pdf and not is_image:
+        raise HTTPException(status_code=400, detail="Solo se aceptan archivos PDF, JPG o PNG")
 
     content = await file.read()
     if len(content) > 10 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="Archivo demasiado grande (máximo 10MB)")
 
-    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+    suffix     = ".pdf" if is_pdf else (".png" if filename.endswith(".png") else ".jpg")
+    media_type = "image/png" if filename.endswith(".png") else "image/jpeg"
+
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
         tmp.write(content)
         tmp_path = tmp.name
 
     try:
-        parser = InvoiceParser()
-        result = parser.parse(tmp_path)
+        if is_image:
+            result = await parse_image_with_vision(tmp_path, media_type)
+        else:
+            parser = InvoiceParser()
+            result = parser.parse(tmp_path)
 
         # Si es comprobante → intentar match con facturas pendientes
         if result.get("tipo_parser") == "comprobante_pago":

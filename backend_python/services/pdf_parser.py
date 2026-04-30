@@ -392,6 +392,110 @@ def _fmt_fecha(s: str) -> str | None:
     return s
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Image → Vision parser (JPEG/PNG directo, sin pdfplumber)
+# ─────────────────────────────────────────────────────────────────────────────
+
+async def parse_image_with_vision(image_path: str, media_type: str) -> dict:
+    """
+    Manda una imagen (JPEG o PNG) directamente a Claude Vision.
+    Retorna el mismo schema que InvoiceParser.parse() para comprobantes y facturas.
+    """
+    if not ANTHROPIC_API_KEY:
+        return {"error": "ANTHROPIC_API_KEY no configurada", "tipo_parser": "vision"}
+
+    with open(image_path, "rb") as f:
+        img_b64 = base64.b64encode(f.read()).decode()
+
+    prompt = """Analiza este documento. Puede ser una factura, nota de compra,
+o comprobante de pago bancario (transferencia SPEI, etc).
+
+Responde SOLO con JSON válido sin markdown ni explicación.
+
+Si es COMPROBANTE DE PAGO, usa este schema:
+{
+  "tipo_documento": "comprobante_pago",
+  "banco": "nombre del banco",
+  "monto": 0.00,
+  "concepto": "texto del concepto",
+  "fecha": "YYYY-MM-DD",
+  "referencia": "número de referencia o movimiento",
+  "cuenta_origen": "número de cuenta origen",
+  "cuenta_destino": "número de cuenta destino",
+  "beneficiario": "nombre del beneficiario"
+}
+
+Si es FACTURA O NOTA DE COMPRA, usa este schema:
+{
+  "tipo_documento": "factura",
+  "proveedor": "nombre del proveedor",
+  "rfc_emisor": "RFC o null",
+  "folio": "número de folio o pedido",
+  "folio_fiscal": "UUID del SAT o null",
+  "fecha": "YYYY-MM-DD",
+  "items": [
+    {"descripcion": "...", "cantidad": 0.0, "unidad": "KG/PZA/etc",
+     "precio_unitario": 0.00, "importe": 0.00}
+  ],
+  "subtotal": 0.00,
+  "descuento": 0.00,
+  "iva": 0.00,
+  "iva_tasa": 16,
+  "total": 0.00,
+  "metodo_pago": "PUE/PPD/etc o null"
+}"""
+
+    try:
+        resp = httpx.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "x-api-key": ANTHROPIC_API_KEY,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json",
+            },
+            json={
+                "model": "claude-sonnet-4-20250514",
+                "max_tokens": 2000,
+                "messages": [{
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": media_type,
+                                "data": img_b64,
+                            },
+                        },
+                        {"type": "text", "text": prompt},
+                    ],
+                }],
+            },
+            timeout=30,
+        )
+        resp.raise_for_status()
+        raw_text = resp.json()["content"][0]["text"]
+        clean = re.sub(r"```json|```", "", raw_text).strip()
+        parsed = json.loads(clean)
+    except Exception as e:
+        return {"error": str(e), "tipo_parser": "vision"}
+
+    tipo = parsed.get("tipo_documento", "")
+    if tipo == "comprobante_pago":
+        parsed["tipo_parser"] = "comprobante_pago"
+        parsed.pop("tipo_documento", None)
+        return parsed
+    else:
+        # Factura / nota de compra
+        parsed["tipo_parser"] = "vision"
+        parsed.pop("tipo_documento", None)
+        items_text = " ".join(
+            i.get("descripcion", "") for i in parsed.get("items", [])
+        ).lower()
+        parsed["categoria_sugerida"] = _suggest_category(items_text)
+        return parsed
+
+
 def _suggest_category(desc: str) -> str:
     rules = [
         (["soya", "mirin", "nori", "yuzu", "edamame", "wakame", "ramune",

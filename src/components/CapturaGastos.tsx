@@ -287,7 +287,7 @@ export const CapturaGastos: React.FC = () => {
 
   const parsearPdf = async () => {
     const input = document.createElement("input");
-    input.type = "file"; input.accept = ".pdf";
+    input.type = "file"; input.accept = ".pdf,.jpg,.jpeg,.png";
     input.onchange = async () => {
       const f = input.files?.[0]; if (!f) return;
       setRbsParsing(true);
@@ -295,7 +295,7 @@ export const CapturaGastos: React.FC = () => {
         const result = await api.upload(`/api/rbs/parse-invoice?restaurante_id=${restauranteId}`, f);
         setRbsParseResult(result);
         setRbsParseCategoria(result?.data?.categoria_sugerida || "");
-      } catch (e: any) { alert("Error al parsear PDF: " + (e?.message || String(e))); }
+      } catch (e: any) { alert("Error al parsear archivo: " + (e?.message || String(e))); }
       setRbsParsing(false);
     };
     input.click();
@@ -602,7 +602,7 @@ export const CapturaGastos: React.FC = () => {
             </div>
             <div style={{ display: "flex", gap: "8px" }}>
               <button onClick={parsearPdf} disabled={rbsParsing} style={{ padding: "8px 14px", borderRadius: "10px", border: "none", background: rbsParsing ? "#E5E7EB" : "#3D1C1E", color: rbsParsing ? "#9CA3AF" : "#C8FF00", fontSize: "12px", fontWeight: "700", cursor: rbsParsing ? "not-allowed" : "pointer" }}>
-                {rbsParsing ? "⏳ Leyendo con IA..." : "📄 Subir PDF"}
+                {rbsParsing ? "⏳ Leyendo con IA..." : "📄 Subir Factura o Comprobante"}
               </button>
               <button onClick={() => setShowNuevaFactura(true)} style={{ padding: "8px 16px", borderRadius: "10px", border: "none", background: "#7C3AED", color: "#FFF", fontSize: "12px", fontWeight: "700", cursor: "pointer" }}>+ Nueva factura</button>
             </div>
