@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { api } from "../services/api";
 import { useStore } from "../store/useStore";
 import { TrendingUp, TrendingDown, AlertTriangle, RefreshCw, AlertCircle, ChevronRight, ChevronDown } from "lucide-react";
@@ -129,6 +129,7 @@ export const PLDashboard = ({ restauranteIdOverride }: PLDashboardProps = {}) =>
   void authUser; // usado arriba para restauranteId
   const [anio] = useState(new Date().getFullYear());
   const [pl, setPl] = useState<PLResult | null>(null);
+  const [plV2, setPlV2] = useState<any>(null);
   const [semanas, setSemanas] = useState<any[]>([]);
   const [alertas, setAlertas] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -207,6 +208,26 @@ export const PLDashboard = ({ restauranteIdOverride }: PLDashboardProps = {}) =>
       setPl(plData);
       setSemanas(semanasData);
       setAlertas(plData?.advertencias ?? []);
+
+      // Fetch P&L v2 (nueva estructura de categorías para el cuadro Estado de Resultados)
+      try {
+        const v2Resp = await fetch(
+          `${(window as any).__API_BASE__ || ""}/api/pl/${restauranteId}/v2/mes/${anio}/${m}`,
+          {
+            headers: {
+              "Content-Type": "application/json",
+              ...(localStorage.getItem("rbo_token")
+                ? { Authorization: `Bearer ${localStorage.getItem("rbo_token")}` }
+                : {}),
+            },
+          }
+        );
+        if (v2Resp.ok) {
+          setPlV2(await v2Resp.json());
+        }
+      } catch (_) {
+        // silencioso — v2 es adicional, no crítico
+      }
     } catch (e: any) {
       console.error("[PLDashboard] fetch falló:", e);
       setError({ message: `Error de red: ${e?.message ?? "desconocido"}` });
@@ -223,6 +244,11 @@ export const PLDashboard = ({ restauranteIdOverride }: PLDashboardProps = {}) =>
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const toggleGrupo = (k: string) =>
     setExpandedGroups(prev => { const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n; });
+
+  // Grupos v2 — todos abiertos por default
+  const V2_GRUPOS = ["food_cost","beverage_cost","nomina","gastos_personal","operacion","servicios","comisiones","otros","impuestos"];
+  const [v2Open, setV2Open] = useState<Record<string,boolean>>(Object.fromEntries(V2_GRUPOS.map(k => [k, true])));
+  const toggleV2 = (k: string) => setV2Open(prev => ({ ...prev, [k]: !prev[k] }));
 
   const GRUPO_MAP: Record<string, string> = {
     costo_alimentos: "Costo de ventas", costo_bebidas: "Costo de ventas",
@@ -680,196 +706,122 @@ export const PLDashboard = ({ restauranteIdOverride }: PLDashboardProps = {}) =>
                 No se pudieron cargar los datos — {error.message}
               </div>
             ) : !pl || pl.ventas_netas === 0 ? (
-              <div
-                style={{
-                  padding: "32px",
-                  textAlign: "center" as const,
-                  color: "#9CA3AF",
-                  fontSize: "13px",
-                  lineHeight: "1.6",
-                }}
-              >
+              <div style={{ padding: "32px", textAlign: "center" as const, color: "#9CA3AF", fontSize: "13px", lineHeight: "1.6" }}>
                 Sin datos registrados para {MESES[mes]} {anio}
                 <br />
-                <span style={{ fontSize: "11px", color: "#D1D5DB" }}>
-                  Restaurante ID: {restauranteId}
-                </span>
+                <span style={{ fontSize: "11px", color: "#D1D5DB" }}>Restaurante ID: {restauranteId}</span>
               </div>
+            ) : plV2 ? (
+              /* ── Nueva tabla v2 ── */
+              (() => {
+                const v = plV2.ventas || 0;
+                const pct = (n: number) => v > 0 ? `${(n / v * 100).toFixed(1)}%` : "—";
+                const healthFC = (p: number) => p <= 30 ? "#059669" : p <= 35 ? "#D97706" : "#DC2626";
+                const healthEB = (p: number) => p >= 15 ? "#059669" : p >= 5 ? "#D97706" : "#DC2626";
+
+                const SectionLabel = ({ label }: { label: string }) => (
+                  <tr><td colSpan={3} style={{ padding: "6px 20px 3px", fontSize: "9px", fontWeight: "800", color: "#9CA3AF", letterSpacing: "0.1em", background: "#FAFBFC", borderTop: "1px solid #E5E7EB", textTransform: "uppercase" as const }}>{label}</td></tr>
+                );
+                const TotalLine = ({ label, monto, pctVal, color, bg }: { label: string; monto: number; pctVal: string; color: string; bg?: string }) => (
+                  <tr style={{ background: bg || "#F9FAFB", borderTop: "1px solid #E5E7EB" }}>
+                    <td style={{ padding: "9px 20px", fontSize: "13px", fontWeight: "700", color }}>{label}</td>
+                    <td style={{ padding: "9px 20px", textAlign: "right" as const, fontSize: "13px", fontWeight: "700", color }}>{fmt(monto)}</td>
+                    <td style={{ padding: "9px 20px", textAlign: "right" as const, fontSize: "12px", color }}>{pctVal}</td>
+                  </tr>
+                );
+                const GroupRow = ({ label, subtotal, open, onToggle, pctStr, color }: { label: string; subtotal: number; open: boolean; onToggle: () => void; pctStr: string; color?: string }) => (
+                  <tr onClick={onToggle} style={{ borderTop: "1px solid #F9FAFB", cursor: "pointer", background: open ? "#FAFBFC" : "transparent" }}>
+                    <td style={{ padding: "8px 20px", fontSize: "13px", color: color || "#374151" }}>
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                        {open ? <ChevronDown style={{ width: "13px", height: "13px", color: "#9CA3AF" }} /> : <ChevronRight style={{ width: "13px", height: "13px", color: "#9CA3AF" }} />}
+                        ↳ {label}
+                      </span>
+                    </td>
+                    <td style={{ padding: "8px 20px", textAlign: "right" as const, fontSize: "13px", color: "#DC2626" }}>{subtotal > 0 ? fmt(subtotal) : "—"}</td>
+                    <td style={{ padding: "8px 20px", textAlign: "right" as const, fontSize: "12px", color: "#DC2626" }}>{pctStr}</td>
+                  </tr>
+                );
+                const DetailRow = ({ label, monto, alert, alertMsg }: { key?: React.Key; label: string; monto: number; alert?: boolean; alertMsg?: string }) => (
+                  <tr style={{ borderTop: "1px solid #F9FAFB", background: "#FAFBFC" }}>
+                    <td style={{ padding: "4px 20px 4px 44px", fontSize: "12px", color: "#6B7280" }}>
+                      {label}
+                      {alert && <span title={alertMsg} style={{ marginLeft: "6px", cursor: "help", fontSize: "10px", background: "#FEF2F2", color: "#DC2626", padding: "1px 5px", borderRadius: "4px", fontWeight: 700 }}>⚠️ &gt;0.5%</span>}
+                    </td>
+                    <td style={{ padding: "4px 20px", textAlign: "right" as const, fontSize: "12px", color: "#374151" }}>{monto > 0 ? fmt(monto) : "—"}</td>
+                    <td style={{ padding: "4px 20px", textAlign: "right" as const, fontSize: "11px", color: "#9CA3AF" }}>{pct(monto)}</td>
+                  </tr>
+                );
+
+                const renderGrupo = (key: string, label: string) => {
+                  const g = plV2.gastos_operativos[key];
+                  if (!g) return null;
+                  return <>
+                    <GroupRow label={label} subtotal={g.subtotal} open={v2Open[key]} onToggle={() => toggleV2(key)} pctStr={pct(g.subtotal)} />
+                    {v2Open[key] && Object.entries(g.detalle as Record<string,number>).map(([line, monto]) => (
+                      <DetailRow key={line} label={line} monto={monto as number}
+                        alert={key === "otros" && g.alerta && line === "OTROS"}
+                        alertMsg={String(g.alerta_mensaje || "")} />
+                    ))}
+                  </>;
+                };
+
+                const fc = plV2.costo_ventas.food_cost;
+                const bev = plV2.costo_ventas.beverage_cost;
+
+                return (
+                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                    <thead>
+                      <tr style={{ background: "#FAFBFC" }}>
+                        <th style={{ padding: "8px 20px", textAlign: "left" as const, fontSize: "10px", fontWeight: "700", color: "#9CA3AF", textTransform: "uppercase" as const }}>Concepto</th>
+                        <th style={{ padding: "8px 20px", textAlign: "right" as const, fontSize: "10px", fontWeight: "700", color: "#9CA3AF", textTransform: "uppercase" as const }}>Monto</th>
+                        <th style={{ padding: "8px 20px", textAlign: "right" as const, fontSize: "10px", fontWeight: "700", color: "#9CA3AF", textTransform: "uppercase" as const }}>% Ventas</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {/* Ventas */}
+                      <tr style={{ borderTop: "1px solid #F9FAFB" }}>
+                        <td style={{ padding: "9px 20px", fontSize: "13px", fontWeight: "700", color: "#059669" }}>Ventas netas</td>
+                        <td style={{ padding: "9px 20px", textAlign: "right" as const, fontSize: "13px", fontWeight: "700", color: "#059669" }}>{fmt(v)}</td>
+                        <td style={{ padding: "9px 20px", textAlign: "right" as const, fontSize: "12px", color: "#059669" }}>100%</td>
+                      </tr>
+
+                      {/* COSTO DE VENTAS */}
+                      <SectionLabel label="Costo de Ventas" />
+                      <GroupRow label={`Food Cost · ${fc.porcentaje.toFixed(1)}%`} subtotal={fc.subtotal} open={v2Open["food_cost"]} onToggle={() => toggleV2("food_cost")} pctStr={`${fc.porcentaje.toFixed(1)}%`} color={healthFC(fc.porcentaje)} />
+                      {v2Open["food_cost"] && Object.entries(fc.detalle as Record<string,number>).map(([l, m]) => <DetailRow key={l} label={l} monto={m as number} />)}
+                      <GroupRow label={`Beverage Cost · ${bev.porcentaje.toFixed(1)}%`} subtotal={bev.subtotal} open={v2Open["beverage_cost"]} onToggle={() => toggleV2("beverage_cost")} pctStr={`${bev.porcentaje.toFixed(1)}%`} />
+                      {v2Open["beverage_cost"] && Object.entries(bev.detalle as Record<string,number>).map(([l, m]) => <DetailRow key={l} label={l} monto={m as number} />)}
+                      <TotalLine label="Total Costo de Ventas" monto={plV2.costo_ventas.total} pctVal={pct(plV2.costo_ventas.total)} color="#DC2626" />
+                      <TotalLine label="UTILIDAD BRUTA" monto={plV2.utilidad_bruta} pctVal={pct(plV2.utilidad_bruta)} color={plV2.utilidad_bruta >= 0 ? "#059669" : "#DC2626"} bg={plV2.utilidad_bruta >= 0 ? "#F0FDF4" : "#FEF2F2"} />
+
+                      {/* GASTOS OPERATIVOS */}
+                      <SectionLabel label="Gastos Operativos" />
+                      {renderGrupo("nomina", "Nómina")}
+                      {renderGrupo("gastos_personal", "Gastos de Personal")}
+                      {renderGrupo("operacion", "Operación")}
+                      {renderGrupo("servicios", "Servicios")}
+                      {renderGrupo("comisiones", "Comisiones")}
+                      {renderGrupo("otros", "Otros")}
+                      <TotalLine label="Total Gastos Operativos" monto={plV2.gastos_operativos.total} pctVal={pct(plV2.gastos_operativos.total)} color="#DC2626" />
+
+                      {/* EBITDA */}
+                      <TotalLine label="EBITDA" monto={plV2.ebitda} pctVal={`${plV2.ebitda_pct.toFixed(1)}%`} color={healthEB(plV2.ebitda_pct)} bg={plV2.ebitda >= 0 ? "#F0FDF4" : "#FEF2F2"} />
+
+                      {/* IMPUESTOS */}
+                      {plV2.impuestos.total > 0 && <>
+                        <SectionLabel label="Impuestos" />
+                        {Object.entries(plV2.impuestos.detalle as Record<string,number>).filter(([,m]) => (m as number) > 0).map(([l, m]) => <DetailRow key={l} label={l} monto={m as number} />)}
+                        <TotalLine label="Total Impuestos" monto={plV2.impuestos.total} pctVal={pct(plV2.impuestos.total)} color="#DC2626" />
+                      </>}
+
+                      {/* UTILIDAD NETA */}
+                      <TotalLine label="UTILIDAD NETA" monto={plV2.utilidad_neta} pctVal={`${plV2.utilidad_neta_pct.toFixed(1)}%`} color={plV2.utilidad_neta >= 0 ? "#059669" : "#DC2626"} bg={plV2.utilidad_neta >= 0 ? "#ECFDF5" : "#FEF2F2"} />
+                    </tbody>
+                  </table>
+                );
+              })()
             ) : (
-              <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead>
-                  <tr style={{ background: "#FAFBFC" }}>
-                    <th
-                      style={{
-                        padding: "8px 20px",
-                        textAlign: "left" as const,
-                        fontSize: "10px",
-                        fontWeight: "700",
-                        color: "#9CA3AF",
-                        textTransform: "uppercase" as const,
-                      }}
-                    >
-                      Concepto
-                    </th>
-                    <th
-                      style={{
-                        padding: "8px 20px",
-                        textAlign: "right" as const,
-                        fontSize: "10px",
-                        fontWeight: "700",
-                        color: "#9CA3AF",
-                        textTransform: "uppercase" as const,
-                      }}
-                    >
-                      Monto
-                    </th>
-                    <th
-                      style={{
-                        padding: "8px 20px",
-                        textAlign: "right" as const,
-                        fontSize: "10px",
-                        fontWeight: "700",
-                        color: "#9CA3AF",
-                        textTransform: "uppercase" as const,
-                      }}
-                    >
-                      % Ventas
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {/* Ventas netas */}
-                  <tr style={{ borderTop: "1px solid #F9FAFB" }}>
-                    <td style={{ padding: "9px 20px", fontSize: "13px", fontWeight: "700", color: "#059669" }}>Ventas netas</td>
-                    <td style={{ padding: "9px 20px", textAlign: "right", fontSize: "13px", fontWeight: "700", color: "#059669" }}>{fmt(pl!.ventas_netas)}</td>
-                    <td style={{ padding: "9px 20px", textAlign: "right", fontSize: "12px", color: "#059669" }}>100%</td>
-                  </tr>
-
-                  {/* Grupos antes de Utilidad Bruta (solo Costo de ventas) y después */}
-                  {(() => {
-                    const rows: ReturnType<typeof Array<any>>[] = [] as any[];
-                    const ventas = pl!.ventas_netas || 1;
-
-                    const renderGrupo = (nombre: string, isCosto: boolean) => {
-                      const cats = gruposData[nombre];
-                      if (!cats || cats.length === 0) return;
-                      const total = cats.reduce((s, c) => s + c.monto, 0);
-                      const pctGrupo = (total / ventas * 100).toFixed(1);
-                      const isOpen = isSuperAdmin || expandedGroups.has(nombre);
-
-                      rows.push(
-                        <tr
-                          key={nombre}
-                          onClick={() => !isSuperAdmin && toggleGrupo(nombre)}
-                          style={{ borderTop: "1px solid #F9FAFB", cursor: isSuperAdmin ? "default" : "pointer", background: isOpen ? "#FAFBFC" : "transparent" }}
-                        >
-                          <td style={{ padding: "8px 20px", fontSize: "13px", color: "#374151" }}>
-                            <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                              {!isSuperAdmin && (isOpen
-                                ? <ChevronDown style={{ width: "13px", height: "13px", color: "#9CA3AF" }} />
-                                : <ChevronRight style={{ width: "13px", height: "13px", color: "#9CA3AF" }} />
-                              )}
-                              ↳ {nombre}
-                            </span>
-                          </td>
-                          <td style={{ padding: "8px 20px", textAlign: "right", fontSize: "13px", color: "#DC2626" }}>{fmt(total)}</td>
-                          <td style={{ padding: "8px 20px", textAlign: "right", fontSize: "12px", color: "#DC2626" }}>{pctGrupo}%</td>
-                        </tr>
-                      );
-
-                      if (isOpen) {
-                        cats.forEach(c => {
-                          rows.push(
-                            <tr key={c.categoria} style={{ borderTop: "1px solid #F9FAFB", background: "#FAFBFC" }}>
-                              <td style={{ padding: "5px 20px 5px 44px", fontSize: "12px", color: "#6B7280" }}>
-                                {c.categoria.replace(/_/g, " ")}
-                              </td>
-                              <td style={{ padding: "5px 20px", textAlign: "right", fontSize: "12px", color: "#374151" }}>{fmt(c.monto)}</td>
-                              <td style={{ padding: "5px 20px", textAlign: "right", fontSize: "11px", color: "#9CA3AF" }}>{c.pct_ventas.toFixed(1)}%</td>
-                            </tr>
-                          );
-                        });
-                      }
-                    };
-
-                    // Costo de ventas (antes de utilidad bruta)
-                    if (hasDesglose) {
-                      renderGrupo("Costo de ventas", true);
-                    } else {
-                      rows.push(
-                        <tr key="costo-fb" style={{ borderTop: "1px solid #F9FAFB" }}>
-                          <td style={{ padding: "8px 20px", fontSize: "13px", color: "#374151" }}>↳ Costo de ventas</td>
-                          <td style={{ padding: "8px 20px", textAlign: "right", fontSize: "13px", color: "#DC2626" }}>{fmt(pl!.total_costo_ventas)}</td>
-                          <td style={{ padding: "8px 20px", textAlign: "right", fontSize: "12px", color: "#DC2626" }}>{(pl!.total_costo_ventas/ventas*100).toFixed(1)}%</td>
-                        </tr>
-                      );
-                    }
-
-                    // Utilidad bruta
-                    rows.push(
-                      <tr key="ub" style={{ borderTop: "1px solid #E5E7EB", background: "#F9FAFB" }}>
-                        <td style={{ padding: "9px 20px", fontSize: "13px", fontWeight: "700", color: pl!.utilidad_bruta >= 0 ? "#059669" : "#DC2626" }}>Utilidad bruta</td>
-                        <td style={{ padding: "9px 20px", textAlign: "right", fontSize: "13px", fontWeight: "700", color: pl!.utilidad_bruta >= 0 ? "#059669" : "#DC2626" }}>{fmt(pl!.utilidad_bruta)}</td>
-                        <td style={{ padding: "9px 20px", textAlign: "right", fontSize: "12px", color: pl!.utilidad_bruta >= 0 ? "#059669" : "#DC2626" }}>{pl!.margen_bruto_pct.toFixed(1)}%</td>
-                      </tr>
-                    );
-
-                    // Gastos operativos (todos los grupos excepto costo)
-                    if (hasDesglose) {
-                      GRUPO_ORDER.filter(n => n !== "Costo de ventas").forEach(nombre => renderGrupo(nombre, false));
-                    } else {
-                      [
-                        { label: "Nómina", v: pl!.gastos_nomina },
-                        { label: "Renta", v: pl!.gastos_renta },
-                        { label: "Servicios", v: pl!.gastos_servicios },
-                        { label: "Mantenimiento", v: pl!.gastos_mantenimiento },
-                        { label: "Limpieza", v: pl!.gastos_limpieza },
-                        { label: "Marketing", v: pl!.gastos_marketing },
-                        { label: "Otros gastos", v: pl!.gastos_admin + pl!.gastos_otros },
-                      ].filter(r => r.v > 0).forEach(r => {
-                        rows.push(
-                          <tr key={r.label} style={{ borderTop: "1px solid #F9FAFB" }}>
-                            <td style={{ padding: "8px 20px", fontSize: "13px", color: "#374151" }}>{r.label}</td>
-                            <td style={{ padding: "8px 20px", textAlign: "right", fontSize: "13px", color: "#DC2626" }}>{fmt(r.v)}</td>
-                            <td style={{ padding: "8px 20px", textAlign: "right", fontSize: "12px", color: "#DC2626" }}>{(r.v/ventas*100).toFixed(1)}%</td>
-                          </tr>
-                        );
-                      });
-                    }
-
-                    // EBITDA
-                    rows.push(
-                      <tr key="ebitda" style={{ borderTop: "1px solid #E5E7EB", background: "#F9FAFB" }}>
-                        <td style={{ padding: "9px 20px", fontSize: "13px", fontWeight: "700", color: pl!.ebitda >= 0 ? "#059669" : "#DC2626" }}>EBITDA</td>
-                        <td style={{ padding: "9px 20px", textAlign: "right", fontSize: "13px", fontWeight: "700", color: pl!.ebitda >= 0 ? "#059669" : "#DC2626" }}>{fmt(pl!.ebitda)}</td>
-                        <td style={{ padding: "9px 20px", textAlign: "right", fontSize: "12px", color: pl!.ebitda >= 0 ? "#059669" : "#DC2626" }}>{pl!.margen_ebitda_pct.toFixed(1)}%</td>
-                      </tr>
-                    );
-
-                    // Impuestos
-                    if (pl!.impuestos_estimados > 0) {
-                      rows.push(
-                        <tr key="imp" style={{ borderTop: "1px solid #F9FAFB" }}>
-                          <td style={{ padding: "8px 20px", fontSize: "13px", color: "#374151" }}>Impuestos est.</td>
-                          <td style={{ padding: "8px 20px", textAlign: "right", fontSize: "13px", color: "#DC2626" }}>{fmt(pl!.impuestos_estimados)}</td>
-                          <td style={{ padding: "8px 20px", textAlign: "right", fontSize: "12px", color: "#9CA3AF" }}>{(pl!.impuestos_estimados/ventas*100).toFixed(1)}%</td>
-                        </tr>
-                      );
-                    }
-
-                    // Utilidad neta
-                    rows.push(
-                      <tr key="un" style={{ borderTop: "1px solid #E5E7EB", background: pl!.utilidad_neta >= 0 ? "#ECFDF5" : "#FEF2F2" }}>
-                        <td style={{ padding: "9px 20px", fontSize: "13px", fontWeight: "700", color: pl!.utilidad_neta >= 0 ? "#059669" : "#DC2626" }}>Utilidad neta</td>
-                        <td style={{ padding: "9px 20px", textAlign: "right", fontSize: "13px", fontWeight: "700", color: pl!.utilidad_neta >= 0 ? "#059669" : "#DC2626" }}>{fmt(pl!.utilidad_neta)}</td>
-                        <td style={{ padding: "9px 20px", textAlign: "right", fontSize: "12px", color: pl!.utilidad_neta >= 0 ? "#059669" : "#DC2626" }}>{pl!.margen_neto_pct.toFixed(1)}%</td>
-                      </tr>
-                    );
-
-                    return rows;
-                  })()}
-                </tbody>
-              </table>
+              <div style={{ padding: "32px", textAlign: "center" as const, color: "#9CA3AF", fontSize: "13px" }}>Cargando desglose…</div>
             )}
           </div>
         </div>
