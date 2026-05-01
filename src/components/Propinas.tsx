@@ -66,6 +66,34 @@ function isoWeekAndYear(d: Date): { semana: number; anio: number } {
   return { semana, anio: tmp.getUTCFullYear() };
 }
 
+// ─── Design tokens (matching CapturaGastos / RBO system) ─────────────────────
+const T = {
+  // backgrounds
+  pageBg:   "#F9FAFB",
+  cardBg:   "#FFF",
+  rowAlt:   "#F9FAFB",
+  rowHover: "#F3F4F6",
+  // text
+  textPrimary:   "#111827",
+  textSecondary: "#6B7280",
+  textTertiary:  "#9CA3AF",
+  // borders
+  borderBase:    "#E5E7EB",
+  borderLight:   "#F3F4F6",
+  // accents
+  purple:   "#7C3AED",
+  purpleBg: "#F3E8FF",
+  green:    "#059669",
+  greenBg:  "#F0FDF4",
+  red:      "#EF4444",
+  redBg:    "#FEF2F2",
+  amber:    "#D97706",
+  amberBg:  "#FFFBEB",
+  brand:    "#3D1C1E",
+  // card shadow
+  shadow: "0 1px 3px rgba(0,0,0,0.04),0 4px 12px rgba(0,0,0,0.02)",
+};
+
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export const Propinas = () => {
@@ -246,21 +274,43 @@ export const Propinas = () => {
     : "";
 
   return (
-    <div style={{ padding: "24px", maxWidth: "1100px", margin: "0 auto", color: "#fff", fontFamily: "Inter, sans-serif" }}>
+    <div style={{ maxWidth: "1100px", margin: "0 auto", fontFamily: "Inter, sans-serif" }}>
+      <style>{`
+        @keyframes spin { 0%{transform:rotate(0deg)} 100%{transform:rotate(360deg)} }
+        .prop-row:hover { background: ${T.rowHover} !important; }
+        .prop-btn-ghost:hover { background: #E5E7EB !important; }
+        .prop-day-btn:hover:not(:disabled) { transform: scale(1.08); }
+      `}</style>
 
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "24px", flexWrap: "wrap", gap: "12px" }}>
-        <div>
-          <h1 style={{ margin: 0, fontSize: "24px", fontWeight: 700, color: "#C8FF00" }}>💵 Tabulador de Propinas</h1>
-          {semana && <p style={{ margin: "4px 0 0", fontSize: "13px", color: "#888" }}>{fechaRango}</p>}
+        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+          <div style={{ width: "40px", height: "40px", borderRadius: "12px", background: "linear-gradient(135deg,#3D1C1E,#5C2D30)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <span style={{ fontSize: "20px" }}>💵</span>
+          </div>
+          <div>
+            <h1 style={{ margin: 0, fontSize: "20px", fontWeight: 800, color: T.textPrimary }}>Tabulador de Propinas</h1>
+            {semana && <p style={{ margin: "2px 0 0", fontSize: "13px", color: T.textSecondary }}>{fechaRango}</p>}
+          </div>
         </div>
         <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-          <button onClick={cargarLista} style={btnStyle("ghost")}>📋 Historial</button>
-          <button onClick={recalcular} disabled={saving === -99} style={btnStyle("ghost")}>🔄 Recalcular cierres</button>
-          <button onClick={() => { setConfigEdit(config); setShowConfig(true); }} style={btnStyle("ghost")}>⚙️ Config {config.porcentaje_empleados}%/{config.porcentaje_restaurante}%</button>
+          <BtnGhost onClick={cargarLista}>📋 Historial</BtnGhost>
+          <BtnGhost onClick={recalcular} disabled={saving === -99}>
+            {saving === -99
+              ? <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}><span style={{ width: "13px", height: "13px", border: "2px solid #D1D5DB", borderTopColor: T.purple, borderRadius: "50%", display: "inline-block", animation: "spin 0.8s linear infinite" }} />Calculando…</span>
+              : "🔄 Recalcular cierres"}
+          </BtnGhost>
+          <BtnGhost onClick={() => { setConfigEdit(config); setShowConfig(true); }}>
+            ⚙️ Config {config.porcentaje_empleados}%/{config.porcentaje_restaurante}%
+          </BtnGhost>
           <button
             onClick={toggleEstado}
-            style={btnStyle(cerrado ? "yellow" : "green")}
+            style={{
+              padding: "8px 14px", borderRadius: "10px", fontSize: "13px", fontWeight: 600, cursor: "pointer", border: "none", transition: "opacity 0.15s",
+              background: cerrado ? T.amberBg : T.greenBg,
+              color: cerrado ? T.amber : T.green,
+              outline: `1px solid ${cerrado ? "#FDE68A" : "#A7F3D0"}`,
+            }}
           >
             {cerrado ? "🔓 Reabrir semana" : "🔒 Cerrar semana"}
           </button>
@@ -268,89 +318,112 @@ export const Propinas = () => {
       </div>
 
       {/* ── Week nav ───────────────────────────────────────────────────────── */}
-      <div style={{ display: "flex", alignItems: "center", gap: "16px", marginBottom: "20px" }}>
-        <button onClick={() => irSemana(-1)} style={btnStyle("ghost")}>‹ Anterior</button>
-        <div style={{ textAlign: "center" }}>
-          <div style={{ fontWeight: 700, fontSize: "18px" }}>Semana {semanaActual}</div>
-          <div style={{ fontSize: "12px", color: "#888" }}>{anioActual}</div>
+      <div style={{ background: T.cardBg, borderRadius: "12px", padding: "12px 16px", marginBottom: "20px", boxShadow: T.shadow, display: "flex", alignItems: "center", gap: "12px" }}>
+        <BtnGhost onClick={() => irSemana(-1)}>‹ Anterior</BtnGhost>
+        <div style={{ textAlign: "center", minWidth: "120px" }}>
+          <div style={{ fontWeight: 700, fontSize: "16px", color: T.textPrimary }}>Semana {semanaActual}</div>
+          <div style={{ fontSize: "12px", color: T.textTertiary }}>{anioActual}</div>
         </div>
-        <button onClick={() => irSemana(1)} style={btnStyle("ghost")}>Siguiente ›</button>
-        <button
+        <BtnGhost onClick={() => irSemana(1)}>Siguiente ›</BtnGhost>
+        <BtnGhost
           onClick={() => { setSemanaActual(semanaHoy); setAnioActual(anioHoy); }}
-          style={{ ...btnStyle("ghost"), marginLeft: "8px", fontSize: "12px" }}
+          style={{ fontSize: "12px" }}
         >
           Hoy
-        </button>
+        </BtnGhost>
         {cerrado && (
-          <span style={{ background: "#854d0e", color: "#fef08a", padding: "3px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: 600 }}>
+          <span style={{ background: T.amberBg, color: T.amber, border: "1px solid #FDE68A", padding: "3px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: 700 }}>
             CERRADA
           </span>
         )}
+        {loading && (
+          <span style={{ width: "16px", height: "16px", border: "2px solid #E5E7EB", borderTopColor: T.purple, borderRadius: "50%", display: "inline-block", animation: "spin 0.8s linear infinite", marginLeft: "auto" }} />
+        )}
       </div>
-
-      {loading && <div style={{ color: "#888", textAlign: "center", padding: "40px" }}>Cargando…</div>}
 
       {semana && !loading && (
         <>
           {/* ── Pool diario ─────────────────────────────────────────────────── */}
-          <div style={{ background: "#111", border: "1px solid #2a2a2a", borderRadius: "16px", padding: "20px", marginBottom: "20px" }}>
+          <div style={{ background: T.cardBg, borderRadius: "14px", padding: "20px", marginBottom: "16px", boxShadow: T.shadow }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-              <h2 style={{ margin: 0, fontSize: "16px", color: "#C8FF00" }}>Pool de propinas por día</h2>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <div style={{ width: "4px", height: "18px", borderRadius: "2px", background: T.purple }} />
+                <h2 style={{ margin: 0, fontSize: "14px", fontWeight: 700, color: T.textPrimary }}>Pool de propinas por día</h2>
+              </div>
               {!cerrado && (
-                <button
+                <BtnGhost
                   onClick={() => {
                     setPoolEdit(DIAS.reduce((a, d) => ({ ...a, [d]: (semana as any)[`propina_${d}`] }), {} as Record<Dia, number>));
                     setShowEditPool(true);
                   }}
-                  style={btnStyle("ghost")}
                 >
                   ✏️ Editar manual
-                </button>
+                </BtnGhost>
               )}
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "10px" }}>
-              {DIAS.map((d) => (
-                <div key={d} style={{ textAlign: "center", background: "#1a1a1a", borderRadius: "12px", padding: "12px 6px" }}>
-                  <div style={{ fontSize: "12px", color: "#888", marginBottom: "4px" }}>{DIA_LABEL[d]}</div>
-                  <div style={{ fontWeight: 700, fontSize: "15px", color: (semana as any)[`propina_${d}`] > 0 ? "#C8FF00" : "#444" }}>
-                    {(semana as any)[`propina_${d}`] > 0
-                      ? fmt((semana as any)[`propina_${d}`])
-                      : "—"}
+
+            {/* Day grid */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "8px", marginBottom: "16px" }}>
+              {DIAS.map((d) => {
+                const monto = (semana as any)[`propina_${d}`] as number;
+                const hasValue = monto > 0;
+                return (
+                  <div key={d} style={{ textAlign: "center", background: hasValue ? T.greenBg : T.rowAlt, borderRadius: "10px", padding: "10px 6px", border: `1px solid ${hasValue ? "#A7F3D0" : T.borderLight}` }}>
+                    <div style={{ fontSize: "11px", fontWeight: 600, color: T.textTertiary, marginBottom: "4px", textTransform: "uppercase" as const }}>{DIA_LABEL[d]}</div>
+                    <div style={{ fontWeight: 700, fontSize: "13px", color: hasValue ? T.green : T.textTertiary }}>
+                      {hasValue ? fmt(monto) : "—"}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
+
             {/* Totals */}
-            <div style={{ display: "flex", gap: "20px", marginTop: "16px", flexWrap: "wrap" }}>
-              <MetricCard label="Total propinas" value={fmt(semana.total_propinas)} color="#fff" />
-              <MetricCard label={`Empleados (${config.porcentaje_empleados}%)`} value={fmt(semana.total_empleados)} color="#C8FF00" />
-              <MetricCard label={`Restaurante (${config.porcentaje_restaurante}%)`} value={fmt(semana.total_restaurante)} color="#60a5fa" />
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "10px" }}>
+              <MetricCard label="Total propinas" value={fmt(semana.total_propinas)} color={T.textPrimary} bg="#F9FAFB" />
+              <MetricCard label={`Empleados (${config.porcentaje_empleados}%)`} value={fmt(semana.total_empleados)} color={T.green} bg={T.greenBg} />
+              <MetricCard label={`Restaurante (${config.porcentaje_restaurante}%)`} value={fmt(semana.total_restaurante)} color={T.purple} bg={T.purpleBg} />
             </div>
           </div>
 
           {/* ── Tabulador ───────────────────────────────────────────────────── */}
-          <div style={{ background: "#111", border: "1px solid #2a2a2a", borderRadius: "16px", padding: "20px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-              <h2 style={{ margin: 0, fontSize: "16px", color: "#C8FF00" }}>Empleados</h2>
+          <div style={{ background: T.cardBg, borderRadius: "14px", overflow: "hidden", boxShadow: T.shadow }}>
+            {/* Card header */}
+            <div style={{ padding: "16px 20px", borderBottom: `1px solid ${T.borderLight}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <div style={{ width: "4px", height: "18px", borderRadius: "2px", background: T.green }} />
+                <h2 style={{ margin: 0, fontSize: "14px", fontWeight: 700, color: T.textPrimary }}>Empleados</h2>
+                <span style={{ padding: "2px 8px", borderRadius: "20px", fontSize: "11px", fontWeight: 600, background: T.rowAlt, color: T.textSecondary, border: `1px solid ${T.borderBase}` }}>
+                  {semana.empleados.length} personas
+                </span>
+              </div>
               {!cerrado && (
-                <button onClick={() => setShowAddEmpleado(true)} style={btnStyle("green")}>+ Agregar empleado</button>
+                <button
+                  onClick={() => setShowAddEmpleado(true)}
+                  style={{ padding: "7px 14px", borderRadius: "9px", border: "none", background: T.green, color: "#FFF", fontSize: "13px", fontWeight: 600, cursor: "pointer" }}
+                >
+                  + Agregar empleado
+                </button>
               )}
             </div>
 
             {semana.empleados.length === 0 ? (
-              <p style={{ color: "#555", textAlign: "center", padding: "20px" }}>
-                No hay empleados. Agrega empleados para calcular propinas.
-              </p>
+              <div style={{ padding: "48px", textAlign: "center" as const }}>
+                <div style={{ fontSize: "36px", marginBottom: "12px" }}>👥</div>
+                <p style={{ color: T.textTertiary, fontSize: "14px", margin: 0 }}>
+                  Sin empleados. Agrega empleados para calcular propinas.
+                </p>
+              </div>
             ) : (
               <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "14px" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
                   <thead>
-                    <tr style={{ borderBottom: "1px solid #2a2a2a" }}>
+                    <tr style={{ background: T.rowAlt, borderBottom: `1px solid ${T.borderBase}` }}>
                       <th style={thStyle("left")}>Empleado</th>
                       {DIAS.map((d) => (
                         <th key={d} style={thStyle("center")}>
-                          <div>{DIA_LABEL[d]}</div>
-                          <div style={{ fontSize: "10px", color: "#555", fontWeight: 400 }}>
+                          <div style={{ fontWeight: 700 }}>{DIA_LABEL[d]}</div>
+                          <div style={{ fontSize: "10px", color: T.textTertiary, fontWeight: 400, marginTop: "2px" }}>
                             {(semana as any)[`propina_${d}`] > 0
                               ? fmt((semana as any)[`propina_${d}`])
                               : "—"}
@@ -360,39 +433,53 @@ export const Propinas = () => {
                       <th style={thStyle("right")}>Propina</th>
                       <th style={thStyle("right")}>Adelanto</th>
                       <th style={thStyle("right")}>Total Neto</th>
-                      {!cerrado && <th style={thStyle("center")}></th>}
+                      {!cerrado && <th style={thStyle("center")} />}
                     </tr>
                   </thead>
                   <tbody>
-                    {semana.empleados.map((emp) => (
-                      <tr key={emp.id} style={{ borderBottom: "1px solid #1a1a1a" }}>
-                        <td style={{ padding: "10px 12px", fontWeight: 600 }}>{emp.nombre}</td>
+                    {semana.empleados.map((emp, rowIdx) => (
+                      <tr
+                        key={emp.id}
+                        className="prop-row"
+                        style={{ borderBottom: `1px solid ${T.borderLight}`, background: rowIdx % 2 === 0 ? "#FFF" : T.rowAlt }}
+                      >
+                        <td style={{ padding: "10px 16px", fontWeight: 600, color: T.textPrimary, whiteSpace: "nowrap" as const }}>{emp.nombre}</td>
                         {DIAS.map((d) => {
                           const trabajado = (emp as any)[`trabajo_${d}`] as boolean;
+                          const isSavingThis = saving === emp.id;
                           return (
-                            <td key={d} style={{ padding: "10px 6px", textAlign: "center" }}>
+                            <td key={d} style={{ padding: "8px 6px", textAlign: "center" as const }}>
                               <button
-                                disabled={cerrado || saving === emp.id}
+                                className="prop-day-btn"
+                                disabled={cerrado || isSavingThis}
                                 onClick={() => toggleDia(emp, d)}
                                 style={{
-                                  width: "32px", height: "32px", borderRadius: "8px", border: "none",
+                                  width: "32px", height: "32px", borderRadius: "8px",
+                                  border: trabajado ? "none" : `1px solid ${T.borderBase}`,
                                   cursor: cerrado ? "default" : "pointer",
-                                  background: trabajado ? "#166534" : "#1a1a1a",
-                                  color: trabajado ? "#C8FF00" : "#444",
-                                  fontSize: "16px", transition: "all 0.15s",
+                                  background: trabajado ? T.green : T.cardBg,
+                                  color: trabajado ? "#FFF" : T.textTertiary,
+                                  fontSize: "14px", fontWeight: 700,
+                                  transition: "all 0.15s",
+                                  display: "inline-flex", alignItems: "center", justifyContent: "center",
                                 }}
+                                title={trabajado ? "Trabajó" : "No trabajó"}
                               >
                                 {trabajado ? "✓" : "·"}
                               </button>
                             </td>
                           );
                         })}
-                        <td style={{ padding: "10px 12px", textAlign: "right", color: "#C8FF00", fontWeight: 700 }}>
+                        {/* Propina calculada */}
+                        <td style={{ padding: "10px 16px", textAlign: "right" as const, fontWeight: 700, color: T.green }}>
                           {fmt(emp.propina_calculada)}
                         </td>
-                        <td style={{ padding: "10px 12px", textAlign: "right" }}>
+                        {/* Adelanto */}
+                        <td style={{ padding: "8px 12px", textAlign: "right" as const }}>
                           {cerrado ? (
-                            <span style={{ color: emp.adelanto > 0 ? "#f87171" : "#555" }}>{fmt(emp.adelanto)}</span>
+                            <span style={{ color: emp.adelanto > 0 ? T.red : T.textTertiary, fontWeight: emp.adelanto > 0 ? 700 : 400 }}>
+                              {fmt(emp.adelanto)}
+                            </span>
                           ) : (
                             <input
                               type="number"
@@ -402,42 +489,53 @@ export const Propinas = () => {
                               onChange={(e) => setAdelantoEdit((prev) => ({ ...prev, [emp.id]: e.target.value }))}
                               onBlur={() => guardarAdelanto(emp)}
                               onKeyDown={(e) => e.key === "Enter" && guardarAdelanto(emp)}
-                              style={{ width: "90px", background: "#1a1a1a", border: "1px solid #333", borderRadius: "6px", padding: "4px 8px", color: "#f87171", textAlign: "right", fontSize: "13px" }}
+                              style={{
+                                width: "90px", boxSizing: "border-box" as const,
+                                background: emp.adelanto > 0 ? T.redBg : T.cardBg,
+                                border: `1px solid ${emp.adelanto > 0 ? "#FECACA" : T.borderBase}`,
+                                borderRadius: "6px", padding: "4px 8px",
+                                color: emp.adelanto > 0 ? T.red : T.textPrimary,
+                                textAlign: "right" as const, fontSize: "13px",
+                              }}
                             />
                           )}
                         </td>
-                        <td style={{ padding: "10px 12px", textAlign: "right", fontWeight: 700, color: emp.total_neto >= 0 ? "#fff" : "#f87171" }}>
+                        {/* Total neto */}
+                        <td style={{ padding: "10px 16px", textAlign: "right" as const, fontWeight: 700, color: emp.total_neto >= 0 ? T.textPrimary : T.red }}>
                           {fmt(emp.total_neto)}
                         </td>
                         {!cerrado && (
-                          <td style={{ padding: "10px 6px", textAlign: "center" }}>
+                          <td style={{ padding: "10px 8px", textAlign: "center" as const }}>
                             <button
                               onClick={() => eliminarEmpleado(emp)}
-                              style={{ background: "none", border: "none", cursor: "pointer", color: "#555", fontSize: "14px" }}
+                              style={{ background: "none", border: "none", cursor: "pointer", color: T.textTertiary, fontSize: "14px", padding: "4px", borderRadius: "4px", transition: "color 0.15s" }}
                               title="Eliminar"
+                              onMouseEnter={(e) => (e.currentTarget.style.color = T.red)}
+                              onMouseLeave={(e) => (e.currentTarget.style.color = T.textTertiary)}
                             >✕</button>
                           </td>
                         )}
                       </tr>
                     ))}
+
                     {/* Totals row */}
-                    <tr style={{ borderTop: "2px solid #2a2a2a", background: "#0d0d0d" }}>
-                      <td style={{ padding: "12px 12px", fontWeight: 700, color: "#888" }}>TOTAL</td>
+                    <tr style={{ borderTop: `2px solid ${T.borderBase}`, background: T.rowAlt }}>
+                      <td style={{ padding: "12px 16px", fontWeight: 700, color: T.textSecondary, fontSize: "12px", textTransform: "uppercase" as const, letterSpacing: "0.5px" }}>TOTAL</td>
                       {DIAS.map((d) => {
                         const n = semana.empleados.filter((e) => (e as any)[`trabajo_${d}`]).length;
                         return (
-                          <td key={d} style={{ padding: "12px 6px", textAlign: "center", fontSize: "12px", color: "#666" }}>
-                            {n > 0 ? `${n} emp.` : ""}
+                          <td key={d} style={{ padding: "12px 6px", textAlign: "center" as const, fontSize: "11px", color: T.textTertiary }}>
+                            {n > 0 ? <span style={{ background: T.greenBg, color: T.green, padding: "2px 6px", borderRadius: "10px", fontWeight: 600 }}>{n} emp.</span> : ""}
                           </td>
                         );
                       })}
-                      <td style={{ padding: "12px 12px", textAlign: "right", color: "#C8FF00", fontWeight: 700 }}>
+                      <td style={{ padding: "12px 16px", textAlign: "right" as const, color: T.green, fontWeight: 800, fontSize: "14px" }}>
                         {fmt(semana.empleados.reduce((s, e) => s + e.propina_calculada, 0))}
                       </td>
-                      <td style={{ padding: "12px 12px", textAlign: "right", color: "#f87171" }}>
+                      <td style={{ padding: "12px 16px", textAlign: "right" as const, color: T.red, fontWeight: 700 }}>
                         {fmt(semana.empleados.reduce((s, e) => s + e.adelanto, 0))}
                       </td>
-                      <td style={{ padding: "12px 12px", textAlign: "right", fontWeight: 700 }}>
+                      <td style={{ padding: "12px 16px", textAlign: "right" as const, fontWeight: 800, fontSize: "14px", color: T.textPrimary }}>
                         {fmt(semana.empleados.reduce((s, e) => s + e.total_neto, 0))}
                       </td>
                       {!cerrado && <td />}
@@ -448,6 +546,14 @@ export const Propinas = () => {
             )}
           </div>
         </>
+      )}
+
+      {/* ── Skeleton while loading ────────────────────────────────────────── */}
+      {loading && (
+        <div style={{ background: T.cardBg, borderRadius: "14px", padding: "48px", textAlign: "center" as const, boxShadow: T.shadow }}>
+          <span style={{ width: "20px", height: "20px", border: "2px solid #E5E7EB", borderTopColor: T.purple, borderRadius: "50%", display: "inline-block", animation: "spin 0.8s linear infinite" }} />
+          <p style={{ color: T.textTertiary, fontSize: "13px", marginTop: "12px" }}>Cargando semana…</p>
+        </div>
       )}
 
       {/* ── Modal: Agregar empleado ─────────────────────────────────────────── */}
@@ -462,10 +568,10 @@ export const Propinas = () => {
             style={inputStyle}
           />
           <div style={{ display: "flex", gap: "10px", marginTop: "16px" }}>
-            <button onClick={agregarEmpleado} disabled={!nuevoNombre.trim() || saving === -1} style={btnStyle("green")}>
+            <BtnPrimary onClick={agregarEmpleado} disabled={!nuevoNombre.trim() || saving === -1}>
               Agregar
-            </button>
-            <button onClick={() => setShowAddEmpleado(false)} style={btnStyle("ghost")}>Cancelar</button>
+            </BtnPrimary>
+            <BtnGhost onClick={() => setShowAddEmpleado(false)}>Cancelar</BtnGhost>
           </div>
         </ModalWrapper>
       )}
@@ -473,13 +579,13 @@ export const Propinas = () => {
       {/* ── Modal: Editar pool manual ──────────────────────────────────────── */}
       {showEditPool && (
         <ModalWrapper onClose={() => setShowEditPool(false)} title="Editar pool de propinas">
-          <p style={{ fontSize: "13px", color: "#888", marginBottom: "16px" }}>
+          <p style={{ fontSize: "13px", color: T.textSecondary, marginBottom: "16px" }}>
             Ajusta manualmente el monto de propinas por día (ya con porcentaje aplicado).
           </p>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
             {DIAS.map((d) => (
               <div key={d}>
-                <label style={{ fontSize: "12px", color: "#888", display: "block", marginBottom: "4px" }}>{DIA_LABEL[d]}</label>
+                <label style={{ fontSize: "12px", fontWeight: 600, color: T.textSecondary, display: "block", marginBottom: "4px" }}>{DIA_LABEL[d]}</label>
                 <input
                   type="number"
                   min="0"
@@ -492,8 +598,8 @@ export const Propinas = () => {
             ))}
           </div>
           <div style={{ display: "flex", gap: "10px", marginTop: "20px" }}>
-            <button onClick={guardarPool} disabled={saving === -2} style={btnStyle("green")}>Guardar</button>
-            <button onClick={() => setShowEditPool(false)} style={btnStyle("ghost")}>Cancelar</button>
+            <BtnPrimary onClick={guardarPool} disabled={saving === -2}>Guardar</BtnPrimary>
+            <BtnGhost onClick={() => setShowEditPool(false)}>Cancelar</BtnGhost>
           </div>
         </ModalWrapper>
       )}
@@ -501,17 +607,14 @@ export const Propinas = () => {
       {/* ── Modal: Configuración ──────────────────────────────────────────── */}
       {showConfig && (
         <ModalWrapper onClose={() => setShowConfig(false)} title="Configuración de propinas">
-          <p style={{ fontSize: "13px", color: "#888", marginBottom: "16px" }}>
+          <p style={{ fontSize: "13px", color: T.textSecondary, marginBottom: "16px" }}>
             Define cómo se distribuye el pool de propinas de cada día.
           </p>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
             <div>
-              <label style={{ fontSize: "12px", color: "#888", display: "block", marginBottom: "4px" }}>% Empleados</label>
+              <label style={{ fontSize: "12px", fontWeight: 600, color: T.textSecondary, display: "block", marginBottom: "4px" }}>% Empleados</label>
               <input
-                type="number"
-                min="0"
-                max="100"
-                step="5"
+                type="number" min="0" max="100" step="5"
                 value={configEdit.porcentaje_empleados}
                 onChange={(e) => {
                   const v = parseFloat(e.target.value) || 0;
@@ -521,12 +624,9 @@ export const Propinas = () => {
               />
             </div>
             <div>
-              <label style={{ fontSize: "12px", color: "#888", display: "block", marginBottom: "4px" }}>% Restaurante</label>
+              <label style={{ fontSize: "12px", fontWeight: 600, color: T.textSecondary, display: "block", marginBottom: "4px" }}>% Restaurante</label>
               <input
-                type="number"
-                min="0"
-                max="100"
-                step="5"
+                type="number" min="0" max="100" step="5"
                 value={configEdit.porcentaje_restaurante}
                 onChange={(e) => {
                   const v = parseFloat(e.target.value) || 0;
@@ -536,18 +636,23 @@ export const Propinas = () => {
               />
             </div>
           </div>
-          <div style={{ marginTop: "12px", fontSize: "13px", color: configEdit.porcentaje_empleados + configEdit.porcentaje_restaurante === 100 ? "#C8FF00" : "#f87171" }}>
-            Total: {configEdit.porcentaje_empleados + configEdit.porcentaje_restaurante}% {configEdit.porcentaje_empleados + configEdit.porcentaje_restaurante === 100 ? "✓" : "(debe ser 100%)"}
+          <div style={{
+            marginTop: "12px", fontSize: "13px", fontWeight: 600,
+            color: configEdit.porcentaje_empleados + configEdit.porcentaje_restaurante === 100 ? T.green : T.red,
+            background: configEdit.porcentaje_empleados + configEdit.porcentaje_restaurante === 100 ? T.greenBg : T.redBg,
+            padding: "8px 12px", borderRadius: "8px",
+          }}>
+            Total: {configEdit.porcentaje_empleados + configEdit.porcentaje_restaurante}%
+            {configEdit.porcentaje_empleados + configEdit.porcentaje_restaurante === 100 ? " ✓ Correcto" : " — debe ser 100%"}
           </div>
           <div style={{ display: "flex", gap: "10px", marginTop: "20px" }}>
-            <button
+            <BtnPrimary
               onClick={guardarConfig}
               disabled={Math.abs(configEdit.porcentaje_empleados + configEdit.porcentaje_restaurante - 100) > 0.01}
-              style={btnStyle("green")}
             >
               Guardar y recalcular
-            </button>
-            <button onClick={() => setShowConfig(false)} style={btnStyle("ghost")}>Cancelar</button>
+            </BtnPrimary>
+            <BtnGhost onClick={() => setShowConfig(false)}>Cancelar</BtnGhost>
           </div>
         </ModalWrapper>
       )}
@@ -556,30 +661,32 @@ export const Propinas = () => {
       {showLista && (
         <ModalWrapper onClose={() => setShowLista(false)} title={`Semanas ${anioActual}`}>
           {listaSemanas.length === 0 ? (
-            <p style={{ color: "#555", textAlign: "center" }}>Sin semanas registradas.</p>
+            <p style={{ color: T.textTertiary, textAlign: "center" as const, padding: "24px 0" }}>Sin semanas registradas.</p>
           ) : (
-            <div style={{ maxHeight: "400px", overflowY: "auto" }}>
+            <div style={{ maxHeight: "400px", overflowY: "auto", display: "flex", flexDirection: "column" as const, gap: "6px" }}>
               {listaSemanas.map((s) => (
                 <button
                   key={s.id}
                   onClick={() => { setSemanaActual(s.numero_semana); setAnioActual(s.anio); setShowLista(false); }}
                   style={{
                     display: "flex", width: "100%", justifyContent: "space-between", alignItems: "center",
-                    background: s.numero_semana === semanaActual && s.anio === anioActual ? "#1a1a1a" : "transparent",
-                    border: "1px solid #2a2a2a", borderRadius: "10px", marginBottom: "8px",
-                    padding: "10px 16px", cursor: "pointer", color: "#fff",
+                    background: s.numero_semana === semanaActual && s.anio === anioActual ? T.purpleBg : "#FFF",
+                    border: `1px solid ${s.numero_semana === semanaActual && s.anio === anioActual ? "#C4B5FD" : T.borderBase}`,
+                    borderRadius: "10px", padding: "10px 16px", cursor: "pointer",
+                    color: T.textPrimary, textAlign: "left" as const,
+                    transition: "background 0.15s",
                   }}
                 >
                   <div>
-                    <span style={{ fontWeight: 700 }}>Semana {s.numero_semana}</span>
-                    <span style={{ fontSize: "12px", color: "#888", marginLeft: "10px" }}>
+                    <span style={{ fontWeight: 700, fontSize: "13px" }}>Semana {s.numero_semana}</span>
+                    <span style={{ fontSize: "12px", color: T.textSecondary, marginLeft: "10px" }}>
                       {new Date(s.fecha_inicio + "T12:00:00").toLocaleDateString("es-MX", { day: "numeric", month: "short" })} – {new Date(s.fecha_fin + "T12:00:00").toLocaleDateString("es-MX", { day: "numeric", month: "short" })}
                     </span>
                   </div>
-                  <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
-                    <span style={{ color: "#C8FF00", fontWeight: 700 }}>{fmt(s.total_propinas)}</span>
+                  <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+                    <span style={{ color: T.green, fontWeight: 700, fontSize: "13px" }}>{fmt(s.total_propinas)}</span>
                     {s.estado === "cerrado" && (
-                      <span style={{ background: "#854d0e", color: "#fef08a", padding: "2px 8px", borderRadius: "10px", fontSize: "11px" }}>CERRADA</span>
+                      <span style={{ background: T.amberBg, color: T.amber, border: "1px solid #FDE68A", padding: "2px 8px", borderRadius: "10px", fontSize: "11px", fontWeight: 600 }}>CERRADA</span>
                     )}
                   </div>
                 </button>
@@ -594,10 +701,10 @@ export const Propinas = () => {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-const MetricCard = ({ label, value, color }: { label: string; value: string; color: string }) => (
-  <div style={{ flex: 1, minWidth: "140px", background: "#1a1a1a", borderRadius: "12px", padding: "12px 16px" }}>
-    <div style={{ fontSize: "11px", color: "#666", marginBottom: "4px" }}>{label}</div>
-    <div style={{ fontWeight: 700, fontSize: "18px", color }}>{value}</div>
+const MetricCard = ({ label, value, color, bg }: { label: string; value: string; color: string; bg?: string }) => (
+  <div style={{ borderRadius: "12px", padding: "14px 16px", background: bg || T.rowAlt, border: `1px solid ${T.borderLight}` }}>
+    <div style={{ fontSize: "11px", fontWeight: 600, color: T.textTertiary, textTransform: "uppercase" as const, letterSpacing: "0.5px", marginBottom: "6px" }}>{label}</div>
+    <div style={{ fontWeight: 800, fontSize: "18px", color }}>{value}</div>
   </div>
 );
 
@@ -611,40 +718,87 @@ const ModalWrapper = ({
   title: string;
 }) => (
   <div
-    style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}
+    style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}
     onClick={(e) => e.target === e.currentTarget && onClose()}
   >
-    <div style={{ background: "#141414", border: "1px solid #2a2a2a", borderRadius: "20px", padding: "28px", minWidth: "340px", maxWidth: "520px", width: "90%" }}>
+    <div style={{ background: "#FFF", borderRadius: "16px", padding: "24px", minWidth: "340px", maxWidth: "520px", width: "90%", boxShadow: "0 20px 60px rgba(0,0,0,0.15)" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
-        <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 700, color: "#fff" }}>{title}</h3>
-        <button onClick={onClose} style={{ background: "none", border: "none", color: "#888", cursor: "pointer", fontSize: "20px" }}>✕</button>
+        <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 700, color: T.textPrimary }}>{title}</h3>
+        <button onClick={onClose} style={{ background: T.rowAlt, border: `1px solid ${T.borderBase}`, color: T.textSecondary, cursor: "pointer", fontSize: "16px", borderRadius: "8px", width: "30px", height: "30px", display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
       </div>
       {children}
     </div>
   </div>
 );
 
-function btnStyle(variant: "green" | "yellow" | "ghost"): React.CSSProperties {
-  const base: React.CSSProperties = {
-    border: "none", borderRadius: "10px", padding: "8px 14px",
-    fontSize: "13px", fontWeight: 600, cursor: "pointer", transition: "opacity 0.15s",
-  };
-  if (variant === "green") return { ...base, background: "#166534", color: "#C8FF00" };
-  if (variant === "yellow") return { ...base, background: "#854d0e", color: "#fef08a" };
-  return { ...base, background: "rgba(255,255,255,0.07)", color: "#ccc" };
-}
+// ─── Button primitives ────────────────────────────────────────────────────────
+
+const BtnGhost = ({ onClick, children, disabled, style }: {
+  onClick?: () => void;
+  children: React.ReactNode;
+  disabled?: boolean;
+  style?: React.CSSProperties;
+}) => (
+  <button
+    className="prop-btn-ghost"
+    onClick={onClick}
+    disabled={disabled}
+    style={{
+      border: `1px solid ${T.borderBase}`, borderRadius: "10px", padding: "8px 14px",
+      fontSize: "13px", fontWeight: 600, cursor: disabled ? "not-allowed" : "pointer",
+      background: "#FFF", color: T.textSecondary, transition: "background 0.15s",
+      opacity: disabled ? 0.5 : 1,
+      ...style,
+    }}
+  >
+    {children}
+  </button>
+);
+
+const BtnPrimary = ({ onClick, children, disabled }: {
+  onClick?: () => void;
+  children: React.ReactNode;
+  disabled?: boolean;
+}) => (
+  <button
+    onClick={onClick}
+    disabled={disabled}
+    style={{
+      border: "none", borderRadius: "10px", padding: "8px 16px",
+      fontSize: "13px", fontWeight: 600, cursor: disabled ? "not-allowed" : "pointer",
+      background: disabled ? "#E5E7EB" : T.purple,
+      color: disabled ? T.textTertiary : "#FFF",
+      transition: "opacity 0.15s",
+      opacity: disabled ? 0.7 : 1,
+    }}
+  >
+    {children}
+  </button>
+);
+
+// ─── Style helpers ────────────────────────────────────────────────────────────
 
 function thStyle(align: "left" | "center" | "right"): React.CSSProperties {
-  return { padding: "8px 12px", textAlign: align, fontSize: "12px", color: "#888", fontWeight: 600, whiteSpace: "nowrap" };
+  return {
+    padding: "10px 12px",
+    textAlign: align,
+    fontSize: "11px",
+    color: T.textTertiary,
+    fontWeight: 700,
+    textTransform: "uppercase",
+    letterSpacing: "0.5px",
+    whiteSpace: "nowrap",
+  };
 }
 
 const inputStyle: React.CSSProperties = {
   width: "100%",
   boxSizing: "border-box",
-  background: "#1a1a1a",
-  border: "1px solid #333",
+  background: "#FFF",
+  border: `1px solid ${T.borderBase}`,
   borderRadius: "8px",
-  padding: "8px 12px",
-  color: "#fff",
+  padding: "9px 12px",
+  color: T.textPrimary,
   fontSize: "14px",
+  outline: "none",
 };
