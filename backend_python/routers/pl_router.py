@@ -508,6 +508,187 @@ def pl_debug(
     }
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Dashboard analytics — nuevos endpoints para PLDashboard v2
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/{restaurante_id}/margen-mensual")
+def pl_margen_mensual(
+    restaurante_id: int,
+    db: Session = Depends(get_db),
+    current_user: Optional[models.Usuario] = Depends(get_optional_user),
+):
+    """Retorna margen neto mensual de los últimos 12 meses para el gráfico de tendencia."""
+    _check_tenant_access(restaurante_id, current_user)
+    hoy = date.today()
+    MESES_LABEL = ["","Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"]
+    resultado = []
+    for i in range(11, -1, -1):
+        # Mes = hoy.month - i, ajustando año
+        total_offset = hoy.month - i
+        if total_offset <= 0:
+            m = total_offset + 12
+            a = hoy.year - 1
+        else:
+            m = total_offset
+            a = hoy.year
+        fecha_inicio = date(a, m, 1)
+        if m == 12:
+            fecha_fin = date(a + 1, 1, 1) - timedelta(days=1)
+        else:
+            fecha_fin = date(a, m + 1, 1) - timedelta(days=1)
+        pl = pl_service.calcular_pl(db, restaurante_id, fecha_inicio, fecha_fin)
+        resultado.append({
+            "mes": m,
+            "anio": a,
+            "label": f"{MESES_LABEL[m]} {a}",
+            "short_label": MESES_LABEL[m],
+            "margen_pct": round(pl.margen_neto_pct, 2),
+            "ebitda_pct": round(pl.margen_ebitda_pct, 2),
+            "ventas": round(pl.ventas_netas, 2),
+            "utilidad": round(pl.utilidad_neta, 2),
+            "dias_con_datos": pl.dias_con_datos,
+        })
+    return {"meses": resultado}
+
+
+@router.get("/{restaurante_id}/top-platillos")
+def pl_top_platillos(
+    restaurante_id: int,
+    mes: Optional[int] = None,
+    anio: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_user: Optional[models.Usuario] = Depends(get_optional_user),
+):
+    """Top 10 platillos por venta total en el mes seleccionado, con tendencia vs mes anterior."""
+    _check_tenant_access(restaurante_id, current_user)
+    hoy = date.today()
+    mes = mes or hoy.month
+    anio = anio or hoy.year
+
+    rows = (
+        db.query(models.VentaPorPlatillo)
+        .filter(
+            models.VentaPorPlatillo.restaurante_id == restaurante_id,
+            models.VentaPorPlatillo.mes == mes,
+            models.VentaPorPlatillo.anio == anio,
+        )
+        .order_by(models.VentaPorPlatillo.venta_total.desc())
+        .limit(10)
+        .all()
+    )
+
+    # Mes anterior para calcular tendencia
+    if mes == 1:
+        mes_ant, anio_ant = 12, anio - 1
+    else:
+        mes_ant, anio_ant = mes - 1, anio
+
+    rows_ant = (
+        db.query(models.VentaPorPlatillo)
+        .filter(
+            models.VentaPorPlatillo.restaurante_id == restaurante_id,
+            models.VentaPorPlatillo.mes == mes_ant,
+            models.VentaPorPlatillo.anio == anio_ant,
+        )
+        .all()
+    )
+    ant_map = {r.nombre_parrot: r.cantidad_vendida for r in rows_ant}
+
+    platillos = []
+    for r in rows:
+        cant_ant = ant_map.get(r.nombre_parrot, 0)
+        if cant_ant > 0:
+            trend_pct = round(((r.cantidad_vendida - cant_ant) / cant_ant) * 100, 1)
+        else:
+            trend_pct = None
+        platillos.append({
+            "nombre": r.nombre_parrot,
+            "cantidad": r.cantidad_vendida,
+            "venta_total": round(float(r.venta_total or 0), 2),
+            "precio_promedio": round(float(r.precio_promedio or 0), 2),
+            "trend_pct": trend_pct,
+        })
+
+    return {"mes": mes, "anio": anio, "platillos": platillos}
+
+
+@router.get("/{restaurante_id}/ventas-diarias-resumen")
+def pl_ventas_diarias_resumen(
+    restaurante_id: int,
+    db: Session = Depends(get_db),
+    current_user: Optional[models.Usuario] = Depends(get_optional_user),
+):
+    """Resumen de ventas diarias: promedio del mes, esta vs semana pasada, sparkline últimos 7 días."""
+    _check_tenant_access(restaurante_id, current_user)
+    hoy = date.today()
+    hace30 = hoy - timedelta(days=29)
+
+    cierres = (
+        db.query(models.CierreTurno)
+        .filter(
+            models.CierreTurno.restaurante_id == restaurante_id,
+            models.CierreTurno.fecha >= hace30,
+            models.CierreTurno.fecha <= hoy,
+        )
+        .order_by(models.CierreTurno.fecha)
+        .all()
+    )
+
+    if not cierres:
+        return {
+            "promedio_mes": 0,
+            "esta_semana": 0,
+            "semana_pasada": 0,
+            "variacion_pct": None,
+            "ultimos_7_dias": [],
+        }
+
+    total_ventas = sum(float(c.total_venta or 0) for c in cierres)
+    promedio_mes = total_ventas / len(cierres)
+
+    # Esta semana vs semana pasada
+    dia_semana = hoy.weekday()  # 0=Lunes
+    inicio_semana = hoy - timedelta(days=dia_semana)
+    fin_semana_pasada = inicio_semana - timedelta(days=1)
+    inicio_semana_pasada = inicio_semana - timedelta(days=7)
+
+    esta_semana = sum(float(c.total_venta or 0) for c in cierres if c.fecha >= inicio_semana)
+    semana_pasada = sum(
+        float(c.total_venta or 0)
+        for c in cierres
+        if inicio_semana_pasada <= c.fecha <= fin_semana_pasada
+    )
+
+    variacion_pct = (
+        round(((esta_semana - semana_pasada) / semana_pasada) * 100, 1)
+        if semana_pasada > 0
+        else None
+    )
+
+    cierre_map = {c.fecha: float(c.total_venta or 0) for c in cierres}
+    ultimos_7 = []
+    dias_label = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
+    for i in range(6, -1, -1):
+        f = hoy - timedelta(days=i)
+        ventas_dia = cierre_map.get(f, 0)
+        ultimos_7.append({
+            "fecha": str(f),
+            "dia": dias_label[f.weekday()],
+            "ventas": round(ventas_dia, 2),
+            "sobre_promedio": ventas_dia > promedio_mes if promedio_mes > 0 else False,
+            "tiene_dato": f in cierre_map,
+        })
+
+    return {
+        "promedio_mes": round(promedio_mes, 2),
+        "esta_semana": round(esta_semana, 2),
+        "semana_pasada": round(semana_pasada, 2),
+        "variacion_pct": variacion_pct,
+        "ultimos_7_dias": ultimos_7,
+    }
+
+
 @router.get("/{restaurante_id}/kpis-hoy")
 def pl_kpis_hoy(
     restaurante_id: int,

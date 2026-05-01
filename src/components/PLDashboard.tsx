@@ -130,7 +130,9 @@ export const PLDashboard = ({ restauranteIdOverride }: PLDashboardProps = {}) =>
   const [anio] = useState(new Date().getFullYear());
   const [pl, setPl] = useState<PLResult | null>(null);
   const [plV2, setPlV2] = useState<any>(null);
-  const [semanas, setSemanas] = useState<any[]>([]);
+  const [margenMensual, setMargenMensual] = useState<any[]>([]);
+  const [platillos, setPlatillos] = useState<any[]>([]);
+  const [ventasDiarias, setVentasDiarias] = useState<any>(null);
   const [alertas, setAlertas] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<{ message: string; status?: number } | null>(null);
@@ -181,53 +183,40 @@ export const PLDashboard = ({ restauranteIdOverride }: PLDashboardProps = {}) =>
       const plJson = await plResp.json();
       const plData: PLResult = plJson?.data ?? plJson;
 
-      // Fetch semanas (no-crítico: si falla, continuamos)
-      let semanasData: any[] = [];
-      try {
-        const semResp = await fetch(
-          `${(window as any).__API_BASE__ || ""}/api/pl/${restauranteId}/resumen-semana`,
-          {
-            headers: {
-              "Content-Type": "application/json",
-              ...(localStorage.getItem("rbo_token")
-                ? { Authorization: `Bearer ${localStorage.getItem("rbo_token")}` }
-                : {}),
-            },
-          }
-        );
-        if (semResp.ok) {
-          const semJson = await semResp.json();
-          semanasData = semJson?.semanas ?? [];
-        } else {
-          console.warn(`[PLDashboard] resumen-semana retornó ${semResp.status}`);
-        }
-      } catch (semErr) {
-        console.warn("[PLDashboard] resumen-semana fetch falló:", semErr);
-      }
-
       setPl(plData);
-      setSemanas(semanasData);
       setAlertas(plData?.advertencias ?? []);
 
-      // Fetch P&L v2 (nueva estructura de categorías para el cuadro Estado de Resultados)
-      try {
-        const v2Resp = await fetch(
-          `${(window as any).__API_BASE__ || ""}/api/pl/${restauranteId}/v2/mes/${anio}/${m}`,
-          {
-            headers: {
-              "Content-Type": "application/json",
-              ...(localStorage.getItem("rbo_token")
-                ? { Authorization: `Bearer ${localStorage.getItem("rbo_token")}` }
-                : {}),
-            },
-          }
-        );
-        if (v2Resp.ok) {
-          setPlV2(await v2Resp.json());
-        }
-      } catch (_) {
-        // silencioso — v2 es adicional, no crítico
-      }
+      const authHeader = {
+        "Content-Type": "application/json",
+        ...(localStorage.getItem("rbo_token")
+          ? { Authorization: `Bearer ${localStorage.getItem("rbo_token")}` }
+          : {}),
+      };
+      const base = (window as any).__API_BASE__ || "";
+
+      // Fetch adicionales (no-críticos)
+      await Promise.allSettled([
+        // P&L v2
+        fetch(`${base}/api/pl/${restauranteId}/v2/mes/${anio}/${m}`, { headers: authHeader })
+          .then(r => r.ok ? r.json() : null)
+          .then(d => d && setPlV2(d))
+          .catch(() => {}),
+        // Margen mensual (12 meses)
+        fetch(`${base}/api/pl/${restauranteId}/margen-mensual`, { headers: authHeader })
+          .then(r => r.ok ? r.json() : null)
+          .then(d => d?.meses && setMargenMensual(d.meses))
+          .catch(() => {}),
+        // Top platillos del mes
+        fetch(`${base}/api/pl/${restauranteId}/top-platillos?mes=${m}&anio=${anio}`, { headers: authHeader })
+          .then(r => r.ok ? r.json() : null)
+          .then(d => d?.platillos && setPlatillos(d.platillos))
+          .catch(() => {}),
+        // Ventas diarias resumen (sparkline)
+        fetch(`${base}/api/pl/${restauranteId}/ventas-diarias-resumen`, { headers: authHeader })
+          .then(r => r.ok ? r.json() : null)
+          .then(d => d && setVentasDiarias(d))
+          .catch(() => {}),
+      ]);
     } catch (e: any) {
       console.error("[PLDashboard] fetch falló:", e);
       setError({ message: `Error de red: ${e?.message ?? "desconocido"}` });
@@ -240,37 +229,23 @@ export const PLDashboard = ({ restauranteIdOverride }: PLDashboardProps = {}) =>
     cargar(mes);
   }, [mes, restauranteId]);
 
-  const isSuperAdmin = localStorage.getItem("user_role") === "SUPER_ADMIN";
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
-  const toggleGrupo = (k: string) =>
-    setExpandedGroups(prev => { const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n; });
+  void useMemo; // kept import for potential future use
 
   // Grupos v2 — todos abiertos por default
   const V2_GRUPOS = ["food_cost","beverage_cost","nomina","gastos_personal","operacion","servicios","comisiones","otros","impuestos"];
   const [v2Open, setV2Open] = useState<Record<string,boolean>>(Object.fromEntries(V2_GRUPOS.map(k => [k, true])));
   const toggleV2 = (k: string) => setV2Open(prev => ({ ...prev, [k]: !prev[k] }));
 
-  const GRUPO_MAP: Record<string, string> = {
-    costo_alimentos: "Costo de ventas", costo_bebidas: "Costo de ventas",
-    nomina: "Nómina", renta: "Renta", servicios: "Servicios",
-    limpieza: "Limpieza", mantenimiento: "Mantenimiento",
-    marketing: "Marketing", otros_gastos: "Otros gastos", admin: "Otros gastos",
-  };
-  const GRUPO_ORDER = ["Costo de ventas","Nómina","Renta","Servicios","Limpieza","Mantenimiento","Marketing","Otros gastos"];
-
-  // Build {grupoNombre: [{categoria, monto, pct_ventas}]} from gastos_por_categoria
-  const gruposData = useMemo(() => {
-    const cats = pl?.gastos_por_categoria ?? [];
-    const map: Record<string, typeof cats> = {};
-    cats.forEach(c => {
-      const nombre = GRUPO_MAP[c.categoria_pl] ?? "Otros gastos";
-      if (!map[nombre]) map[nombre] = [];
-      map[nombre].push(c);
-    });
-    return map;
-  }, [pl]);
-
-  const hasDesglose = Object.keys(gruposData).length > 0;
+  // Prime Cost = (Nómina + Gastos Personal + Food Cost) / Ventas
+  const primeCost = (() => {
+    if (!plV2) return null;
+    const nomina = plV2.gastos_operativos?.nomina_g?.subtotal || 0;
+    const personal = plV2.gastos_operativos?.gastos_personal?.subtotal || 0;
+    const foodCost = plV2.costo_ventas?.food_cost?.subtotal || 0;
+    const total = nomina + personal + foodCost;
+    const ventas = plV2.ventas || 0;
+    return ventas > 0 ? { monto: total, pct: (total / ventas) * 100 } : null;
+  })();
 
   return (
     <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
@@ -424,203 +399,143 @@ export const PLDashboard = ({ restauranteIdOverride }: PLDashboardProps = {}) =>
           marginBottom: "20px",
         }}
       >
-        {[
-          {
-            label: "Ventas Netas",
-            value: pl ? fmt(pl.ventas_netas) : null,
-            sub: pl ? `${pl.dias_con_datos} días con datos` : null,
-            badge: null,
-          },
-          {
-            label: "Margen Neto",
-            value: pl ? fmtPct(pl.margen_neto_pct) : null,
-            sub: pl ? fmt(pl.utilidad_neta) : null,
-            badge: pl ? (
-              <Badge
-                pct={pl.margen_neto_pct}
-                thresholds={{ green: 20, yellow: 10 }}
-              />
-            ) : null,
-          },
-          {
-            label: "Food Cost",
-            value: pl ? fmtPct(pl.food_cost_pct) : null,
-            sub: pl ? fmt(pl.total_costo_ventas) : null,
-            badge: pl ? (
-              <Badge
-                pct={pl.food_cost_pct}
-                thresholds={{ green: 28, yellow: 32, higher_is_worse: true }}
-              />
-            ) : null,
-          },
-          {
-            label: "Nómina %",
-            value: pl ? fmtPct(pl.nomina_pct) : null,
-            sub: pl ? fmt(pl.gastos_nomina) : null,
-            badge: pl ? (
-              <Badge
-                pct={pl.nomina_pct}
-                thresholds={{ green: 32, yellow: 38, higher_is_worse: true }}
-              />
-            ) : null,
-          },
-        ].map((k, i) => (
-          <div
-            key={i}
-            style={{
-              background: "#FFF",
-              borderRadius: "14px",
-              padding: "18px 20px",
-              boxShadow:
-                "0 1px 3px rgba(0,0,0,0.04),0 4px 12px rgba(0,0,0,0.02)",
-            }}
-          >
-            <div
-              style={{
-                fontSize: "11px",
-                fontWeight: "600",
-                color: "#9CA3AF",
-                textTransform: "uppercase" as const,
-                letterSpacing: "0.5px",
-                marginBottom: "8px",
-              }}
-            >
-              {k.label}
+        {/* Card 1 — Ventas Netas */}
+        <div style={{ background: "#FFF", borderRadius: "14px", padding: "18px 20px", boxShadow: "0 1px 3px rgba(0,0,0,0.04),0 4px 12px rgba(0,0,0,0.02)" }}>
+          <div style={{ fontSize: "11px", fontWeight: "600", color: "#9CA3AF", textTransform: "uppercase" as const, letterSpacing: "0.5px", marginBottom: "8px" }}>Ventas Netas</div>
+          {loading ? <Skeleton /> : error ? <div style={{ fontSize: "13px", color: "#D1D5DB" }}>—</div> : <>
+            <div style={{ fontSize: "22px", fontWeight: "800", color: "#111827", marginBottom: "4px" }}>{pl ? fmt(pl.ventas_netas) : "—"}</div>
+            <div style={{ fontSize: "11px", color: "#9CA3AF" }}>{pl ? `${pl.dias_con_datos} días con datos` : ""}</div>
+          </>}
+        </div>
+
+        {/* Card 2 — Margen Neto */}
+        <div style={{ background: "#FFF", borderRadius: "14px", padding: "18px 20px", boxShadow: "0 1px 3px rgba(0,0,0,0.04),0 4px 12px rgba(0,0,0,0.02)" }}>
+          <div style={{ fontSize: "11px", fontWeight: "600", color: "#9CA3AF", textTransform: "uppercase" as const, letterSpacing: "0.5px", marginBottom: "8px" }}>Margen Neto</div>
+          {loading ? <Skeleton /> : error ? <div style={{ fontSize: "13px", color: "#D1D5DB" }}>—</div> : <>
+            <div style={{ fontSize: "22px", fontWeight: "800", color: "#111827", marginBottom: "4px" }}>{pl ? fmtPct(pl.margen_neto_pct) : "—"}</div>
+            {pl && <div style={{ marginBottom: "2px" }}><Badge pct={pl.margen_neto_pct} thresholds={{ green: 20, yellow: 10 }} /></div>}
+            <div style={{ fontSize: "11px", color: "#9CA3AF" }}>{pl ? fmt(pl.utilidad_neta) : ""}</div>
+          </>}
+        </div>
+
+        {/* Card 3 — Prime Cost */}
+        <div style={{ background: "#FFF", borderRadius: "14px", padding: "18px 20px", boxShadow: "0 1px 3px rgba(0,0,0,0.04),0 4px 12px rgba(0,0,0,0.02)" }}>
+          <div style={{ fontSize: "11px", fontWeight: "600", color: "#9CA3AF", textTransform: "uppercase" as const, letterSpacing: "0.5px", marginBottom: "8px" }}>Prime Cost</div>
+          {loading ? <Skeleton /> : error ? <div style={{ fontSize: "13px", color: "#D1D5DB" }}>—</div> : <>
+            <div style={{ fontSize: "22px", fontWeight: "800", color: "#111827", marginBottom: "4px" }}>
+              {primeCost ? fmtPct(primeCost.pct) : "—"}
             </div>
-            {loading ? (
-              <Skeleton />
-            ) : error ? (
-              <div style={{ fontSize: "13px", color: "#D1D5DB" }}>—</div>
-            ) : (
-              <>
-                <div
-                  style={{
-                    fontSize: "22px",
-                    fontWeight: "800",
-                    color: "#111827",
-                    marginBottom: "4px",
-                  }}
-                >
-                  {k.value ?? "—"}
-                </div>
-                {k.badge && <div style={{ marginBottom: "2px" }}>{k.badge}</div>}
-                {k.sub && (
-                  <div style={{ fontSize: "11px", color: "#9CA3AF" }}>
-                    {k.sub}
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        ))}
+            {primeCost && (() => {
+              const pc = primeCost.pct;
+              const color = pc < 60 ? "#059669" : pc < 65 ? "#D97706" : "#DC2626";
+              const bg = pc < 60 ? "#ECFDF5" : pc < 65 ? "#FFFBEB" : "#FEF2F2";
+              const border = pc < 60 ? "#A7F3D0" : pc < 65 ? "#FDE68A" : "#FECACA";
+              const label = pc < 60 ? "Óptimo" : pc < 65 ? "Atención" : "Crítico";
+              return <span style={{ padding: "2px 8px", borderRadius: "6px", fontSize: "11px", fontWeight: "700", color, background: bg, border: `1px solid ${border}`, display: "inline-block", marginBottom: "4px" }}>{label}</span>;
+            })()}
+            <div style={{ fontSize: "11px", color: "#9CA3AF" }}>
+              {primeCost ? `Nómina + Personal + Food Cost = ${fmt(primeCost.monto)}` : "Calculando…"}
+            </div>
+          </>}
+        </div>
+
+        {/* Card 4 — Venta Promedio Diaria + sparkline */}
+        <div style={{ background: "#FFF", borderRadius: "14px", padding: "18px 20px", boxShadow: "0 1px 3px rgba(0,0,0,0.04),0 4px 12px rgba(0,0,0,0.02)" }}>
+          <div style={{ fontSize: "11px", fontWeight: "600", color: "#9CA3AF", textTransform: "uppercase" as const, letterSpacing: "0.5px", marginBottom: "8px" }}>Venta Diaria Prom.</div>
+          {loading ? <Skeleton /> : error ? <div style={{ fontSize: "13px", color: "#D1D5DB" }}>—</div> : <>
+            <div style={{ fontSize: "22px", fontWeight: "800", color: "#111827", marginBottom: "2px" }}>
+              {ventasDiarias ? fmt(ventasDiarias.promedio_mes) : "—"}
+            </div>
+            {ventasDiarias?.variacion_pct != null && (() => {
+              const v = ventasDiarias.variacion_pct;
+              const color = v >= 0 ? "#059669" : "#DC2626";
+              return <div style={{ fontSize: "11px", color, fontWeight: "600", marginBottom: "6px" }}>{v >= 0 ? "▲" : "▼"} {Math.abs(v).toFixed(1)}% vs semana pasada</div>;
+            })()}
+            {/* Mini sparkline SVG */}
+            {ventasDiarias?.ultimos_7_dias?.length > 0 && (() => {
+              const dias = ventasDiarias.ultimos_7_dias as { ventas: number; dia: string; sobre_promedio: boolean }[];
+              const maxV = Math.max(...dias.map(d => d.ventas), 1);
+              const W = 120, H = 32;
+              const pts = dias.map((d, i) => `${(i / (dias.length - 1)) * W},${H - (d.ventas / maxV) * H}`).join(" ");
+              return (
+                <svg width={W} height={H} style={{ display: "block" }}>
+                  <polyline points={pts} fill="none" stroke="#3D1C1E" strokeWidth="2" strokeLinejoin="round" />
+                  {dias.map((d, i) => (
+                    <circle key={i} cx={(i / (dias.length - 1)) * W} cy={H - (d.ventas / maxV) * H}
+                      r="3" fill={d.sobre_promedio ? "#C8FF00" : "#9CA3AF"} />
+                  ))}
+                </svg>
+              );
+            })()}
+          </>}
+        </div>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
-        {/* Curva de margen — últimas 8 semanas */}
-        <div
-          style={{
-            background: "#FFF",
-            borderRadius: "14px",
-            padding: "20px",
-            boxShadow:
-              "0 1px 3px rgba(0,0,0,0.04),0 4px 12px rgba(0,0,0,0.02)",
-          }}
-        >
-          <div
-            style={{
-              fontSize: "14px",
-              fontWeight: "700",
-              color: "#111827",
-              marginBottom: "16px",
-            }}
-          >
-            Margen neto — últimas 8 semanas
+        {/* Margen neto — últimos 12 meses */}
+        <div style={{ background: "#FFF", borderRadius: "14px", padding: "20px", boxShadow: "0 1px 3px rgba(0,0,0,0.04),0 4px 12px rgba(0,0,0,0.02)" }}>
+          <div style={{ fontSize: "14px", fontWeight: "700", color: "#111827", marginBottom: "4px" }}>
+            Margen neto — últimos 12 meses
+          </div>
+          <div style={{ fontSize: "11px", color: "#9CA3AF", marginBottom: "16px" }}>
+            {margenMensual.length > 0
+              ? `${margenMensual[0]?.short_label} ${margenMensual[0]?.anio} → ${margenMensual[margenMensual.length - 1]?.short_label} ${margenMensual[margenMensual.length - 1]?.anio}`
+              : "Cargando…"}
           </div>
           {loading ? (
-            <div
-              style={{
-                display: "flex",
-                gap: "8px",
-                alignItems: "flex-end",
-                height: "100px",
-              }}
-            >
-              {Array.from({ length: 8 }).map((_, i) => (
-                <div
-                  key={i}
-                  style={{
-                    flex: 1,
-                    height: "50px",
-                    borderRadius: "4px 4px 0 0",
-                    background: "#F3F4F6",
-                  }}
-                />
+            <div style={{ display: "flex", gap: "6px", alignItems: "flex-end", height: "120px" }}>
+              {Array.from({ length: 12 }).map((_, i) => (
+                <div key={i} style={{ flex: 1, height: "60px", borderRadius: "4px 4px 0 0", background: "#F3F4F6" }} />
               ))}
             </div>
-          ) : semanas.length === 0 ? (
-            <div
-              style={{
-                textAlign: "center" as const,
-                color: "#9CA3AF",
-                fontSize: "13px",
-                padding: "32px 0",
-              }}
-            >
-              Sin datos de semanas para restaurante ID {restauranteId}
+          ) : margenMensual.length === 0 ? (
+            <div style={{ textAlign: "center" as const, color: "#9CA3AF", fontSize: "13px", padding: "32px 0" }}>
+              Sin datos mensuales
             </div>
-          ) : (
-            <div
-              style={{
-                display: "flex",
-                gap: "4px",
-                alignItems: "flex-end",
-                height: "120px",
-              }}
-            >
-              {semanas.map((s, i) => {
-                const pct = s.margen_neto_pct ?? 0;
-                const color =
-                  pct >= 20 ? "#059669" : pct >= 10 ? "#F59E0B" : "#DC2626";
-                const heightPct = Math.max(
-                  (Math.abs(pct) / 50) * 100,
-                  4
-                );
-                return (
-                  <div
-                    key={i}
-                    style={{
-                      flex: 1,
-                      display: "flex",
-                      flexDirection: "column" as const,
-                      alignItems: "center",
-                      justifyContent: "flex-end",
-                      height: "100%",
-                      gap: "4px",
-                    }}
-                  >
-                    <span
-                      style={{ fontSize: "9px", color, fontWeight: "700" }}
-                    >
-                      {pct.toFixed(1)}%
-                    </span>
-                    <div
-                      title={`${s.semana_inicio}\nVentas: ${fmt(s.ventas_netas || 0)}\nMargen: ${pct.toFixed(1)}%`}
-                      style={{
-                        width: "100%",
-                        height: `${heightPct}%`,
-                        background: color,
-                        borderRadius: "3px 3px 0 0",
-                        opacity: s.dias_con_datos === 0 ? 0.3 : 1,
-                      }}
-                    />
-                    <span style={{ fontSize: "8px", color: "#9CA3AF" }}>
-                      {s.semana_inicio?.slice(5)}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+          ) : (() => {
+            // Separate positive from negative; scale max absolute value
+            const maxAbs = Math.max(...margenMensual.map(m => Math.abs(m.margen_pct)), 1);
+            const BAR_H = 110;
+            const isCurrent = (m: any) => m.mes === mes && m.anio === anio;
+            return (
+              <div style={{ display: "flex", gap: "3px", alignItems: "flex-end", height: `${BAR_H + 28}px` }}>
+                {margenMensual.map((m, i) => {
+                  const pct = m.margen_pct ?? 0;
+                  const color = pct >= 15 ? "#059669" : pct >= 5 ? "#F59E0B" : "#DC2626";
+                  const barH = Math.max((Math.abs(pct) / maxAbs) * BAR_H, 4);
+                  const active = isCurrent(m);
+                  return (
+                    <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column" as const, alignItems: "center", justifyContent: "flex-end", height: "100%", gap: "3px" }}>
+                      <span style={{ fontSize: "8px", color, fontWeight: "700", opacity: active ? 1 : 0.7 }}>{pct > 0 ? "+" : ""}{pct.toFixed(1)}%</span>
+                      <div
+                        title={`${m.label}\nVentas: ${fmt(m.ventas)}\nMargen: ${pct.toFixed(1)}%\nUtilidad: ${fmt(m.utilidad)}`}
+                        style={{
+                          width: "100%",
+                          height: `${barH}px`,
+                          background: active ? "#3D1C1E" : color,
+                          borderRadius: "3px 3px 0 0",
+                          opacity: m.dias_con_datos === 0 ? 0.25 : active ? 1 : 0.75,
+                          transition: "height 0.3s ease",
+                          outline: active ? "2px solid #C8FF00" : "none",
+                          outlineOffset: "1px",
+                        }}
+                      />
+                      <span style={{ fontSize: "8px", color: active ? "#111827" : "#9CA3AF", fontWeight: active ? "700" : "400" }}>{m.short_label}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
+          {/* Leyenda */}
+          <div style={{ display: "flex", gap: "12px", marginTop: "10px", flexWrap: "wrap" as const }}>
+            {[["#059669","≥15% Óptimo"],["#F59E0B","5–15% Aceptable"],["#DC2626","<5% Crítico"]].map(([c,l]) => (
+              <div key={l} style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                <div style={{ width: "8px", height: "8px", borderRadius: "2px", background: c }} />
+                <span style={{ fontSize: "10px", color: "#9CA3AF" }}>{l}</span>
+              </div>
+            ))}
+          </div>
         </div>
 
         {/* P&L tabla */}
@@ -825,6 +740,54 @@ export const PLDashboard = ({ restauranteIdOverride }: PLDashboardProps = {}) =>
             )}
           </div>
         </div>
+      </div>
+
+      {/* ── Top 10 Platillos ──────────────────────────────────────── */}
+      <div style={{ background: "#FFF", borderRadius: "14px", padding: "20px", boxShadow: "0 1px 3px rgba(0,0,0,0.04),0 4px 12px rgba(0,0,0,0.02)", marginTop: "16px" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px" }}>
+          <div>
+            <div style={{ fontSize: "14px", fontWeight: "700", color: "#111827" }}>Top 10 Platillos</div>
+            <div style={{ fontSize: "11px", color: "#9CA3AF" }}>{MESES[mes]} {anio} · por venta total</div>
+          </div>
+        </div>
+        {loading ? (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+            {Array.from({ length: 6 }).map((_, i) => <div key={i} style={{ height: "40px", borderRadius: "8px", background: "#F3F4F6" }} />)}
+          </div>
+        ) : platillos.length === 0 ? (
+          <div style={{ textAlign: "center" as const, color: "#9CA3AF", fontSize: "13px", padding: "32px 0" }}>
+            Sin datos de platillos para {MESES[mes]} {anio}<br />
+            <span style={{ fontSize: "11px" }}>Los datos se cargan desde los cierres de turno de Parrot POS</span>
+          </div>
+        ) : (() => {
+          const maxVenta = Math.max(...platillos.map(p => p.venta_total), 1);
+          return (
+            <div style={{ display: "flex", flexDirection: "column" as const, gap: "6px" }}>
+              {platillos.map((p, i) => {
+                const pct = (p.venta_total / maxVenta) * 100;
+                const trend = p.trend_pct;
+                const trendColor = trend == null ? "#9CA3AF" : trend >= 0 ? "#059669" : "#DC2626";
+                const trendLabel = trend == null ? "Nuevo" : `${trend >= 0 ? "▲" : "▼"} ${Math.abs(trend).toFixed(0)}%`;
+                return (
+                  <div key={i} style={{ display: "grid", gridTemplateColumns: "24px 1fr auto auto", gap: "8px", alignItems: "center" }}>
+                    <span style={{ fontSize: "11px", fontWeight: "700", color: i < 3 ? "#3D1C1E" : "#9CA3AF", textAlign: "right" as const }}>{i + 1}</span>
+                    <div>
+                      <div style={{ fontSize: "12px", fontWeight: "600", color: "#374151", marginBottom: "3px", whiteSpace: "nowrap" as const, overflow: "hidden", textOverflow: "ellipsis", maxWidth: "260px" }}>{p.nombre}</div>
+                      <div style={{ height: "5px", background: "#F3F4F6", borderRadius: "3px", overflow: "hidden" }}>
+                        <div style={{ height: "100%", width: `${pct}%`, background: i === 0 ? "#C8FF00" : i < 3 ? "#3D1C1E" : "#9CA3AF", borderRadius: "3px", transition: "width 0.4s ease" }} />
+                      </div>
+                    </div>
+                    <div style={{ textAlign: "right" as const }}>
+                      <div style={{ fontSize: "12px", fontWeight: "700", color: "#111827" }}>{fmt(p.venta_total)}</div>
+                      <div style={{ fontSize: "10px", color: "#9CA3AF" }}>{p.cantidad} uds · {fmt(p.precio_promedio)} prom</div>
+                    </div>
+                    <span style={{ fontSize: "10px", fontWeight: "600", color: trendColor, minWidth: "40px", textAlign: "right" as const }}>{trendLabel}</span>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
       </div>
     </div>
   );
