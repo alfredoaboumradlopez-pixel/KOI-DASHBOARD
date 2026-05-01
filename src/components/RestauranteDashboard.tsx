@@ -46,7 +46,6 @@ import { RestauranteProvider } from "../context/RestauranteContext";
 
 type SubModule =
   | "dashboard"
-  | "pl"
   | "cierre-turno"
   | "gastos"
   | "dashboard-gastos"
@@ -287,9 +286,6 @@ export const RestauranteDashboard = () => {
       {/* ── Contenido del módulo seleccionado ──────────────────────── */}
       <div style={{ paddingBottom: "100px" }}>
         {subModule === "dashboard" && (
-          <PLDashboard restauranteIdOverride={restauranteId} />
-        )}
-        {subModule === "pl" && (
           <EstadoResultados restauranteIdOverride={restauranteId} />
         )}
         {subModule === "cierre-turno" && <CierreTurno />}
@@ -340,7 +336,6 @@ export const RestauranteDashboard = () => {
       >
         {([
           { key: "dashboard",        label: "Dashboard",    shortLabel: "Dashboard",  emoji: "📊" },
-          { key: "pl",               label: "P&L",          shortLabel: "P&L",        emoji: "📑" },
           { key: "cierre-turno",     label: "Cierre de Turno", shortLabel: "Cierre", emoji: "📋" },
           { key: "gastos",           label: "Gastos",       shortLabel: "Gastos",     emoji: "💰" },
           { key: "dashboard-gastos", label: "Análisis",     shortLabel: "Análisis",   emoji: "📈" },
