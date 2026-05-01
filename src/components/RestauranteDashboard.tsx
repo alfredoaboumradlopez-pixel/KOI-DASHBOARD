@@ -286,7 +286,7 @@ export const RestauranteDashboard = () => {
       {/* ── Contenido del módulo seleccionado ──────────────────────── */}
       <div style={{ paddingBottom: "100px" }}>
         {subModule === "dashboard" && (
-          <EstadoResultados restauranteIdOverride={restauranteId} />
+          <PLDashboard restauranteIdOverride={restauranteId} />
         )}
         {subModule === "cierre-turno" && <CierreTurno />}
         {subModule === "gastos" && <CapturaGastos />}
