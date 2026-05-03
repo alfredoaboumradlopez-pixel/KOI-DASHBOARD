@@ -434,6 +434,54 @@ except Exception as _e_fc:
     print(f"Migracion config_flujo_caja: {_e_fc}")
 
 
+# Migración: comisiones_config + audit fields en cierres_turno
+try:
+    with engine.begin() as _conn_com:
+        if _USE_PG:
+            # Tabla de configuración de comisiones por restaurante
+            _conn_com.execute(_text("""
+                CREATE TABLE IF NOT EXISTS comisiones_config (
+                    id SERIAL PRIMARY KEY,
+                    restaurante_id INTEGER REFERENCES restaurantes(id),
+                    tipo VARCHAR(20) NOT NULL,
+                    nombre VARCHAR(100) NOT NULL,
+                    porcentaje FLOAT NOT NULL DEFAULT 0.0,
+                    activo BOOLEAN DEFAULT TRUE,
+                    created_at TIMESTAMP DEFAULT now(),
+                    updated_at TIMESTAMP DEFAULT now()
+                )
+            """))
+            # Audit fields en cierres_turno
+            for _col_ct, _tipo_ct in [("edited_by", "VARCHAR(100)"), ("edited_at", "TIMESTAMP")]:
+                try:
+                    _conn_com.execute(_text(f"ALTER TABLE cierres_turno ADD COLUMN IF NOT EXISTS {_col_ct} {_tipo_ct}"))
+                except Exception:
+                    pass
+            # Seed defaults de comisiones para cada restaurante existente
+            _rests_com = _conn_com.execute(_text("SELECT id FROM restaurantes")).fetchall()
+            for _r_com in _rests_com:
+                _rid_com = _r_com[0]
+                # Verificar si ya tiene config
+                _cnt = _conn_com.execute(_text("SELECT COUNT(*) FROM comisiones_config WHERE restaurante_id=:rid"), {"rid": _rid_com}).scalar()
+                if _cnt == 0:
+                    _defaults = [
+                        ("PLATAFORMA", "Uber Eats", 30.0),
+                        ("PLATAFORMA", "Rappi",     25.0),
+                        ("PLATAFORMA", "DidiFood",  20.0),
+                        ("BANCARIA",   "Terminal Banorte", 2.5),
+                        ("BANCARIA",   "Terminal BBVA",    2.8),
+                        ("BANCARIA",   "AMEX",             3.5),
+                    ]
+                    for _tipo_d, _nombre_d, _pct_d in _defaults:
+                        _conn_com.execute(_text("""
+                            INSERT INTO comisiones_config (restaurante_id, tipo, nombre, porcentaje, activo)
+                            VALUES (:rid, :tipo, :nombre, :pct, true)
+                        """), {"rid": _rid_com, "tipo": _tipo_d, "nombre": _nombre_d, "pct": _pct_d})
+            print("comisiones_config migration OK")
+except Exception as _e_com:
+    print(f"Migración comisiones_config: {_e_com}")
+
+
 app = FastAPI(
     title="KOI Dashboard API",
     description="API para la gestion administrativa del restaurante KOI",
@@ -774,6 +822,151 @@ def eliminar_cierre(cierre_id: int, db: Session = Depends(get_db)):
     db.delete(existing)
     db.commit()
     return {"mensaje": "Cierre eliminado"}
+
+
+# ── Editar forma de pago de un cierre (CAMBIO 1) ─────────────────────────────
+@app.put("/api/cierres/{cierre_id}/formas-pago")
+def editar_forma_pago(
+    cierre_id: int,
+    body: dict,
+    db: Session = Depends(get_db),
+    current_user: Optional[models.Usuario] = Depends(get_optional_user),
+):
+    """Edita un campo de ventas de un cierre y recalcula el total. Solo ADMIN/SUPER_ADMIN."""
+    # Validar rol
+    if current_user and getattr(current_user, "rol", None) not in ("ADMIN", "SUPER_ADMIN", None):
+        raise HTTPException(status_code=403, detail="Solo administradores pueden editar cierres")
+
+    cierre = db.query(models.CierreTurno).filter(models.CierreTurno.id == cierre_id).first()
+    if not cierre:
+        raise HTTPException(status_code=404, detail="Cierre no encontrado")
+
+    campo = body.get("campo", "")
+    valor = float(body.get("valor", 0) or 0)
+
+    campos_validos = {
+        "ventas_efectivo", "ventas_parrot", "ventas_terminales",
+        "ventas_uber", "ventas_rappi", "cortesias", "otros_ingresos",
+        "propinas_efectivo", "propinas_parrot", "propinas_terminales",
+        "saldo_inicial", "efectivo_fisico",
+    }
+    if campo not in campos_validos:
+        raise HTTPException(status_code=400, detail=f"Campo '{campo}' no permitido")
+
+    setattr(cierre, campo, valor)
+
+    # Recalcular total_venta
+    cierre.total_venta = (
+        (cierre.ventas_efectivo or 0) + (cierre.ventas_parrot or 0) +
+        (cierre.ventas_terminales or 0) + (cierre.ventas_uber or 0) +
+        (cierre.ventas_rappi or 0) + (cierre.cortesias or 0) + (cierre.otros_ingresos or 0)
+    )
+    cierre.total_con_propina = cierre.total_venta + (
+        (cierre.propinas_efectivo or 0) + (cierre.propinas_parrot or 0) + (cierre.propinas_terminales or 0)
+    )
+
+    # Recalcular arqueo si hay efectivo_fisico
+    if cierre.efectivo_fisico is not None:
+        saldo_esp = (cierre.saldo_inicial or 0) + (cierre.ventas_efectivo or 0) + (cierre.propinas_efectivo or 0)
+        cierre.saldo_final_esperado = saldo_esp
+        cierre.diferencia = cierre.efectivo_fisico - saldo_esp
+        if abs(cierre.diferencia) < 0.01:
+            cierre.estado = models.EstadoArqueo.CUADRADA
+        elif cierre.diferencia > 0:
+            cierre.estado = models.EstadoArqueo.SOBRANTE
+        else:
+            cierre.estado = models.EstadoArqueo.FALTANTE
+
+    # Audit log
+    cierre.edited_by = getattr(current_user, "nombre", None) or getattr(current_user, "email", "sistema")
+    from datetime import datetime as _dt
+    cierre.edited_at = _dt.utcnow()
+
+    db.commit()
+    db.refresh(cierre)
+    return cierre
+
+
+# ── Comisiones Config CRUD (CAMBIO 2) ─────────────────────────────────────────
+@app.get("/api/comisiones-config/{restaurante_id}")
+def get_comisiones_config(
+    restaurante_id: int,
+    db: Session = Depends(get_db),
+    current_user: Optional[models.Usuario] = Depends(get_optional_user),
+):
+    """Lista las configuraciones de comisiones de un restaurante."""
+    rows = db.query(models.ComisionConfig).filter(
+        models.ComisionConfig.restaurante_id == restaurante_id,
+    ).order_by(models.ComisionConfig.tipo, models.ComisionConfig.nombre).all()
+    return [
+        {"id": r.id, "restaurante_id": r.restaurante_id, "tipo": r.tipo,
+         "nombre": r.nombre, "porcentaje": r.porcentaje, "activo": r.activo}
+        for r in rows
+    ]
+
+
+@app.post("/api/comisiones-config/{restaurante_id}")
+def crear_comision_config(
+    restaurante_id: int,
+    body: dict,
+    db: Session = Depends(get_db),
+    current_user: Optional[models.Usuario] = Depends(get_optional_user),
+):
+    """Crea una nueva entrada de comisión."""
+    row = models.ComisionConfig(
+        restaurante_id=restaurante_id,
+        tipo=body.get("tipo", "PLATAFORMA"),
+        nombre=body.get("nombre", ""),
+        porcentaje=float(body.get("porcentaje", 0) or 0),
+        activo=bool(body.get("activo", True)),
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return {"id": row.id, "restaurante_id": row.restaurante_id, "tipo": row.tipo,
+            "nombre": row.nombre, "porcentaje": row.porcentaje, "activo": row.activo}
+
+
+@app.put("/api/comisiones-config/{config_id}")
+def actualizar_comision_config(
+    config_id: int,
+    body: dict,
+    db: Session = Depends(get_db),
+    current_user: Optional[models.Usuario] = Depends(get_optional_user),
+):
+    """Actualiza una entrada de comisión."""
+    row = db.query(models.ComisionConfig).filter(models.ComisionConfig.id == config_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Configuración no encontrada")
+    if "nombre" in body:
+        row.nombre = body["nombre"]
+    if "porcentaje" in body:
+        row.porcentaje = float(body["porcentaje"] or 0)
+    if "activo" in body:
+        row.activo = bool(body["activo"])
+    if "tipo" in body:
+        row.tipo = body["tipo"]
+    from datetime import datetime as _dt2
+    row.updated_at = _dt2.utcnow()
+    db.commit()
+    db.refresh(row)
+    return {"id": row.id, "restaurante_id": row.restaurante_id, "tipo": row.tipo,
+            "nombre": row.nombre, "porcentaje": row.porcentaje, "activo": row.activo}
+
+
+@app.delete("/api/comisiones-config/{config_id}")
+def eliminar_comision_config(
+    config_id: int,
+    db: Session = Depends(get_db),
+    current_user: Optional[models.Usuario] = Depends(get_optional_user),
+):
+    """Soft-delete: marca como inactivo."""
+    row = db.query(models.ComisionConfig).filter(models.ComisionConfig.id == config_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Configuración no encontrada")
+    row.activo = False
+    db.commit()
+    return {"ok": True}
 
 
 @app.post("/api/gastos/parse-factura")

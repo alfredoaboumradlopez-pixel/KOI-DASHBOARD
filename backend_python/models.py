@@ -142,6 +142,8 @@ class CierreTurno(Base):
     estado = Column(SQLEnum(EstadoArqueo), nullable=True)
     notas = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    edited_by = Column(String(100), nullable=True)
+    edited_at = Column(DateTime, nullable=True)
     restaurante_id = Column(Integer, ForeignKey("restaurantes.id"), nullable=True)
     gastos = relationship("GastoDiario", back_populates="cierre", cascade="all, delete-orphan")
     propinas = relationship("PropinaDiaria", back_populates="cierre", cascade="all, delete-orphan")
@@ -619,3 +621,16 @@ class PropinasEmpleado(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     semana = relationship("PropinasSemana", back_populates="empleados")
+
+
+class ComisionConfig(Base):
+    """Configuración de comisiones por restaurante (plataformas y bancarias)."""
+    __tablename__ = "comisiones_config"
+    id = Column(Integer, primary_key=True, index=True)
+    restaurante_id = Column(Integer, ForeignKey("restaurantes.id"), nullable=True)
+    tipo = Column(String(20), nullable=False)   # 'PLATAFORMA' | 'BANCARIA'
+    nombre = Column(String(100), nullable=False)
+    porcentaje = Column(Float, nullable=False, default=0.0)
+    activo = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { ClipboardList, Save, Loader2, CheckCircle, AlertTriangle, ChevronDown, ChevronUp } from "lucide-react";
+import { ClipboardList, Save, Loader2, CheckCircle, AlertTriangle, ChevronDown, ChevronUp, Settings, X, Plus, Trash2 } from "lucide-react";
 import { api } from "../services/api";
 import { ArqueoCaja } from "./ArqueoCaja";
 import { useRestaurante } from "../context/RestauranteContext";
@@ -7,7 +7,7 @@ import { useRestaurante } from "../context/RestauranteContext";
 const fmt = (v: number) =>
   new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(v);
 
-const n = (v: string) => parseFloat(v) || 0;
+const n = (v: string | number) => parseFloat(String(v)) || 0;
 
 const DIAS = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
 const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
@@ -21,6 +21,20 @@ const isoWeek = (dateStr: string): number => {
   return Math.ceil((((utc.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
 };
 
+interface ComisionConfigItem {
+  id: number;
+  tipo: "PLATAFORMA" | "BANCARIA";
+  nombre: string;
+  porcentaje: number;
+  activo: boolean;
+}
+
+interface NewConfigRow {
+  tipo: string;
+  nombre: string;
+  porcentaje: string;
+}
+
 export const CierreTurno: React.FC = () => {
   const { restauranteId } = useRestaurante();
   const [tab, setTab] = useState<"registrar" | "historial">("registrar");
@@ -33,14 +47,48 @@ export const CierreTurno: React.FC = () => {
       .catch(() => setEmpleados([]));
   }, [restauranteId]);
 
+  // ── Comisiones config ──
+  const [comisionesConfig, setComisionesConfig] = useState<ComisionConfigItem[]>([]);
+  const [comConfigLocal, setComConfigLocal] = useState<Record<number, string>>({});
+  const [showConfigModal, setShowConfigModal] = useState(false);
+  const [modalEdits, setModalEdits] = useState<Record<number, Partial<ComisionConfigItem>>>({});
+  const [savingConfigId, setSavingConfigId] = useState<number | null>(null);
+  const [newRow, setNewRow] = useState<NewConfigRow | null>(null);
+  const [savingNew, setSavingNew] = useState(false);
+
+  const loadComisiones = () => {
+    api.get(`/api/comisiones-config/${restauranteId}`)
+      .then((data: any) => {
+        const configs: ComisionConfigItem[] = Array.isArray(data) ? data : [];
+        setComisionesConfig(configs);
+        setComConfigLocal(prev => {
+          const next = { ...prev };
+          configs.forEach(c => { if (!(c.id in next)) next[c.id] = String(c.porcentaje); });
+          return next;
+        });
+      })
+      .catch(() => {});
+  };
+
+  useEffect(() => { loadComisiones(); }, [restauranteId]);
+
+  // Derived comisiones
+  const plataformas = useMemo(() => comisionesConfig.filter(c => c.tipo === "PLATAFORMA" && c.activo), [comisionesConfig]);
+  const bancarias = useMemo(() => comisionesConfig.filter(c => c.tipo === "BANCARIA" && c.activo), [comisionesConfig]);
+
+  const uberConfig = useMemo(() => plataformas.find(c => c.nombre.toLowerCase().includes("uber")), [plataformas]);
+  const rappiConfig = useMemo(() => plataformas.find(c => c.nombre.toLowerCase().includes("rappi")), [plataformas]);
+
+  const comisionUberPct = useMemo(() =>
+    uberConfig ? n(comConfigLocal[uberConfig.id] ?? String(uberConfig.porcentaje)) : 30,
+    [uberConfig, comConfigLocal]);
+  const comisionRappiPct = useMemo(() =>
+    rappiConfig ? n(comConfigLocal[rappiConfig.id] ?? String(rappiConfig.porcentaje)) : 25,
+    [rappiConfig, comConfigLocal]);
+
   // ── Header ──
   const [fecha, setFecha] = useState(new Date().toISOString().split("T")[0]);
-  const [responsable, setResponsable] = useState("");
   const [elaboradoPor, setElaboradoPor] = useState("");
-
-  // ── Comisiones ──
-  const [comisionUber, setComisionUber] = useState("30");
-  const [comisionRappi, setComisionRappi] = useState("25");
 
   // ── Ventas por canal ──
   const [ventas, setVentas] = useState<Record<string, string>>({
@@ -89,10 +137,9 @@ export const CierreTurno: React.FC = () => {
     [propinas],
   );
 
-  const nettoUber = useMemo(() => n(ventas.uber) * (1 - n(comisionUber) / 100), [ventas.uber, comisionUber]);
-  const nettoRappi = useMemo(() => n(ventas.rappi) * (1 - n(comisionRappi) / 100), [ventas.rappi, comisionRappi]);
+  const nettoUber = useMemo(() => n(ventas.uber) * (1 - comisionUberPct / 100), [ventas.uber, comisionUberPct]);
+  const nettoRappi = useMemo(() => n(ventas.rappi) * (1 - comisionRappiPct / 100), [ventas.rappi, comisionRappiPct]);
 
-  // saldo esperado = saldo inicial + efectivo ventas + efectivo propinas
   const saldoEsperado = useMemo(
     () => n(saldoInicial) + n(ventas.efectivo) + n(propinas.efectivo),
     [saldoInicial, ventas.efectivo, propinas.efectivo],
@@ -115,7 +162,6 @@ export const CierreTurno: React.FC = () => {
   const handleEditCierre = (c: any) => {
     setFecha(c.fecha || new Date().toISOString().split("T")[0]);
     setElaboradoPor(c.elaborado_por || c.responsable || "");
-    setResponsable(c.elaborado_por || c.responsable || "");
     setVentas({
       efectivo: c.ventas_efectivo ? String(c.ventas_efectivo) : "",
       parrot: c.ventas_parrot ? String(c.ventas_parrot) : "",
@@ -144,7 +190,58 @@ export const CierreTurno: React.FC = () => {
     setTab("registrar");
   };
 
-  // ── Save ──
+  // ── Config modal helpers ──
+  const openModal = () => {
+    const edits: Record<number, Partial<ComisionConfigItem>> = {};
+    comisionesConfig.forEach(c => { edits[c.id] = { nombre: c.nombre, porcentaje: c.porcentaje, activo: c.activo, tipo: c.tipo }; });
+    setModalEdits(edits);
+    setNewRow(null);
+    setShowConfigModal(true);
+  };
+
+  const saveModalRow = async (id: number) => {
+    const edit = modalEdits[id];
+    if (!edit) return;
+    setSavingConfigId(id);
+    try {
+      await api.put(`/api/comisiones-config/${id}`, {
+        nombre: edit.nombre,
+        porcentaje: Number(edit.porcentaje),
+        activo: edit.activo,
+        tipo: edit.tipo,
+      });
+      await loadComisiones();
+    } catch (e) { /* silent */ }
+    finally { setSavingConfigId(null); }
+  };
+
+  const deleteModalRow = async (id: number) => {
+    if (!confirm("¿Eliminar esta comisión?")) return;
+    setSavingConfigId(id);
+    try {
+      await api.delete(`/api/comisiones-config/${id}`);
+      await loadComisiones();
+      setModalEdits(prev => { const n = { ...prev }; delete n[id]; return n; });
+    } catch (e) { /* silent */ }
+    finally { setSavingConfigId(null); }
+  };
+
+  const saveNewRow = async () => {
+    if (!newRow?.nombre.trim()) return;
+    setSavingNew(true);
+    try {
+      await api.post(`/api/comisiones-config/${restauranteId}`, {
+        tipo: newRow.tipo || "PLATAFORMA",
+        nombre: newRow.nombre,
+        porcentaje: Number(newRow.porcentaje) || 0,
+      });
+      await loadComisiones();
+      setNewRow(null);
+    } catch (e) { /* silent */ }
+    finally { setSavingNew(false); }
+  };
+
+  // ── Save cierre ──
   const handleSave = async () => {
     if (!elaboradoPor) {
       setError("Selecciona quién elabora el cierre");
@@ -181,8 +278,7 @@ export const CierreTurno: React.FC = () => {
         notas: notas || null,
         restaurante_id: restauranteId,
       });
-      setSavedSummary({ fecha, responsable, totalVentas, totalPropinas, diferencia: n(efectivoFisico) > 0 ? diferencia : null, semana });
-      // Reset
+      setSavedSummary({ fecha, responsable: elaboradoPor, totalVentas, totalPropinas, diferencia: n(efectivoFisico) > 0 ? diferencia : null, semana });
       setVentas({ efectivo: "", parrot: "", terminales: "", uber: "", rappi: "", cortesias: "", otros: "" });
       setPropinas({ efectivo: "", parrot: "", terminales: "" });
       setSaldoInicial("");
@@ -343,31 +439,88 @@ export const CierreTurno: React.FC = () => {
 
           {/* ── SECCIÓN 2: Ventas por canal ── */}
           <div style={sectionCard}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "20px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "20px", gap: "16px" }}>
               <div>
                 <h2 style={{ fontSize: "18px", fontWeight: "800", color: "#111827", margin: 0 }}>Ventas del día</h2>
                 <p style={{ fontSize: "12px", color: "#9CA3AF", margin: "3px 0 0" }}>Ingresa el total vendido por cada canal</p>
               </div>
-              {/* Comisiones editables */}
-              <div style={{ background: "#F9FAFB", borderRadius: "10px", padding: "10px 14px", border: "1px solid #F0F0F0", minWidth: "220px" }}>
-                <div style={{ fontSize: "10px", fontWeight: "700", color: "#9CA3AF", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "8px" }}>Comisiones de plataformas</div>
-                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                  {[
-                    { label: "Uber Eats", value: comisionUber, set: setComisionUber },
-                    { label: "Rappi", value: comisionRappi, set: setComisionRappi },
-                  ].map(({ label, value, set }) => (
-                    <div key={label} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
-                      <span style={{ fontSize: "12px", fontWeight: "600", color: "#374151" }}>{label}</span>
-                      <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                        <input
-                          type="number" value={value} onChange={e => set(e.target.value)}
-                          style={{ width: "56px", padding: "4px 8px", borderRadius: "6px", border: "1px solid #E5E7EB", fontSize: "13px", fontWeight: "700", textAlign: "center", background: "#FFF" }}
-                        />
-                        <span style={{ fontSize: "12px", fontWeight: "600", color: "#6B7280" }}>%</span>
-                      </div>
-                    </div>
-                  ))}
+
+              {/* ── Comisiones box ── */}
+              <div style={{ background: "#F9FAFB", borderRadius: "10px", padding: "12px 14px", border: "1px solid #EBEBEB", minWidth: "230px", maxWidth: "260px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+                  <span style={{ fontSize: "10px", fontWeight: "700", color: "#9CA3AF", textTransform: "uppercase", letterSpacing: "0.5px" }}>Comisiones</span>
+                  <button
+                    onClick={openModal}
+                    title="Configurar comisiones"
+                    style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "10px", fontWeight: "700", color: "#3D1C1E", background: "#FFF", border: "1px solid #E5E7EB", borderRadius: "6px", padding: "3px 8px", cursor: "pointer" }}
+                  >
+                    <Settings style={{ width: "10px", height: "10px" }} /> Configurar
+                  </button>
                 </div>
+
+                {/* Plataformas */}
+                {plataformas.length > 0 && (
+                  <div style={{ marginBottom: "8px" }}>
+                    <div style={{ fontSize: "9px", fontWeight: "700", color: "#EA580C", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "5px" }}>🛵 Plataformas</div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
+                      {plataformas.map(c => (
+                        <div key={c.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
+                          <span style={{ fontSize: "12px", fontWeight: "600", color: "#374151", flex: 1 }}>{c.nombre}</span>
+                          <div style={{ display: "flex", alignItems: "center", gap: "3px" }}>
+                            <input
+                              type="number"
+                              value={comConfigLocal[c.id] ?? String(c.porcentaje)}
+                              onChange={e => setComConfigLocal(prev => ({ ...prev, [c.id]: e.target.value }))}
+                              style={{ width: "50px", padding: "3px 6px", borderRadius: "6px", border: "1px solid #E5E7EB", fontSize: "12px", fontWeight: "700", textAlign: "center", background: "#FFF" }}
+                            />
+                            <span style={{ fontSize: "11px", color: "#9CA3AF" }}>%</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Bancarias */}
+                {bancarias.length > 0 && (
+                  <div style={{ borderTop: plataformas.length > 0 ? "1px solid #F0F0F0" : "none", paddingTop: plataformas.length > 0 ? "8px" : "0" }}>
+                    <div style={{ fontSize: "9px", fontWeight: "700", color: "#7C3AED", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "5px" }}>💳 Bancarias</div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
+                      {bancarias.map(c => {
+                        const pct = n(comConfigLocal[c.id] ?? String(c.porcentaje));
+                        const monto = n(ventas.terminales) * (pct / 100);
+                        return (
+                          <div key={c.id}>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
+                              <span style={{ fontSize: "12px", fontWeight: "600", color: "#374151", flex: 1 }}>{c.nombre}</span>
+                              <div style={{ display: "flex", alignItems: "center", gap: "3px" }}>
+                                <input
+                                  type="number"
+                                  value={comConfigLocal[c.id] ?? String(c.porcentaje)}
+                                  onChange={e => setComConfigLocal(prev => ({ ...prev, [c.id]: e.target.value }))}
+                                  style={{ width: "50px", padding: "3px 6px", borderRadius: "6px", border: "1px solid #E5E7EB", fontSize: "12px", fontWeight: "700", textAlign: "center", background: "#FFF" }}
+                                />
+                                <span style={{ fontSize: "11px", color: "#9CA3AF" }}>%</span>
+                              </div>
+                            </div>
+                            {n(ventas.terminales) > 0 && (
+                              <div style={{ textAlign: "right", fontSize: "10px", color: "#7C3AED", fontWeight: "600", marginTop: "1px" }}>
+                                Comisión: {fmt(monto)}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Fallback */}
+                {comisionesConfig.length === 0 && (
+                  <div style={{ fontSize: "11px", color: "#9CA3AF", textAlign: "center", padding: "6px 0" }}>
+                    Sin configuración — haz clic en Configurar
+                  </div>
+                )}
               </div>
             </div>
 
@@ -396,8 +549,13 @@ export const CierreTurno: React.FC = () => {
               {/* Terminales */}
               <div style={channelCard("v_terminales", n(ventas.terminales) > 0, "#F0FDF4", "#86EFAC")}>
                 <div style={{ fontSize: "28px", marginBottom: "4px" }}>💳</div>
-                <div style={{ fontSize: "11px", fontWeight: "700", color: "#6B7280", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "10px" }}>Terminales</div>
-                <div style={{ position: "relative" }}>
+                <div style={{ fontSize: "11px", fontWeight: "700", color: "#6B7280", textTransform: "uppercase", letterSpacing: "0.5px" }}>Terminales</div>
+                {bancarias.length > 0 && (
+                  <div style={{ fontSize: "9px", color: "#7C3AED", fontWeight: "600", marginBottom: "6px" }}>
+                    {bancarias.map(c => `${c.nombre} ${comConfigLocal[c.id] ?? c.porcentaje}%`).join(" · ")}
+                  </div>
+                )}
+                <div style={{ position: "relative", marginTop: bancarias.length === 0 ? "10px" : "0" }}>
                   <span style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", fontSize: "14px", color: "#9CA3AF", pointerEvents: "none", fontWeight: "700" }}>$</span>
                   <input type="number" step="0.01" min="0" value={ventas.terminales} onChange={e => setVenta("terminales", e.target.value)} onFocus={() => setFocused("v_terminales")} onBlur={() => setFocused(null)} placeholder="0.00" style={cardInput("v_terminales")} />
                 </div>
@@ -407,7 +565,7 @@ export const CierreTurno: React.FC = () => {
               <div style={channelCard("v_uber", n(ventas.uber) > 0, "#FFF7ED", "#FED7AA")}>
                 <div style={{ fontSize: "28px", marginBottom: "4px" }}>🛵</div>
                 <div style={{ fontSize: "11px", fontWeight: "700", color: "#6B7280", textTransform: "uppercase", letterSpacing: "0.5px" }}>Uber Eats</div>
-                <div style={{ fontSize: "10px", color: "#EA580C", fontWeight: "600", marginBottom: "8px" }}>Comisión {comisionUber}%</div>
+                <div style={{ fontSize: "10px", color: "#EA580C", fontWeight: "600", marginBottom: "8px" }}>Comisión {comisionUberPct}%</div>
                 <div style={{ position: "relative" }}>
                   <span style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", fontSize: "14px", color: "#9CA3AF", pointerEvents: "none", fontWeight: "700" }}>$</span>
                   <input type="number" step="0.01" min="0" value={ventas.uber} onChange={e => setVenta("uber", e.target.value)} onFocus={() => setFocused("v_uber")} onBlur={() => setFocused(null)} placeholder="0.00" style={cardInput("v_uber")} />
@@ -424,7 +582,7 @@ export const CierreTurno: React.FC = () => {
               <div style={channelCard("v_rappi", n(ventas.rappi) > 0, "#FFF7ED", "#FED7AA")}>
                 <div style={{ fontSize: "28px", marginBottom: "4px" }}>🛵</div>
                 <div style={{ fontSize: "11px", fontWeight: "700", color: "#6B7280", textTransform: "uppercase", letterSpacing: "0.5px" }}>Rappi</div>
-                <div style={{ fontSize: "10px", color: "#EA580C", fontWeight: "600", marginBottom: "8px" }}>Comisión {comisionRappi}%</div>
+                <div style={{ fontSize: "10px", color: "#EA580C", fontWeight: "600", marginBottom: "8px" }}>Comisión {comisionRappiPct}%</div>
                 <div style={{ position: "relative" }}>
                   <span style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", fontSize: "14px", color: "#9CA3AF", pointerEvents: "none", fontWeight: "700" }}>$</span>
                   <input type="number" step="0.01" min="0" value={ventas.rappi} onChange={e => setVenta("rappi", e.target.value)} onFocus={() => setFocused("v_rappi")} onBlur={() => setFocused(null)} placeholder="0.00" style={cardInput("v_rappi")} />
@@ -447,7 +605,7 @@ export const CierreTurno: React.FC = () => {
                 </div>
               </div>
 
-              {/* Otros ingresos — ocupa 1 columna */}
+              {/* Otros ingresos */}
               <div style={{ ...channelCard("v_otros", n(ventas.otros) > 0, "#F0F9FF", "#BAE6FD") }}>
                 <div style={{ fontSize: "28px", marginBottom: "4px" }}>➕</div>
                 <div style={{ fontSize: "11px", fontWeight: "700", color: "#6B7280", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "10px" }}>Otros Ingresos</div>
@@ -530,18 +688,13 @@ export const CierreTurno: React.FC = () => {
                 <div style={{ fontSize: "10px", fontWeight: "700", color: "#9CA3AF", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "10px" }}>Diferencia</div>
                 {semaphore ? (
                   <div>
-                    <div style={{ fontSize: "22px", fontWeight: "900", color: semaphore.color, textAlign: "right" }}>
-                      {semaphore.label}
-                    </div>
-                    <div style={{ fontSize: "11px", color: "#9CA3AF", textAlign: "right", marginTop: "6px" }}>
-                      Esperado: {fmt(saldoEsperado)}
-                    </div>
+                    <div style={{ fontSize: "22px", fontWeight: "900", color: semaphore.color, textAlign: "right" }}>{semaphore.label}</div>
+                    <div style={{ fontSize: "11px", color: "#9CA3AF", textAlign: "right", marginTop: "6px" }}>Esperado: {fmt(saldoEsperado)}</div>
                   </div>
                 ) : (
                   <span style={{ fontSize: "12px", color: "#D1D5DB", fontStyle: "italic" }}>Ingresa efectivo físico</span>
                 )}
               </div>
-
             </div>
           </div>
 
@@ -591,7 +744,170 @@ export const CierreTurno: React.FC = () => {
               : <><Save style={{ width: "20px", height: "20px" }} /> Guardar cierre del día</>
             }
           </button>
+        </div>
+      )}
 
+      {/* ══════════════════════════════════════════
+          MODAL: Configurar comisiones
+      ══════════════════════════════════════════ */}
+      {showConfigModal && (
+        <div
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}
+          onClick={e => { if (e.target === e.currentTarget) setShowConfigModal(false); }}
+        >
+          <div style={{ background: "#FFF", borderRadius: "18px", width: "100%", maxWidth: "560px", maxHeight: "85vh", display: "flex", flexDirection: "column", boxShadow: "0 20px 60px rgba(0,0,0,0.18)" }}>
+
+            {/* Modal header */}
+            <div style={{ padding: "18px 22px 14px", borderBottom: "1px solid #F3F4F6", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <h3 style={{ fontSize: "16px", fontWeight: "800", color: "#111827", margin: 0 }}>⚙️ Configurar Comisiones</h3>
+                <p style={{ fontSize: "12px", color: "#9CA3AF", margin: "2px 0 0" }}>Tasas de plataformas y terminales bancarias</p>
+              </div>
+              <button onClick={() => setShowConfigModal(false)} style={{ background: "none", border: "none", cursor: "pointer", padding: "4px", borderRadius: "8px", color: "#9CA3AF" }}>
+                <X style={{ width: "20px", height: "20px" }} />
+              </button>
+            </div>
+
+            {/* Modal body */}
+            <div style={{ flex: 1, overflowY: "auto", padding: "16px 22px" }}>
+
+              {/* Table header */}
+              <div style={{ display: "grid", gridTemplateColumns: "80px 1fr 80px 56px 32px", gap: "8px", alignItems: "center", marginBottom: "6px", padding: "0 4px" }}>
+                {["Tipo", "Nombre", "% Comisión", "Activo", ""].map(h => (
+                  <div key={h} style={{ fontSize: "9px", fontWeight: "700", color: "#9CA3AF", textTransform: "uppercase" }}>{h}</div>
+                ))}
+              </div>
+
+              {/* Existing rows */}
+              {comisionesConfig.map(c => {
+                const edit = modalEdits[c.id] ?? c;
+                const saving = savingConfigId === c.id;
+                return (
+                  <div key={c.id} style={{ display: "grid", gridTemplateColumns: "80px 1fr 80px 56px 32px", gap: "8px", alignItems: "center", padding: "7px 4px", borderBottom: "1px solid #F9FAFB" }}>
+                    {/* Tipo badge */}
+                    <div>
+                      <select
+                        value={edit.tipo}
+                        onChange={e => setModalEdits(prev => ({ ...prev, [c.id]: { ...edit, tipo: e.target.value as any } }))}
+                        style={{ width: "100%", padding: "4px 6px", borderRadius: "6px", border: "1px solid #E5E7EB", fontSize: "11px", fontWeight: "600", color: edit.tipo === "PLATAFORMA" ? "#EA580C" : "#7C3AED", background: edit.tipo === "PLATAFORMA" ? "#FFF7ED" : "#F5F3FF" }}
+                      >
+                        <option value="PLATAFORMA">🛵 Platf.</option>
+                        <option value="BANCARIA">💳 Banc.</option>
+                      </select>
+                    </div>
+
+                    {/* Nombre */}
+                    <input
+                      value={edit.nombre ?? c.nombre}
+                      onChange={e => setModalEdits(prev => ({ ...prev, [c.id]: { ...edit, nombre: e.target.value } }))}
+                      style={{ padding: "5px 8px", borderRadius: "6px", border: "1px solid #E5E7EB", fontSize: "13px", fontWeight: "600", color: "#111827" }}
+                    />
+
+                    {/* % */}
+                    <div style={{ display: "flex", alignItems: "center", gap: "3px" }}>
+                      <input
+                        type="number"
+                        value={edit.porcentaje ?? c.porcentaje}
+                        onChange={e => setModalEdits(prev => ({ ...prev, [c.id]: { ...edit, porcentaje: parseFloat(e.target.value) } }))}
+                        style={{ width: "48px", padding: "5px 6px", borderRadius: "6px", border: "1px solid #E5E7EB", fontSize: "13px", fontWeight: "700", textAlign: "center" }}
+                      />
+                      <span style={{ fontSize: "11px", color: "#9CA3AF" }}>%</span>
+                    </div>
+
+                    {/* Activo toggle */}
+                    <div style={{ display: "flex", justifyContent: "center" }}>
+                      <button
+                        onClick={() => setModalEdits(prev => ({ ...prev, [c.id]: { ...edit, activo: !edit.activo } }))}
+                        style={{ width: "36px", height: "20px", borderRadius: "10px", border: "none", cursor: "pointer", background: edit.activo ? "#059669" : "#D1D5DB", position: "relative", transition: "background 0.2s" }}
+                      >
+                        <div style={{ width: "14px", height: "14px", borderRadius: "50%", background: "#FFF", position: "absolute", top: "3px", left: edit.activo ? "19px" : "3px", transition: "left 0.2s" }} />
+                      </button>
+                    </div>
+
+                    {/* Save / Delete */}
+                    <div style={{ display: "flex", gap: "3px" }}>
+                      <button
+                        onClick={() => saveModalRow(c.id)}
+                        disabled={saving}
+                        title="Guardar"
+                        style={{ background: "none", border: "none", cursor: saving ? "not-allowed" : "pointer", padding: "3px", borderRadius: "5px", color: "#059669" }}
+                      >
+                        {saving ? <Loader2 style={{ width: "13px", height: "13px", animation: "spin 1s linear infinite" }} /> : <CheckCircle style={{ width: "13px", height: "13px" }} />}
+                      </button>
+                      <button
+                        onClick={() => deleteModalRow(c.id)}
+                        disabled={saving}
+                        title="Eliminar"
+                        style={{ background: "none", border: "none", cursor: saving ? "not-allowed" : "pointer", padding: "3px", borderRadius: "5px", color: "#EF4444" }}
+                      >
+                        <Trash2 style={{ width: "13px", height: "13px" }} />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* New row form */}
+              {newRow && (
+                <div style={{ display: "grid", gridTemplateColumns: "80px 1fr 80px 56px 32px", gap: "8px", alignItems: "center", padding: "7px 4px", marginTop: "4px", background: "#F0FDF4", borderRadius: "8px" }}>
+                  <select
+                    value={newRow.tipo}
+                    onChange={e => setNewRow(prev => prev ? { ...prev, tipo: e.target.value } : null)}
+                    style={{ width: "100%", padding: "4px 6px", borderRadius: "6px", border: "1px solid #E5E7EB", fontSize: "11px", fontWeight: "600" }}
+                  >
+                    <option value="PLATAFORMA">🛵 Platf.</option>
+                    <option value="BANCARIA">💳 Banc.</option>
+                  </select>
+                  <input
+                    value={newRow.nombre}
+                    onChange={e => setNewRow(prev => prev ? { ...prev, nombre: e.target.value } : null)}
+                    placeholder="Nombre..."
+                    autoFocus
+                    style={{ padding: "5px 8px", borderRadius: "6px", border: "1px solid #86EFAC", fontSize: "13px", fontWeight: "600", color: "#111827" }}
+                  />
+                  <div style={{ display: "flex", alignItems: "center", gap: "3px" }}>
+                    <input
+                      type="number"
+                      value={newRow.porcentaje}
+                      onChange={e => setNewRow(prev => prev ? { ...prev, porcentaje: e.target.value } : null)}
+                      placeholder="0"
+                      style={{ width: "48px", padding: "5px 6px", borderRadius: "6px", border: "1px solid #86EFAC", fontSize: "13px", fontWeight: "700", textAlign: "center" }}
+                    />
+                    <span style={{ fontSize: "11px", color: "#9CA3AF" }}>%</span>
+                  </div>
+                  <div />
+                  <button
+                    onClick={saveNewRow}
+                    disabled={savingNew}
+                    title="Guardar nueva"
+                    style={{ background: "none", border: "none", cursor: savingNew ? "not-allowed" : "pointer", padding: "3px", color: "#059669" }}
+                  >
+                    {savingNew ? <Loader2 style={{ width: "13px", height: "13px", animation: "spin 1s linear infinite" }} /> : <CheckCircle style={{ width: "13px", height: "13px" }} />}
+                  </button>
+                </div>
+              )}
+
+              {/* Add button */}
+              {!newRow && (
+                <button
+                  onClick={() => setNewRow({ tipo: "PLATAFORMA", nombre: "", porcentaje: "0" })}
+                  style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "12px", padding: "7px 14px", borderRadius: "8px", border: "1.5px dashed #E5E7EB", background: "none", cursor: "pointer", fontSize: "12px", fontWeight: "600", color: "#6B7280", width: "100%" }}
+                >
+                  <Plus style={{ width: "14px", height: "14px" }} /> Agregar comisión
+                </button>
+              )}
+            </div>
+
+            {/* Modal footer */}
+            <div style={{ padding: "12px 22px 16px", borderTop: "1px solid #F3F4F6", display: "flex", justifyContent: "flex-end" }}>
+              <button
+                onClick={() => setShowConfigModal(false)}
+                style={{ padding: "9px 20px", borderRadius: "10px", border: "none", background: "linear-gradient(135deg,#3D1C1E,#5C2D30)", color: "#C8FF00", fontSize: "13px", fontWeight: "700", cursor: "pointer" }}
+              >
+                Listo
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
